@@ -63,11 +63,22 @@ function(add_shader OUTPUT SOURCE)
     list(APPEND VARS "-g")
   endif()
 
+  set(GLSL_CMD ${GLSLANGVALIDATOR})
+  list(APPEND GLSL_CMD "-V")
+  list(APPEND GLSL_CMD ${VARS})
+  list(APPEND GLSL_CMD "--P")
+  list(APPEND GLSL_CMD "#extension GL_GOOGLE_include_directive:enable")
+  list(APPEND GLSL_CMD "-I${CMAKE_SOURCE_DIR}/shader")
+  list(APPEND GLSL_CMD ${SOURCE_FILE})
+  list(APPEND GLSL_CMD "-o")
+  list(APPEND GLSL_CMD ${OUTPUT_FILE})
+
   add_custom_command(
     OUTPUT     ${OUTPUT_FILE}
     DEPENDS    ${SOURCE_FILE} ${GLSL_SOURCES}
     COMMAND    ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/sprv/"
-    COMMAND    ${GLSLANGVALIDATOR} --P "#extension GL_GOOGLE_include_directive:enable" -V ${VARS} -I"${CMAKE_SOURCE_DIR}/shader" "${SOURCE_FILE}" -o ${OUTPUT_FILE}
+    COMMAND    ${GLSL_CMD}
+    VERBATIM
     )
 endfunction(add_shader)
 
