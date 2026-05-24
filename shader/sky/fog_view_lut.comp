@@ -57,7 +57,7 @@ void raymarchScattering(vec3 pos, vec3 rayDir, vec3 sunDir, float tMax, int numS
 #endif
 
   for(int i=0; i<numScatteringSteps; ++i) {
-    float t      = (float(i+0.3)/numScatteringSteps)*tMax;
+    float t      = (float(i+0.5)/numScatteringSteps)*tMax;
     float dt     = tMax/numScatteringSteps;
     vec3  newPos = pos + t*rayDir;
 

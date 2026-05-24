@@ -119,14 +119,14 @@ vec4 fog(vec2 uv, float z) {
   uint occlusion = 0;
   [[dont_unroll]]
   for(uint i=0; i<steps; ++i) {
-    float t      = (i+0.3)/float(steps);
+    float t      = (i+0.5)/float(steps);
     vec4  shPos  = mix(shPos0,shPos1,t+noise);
     bool  shadow = shadowFactor(shPos);
     occlusion = occlusion | ((shadow ? 1u : 0u) << uint(i));
     }
 #else
   vec3  scatteredLight = vec3(0.0);
-  vec4  prevVal        = textureLod(fogLut, vec3(uv,0), 0);
+  vec4  prevVal        = vec4(0.0); //textureLod(fogLut, vec3(uv,0), 0);
 #endif
 
 #if defined(GL_COMPUTE_SHADER)
@@ -152,10 +152,10 @@ vec4 fog(vec2 uv, float z) {
       i = (lsb<0) ? 31 : lsb-1;
     }
 
-    const float t   = (i+0.3)/float(steps);
+    const float t   = (i+0.5)/float(steps);
     const float dd  = (t*distZ)/(dist);
 
-    const vec4  val = textureLod(fogLut, vec3(uv,dd), 0);
+    const vec4  val = textureLod(fogLut, vec3(uv,dd), 0) * min(dd*steps*2.0, 1.0);
     scatteredLight += (val.rgb-prevVal.rgb)*shadow;
     prevVal = val;
     }
