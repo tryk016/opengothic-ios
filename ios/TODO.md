@@ -114,13 +114,17 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       `[GAMEPAD] noStuckProtect=1`.
 
 ## ✅ Done — controller glyphs (2026-07-10)
-- [x] **Drawn controller glyphs** (`game/ui/padglyph.*`) — round A/B/X/Y in Xbox
-      colours with letters, LB/RB/LT/RT pills, L3/R3 sticks, D-pad arrows,
-      Menu/View icons. Own vector rendering (discs via triangle fans) — no
-      external assets. Used by the touch overlay (buttons look like buttons, not
-      squares) and the controls-help hint bar (glyph + label).
-      NOTE: for the exact **Xelu CC0** art, drop the PNGs in and add a texture
-      loader with fallback to these drawn glyphs — assets can't be fetched here.
+- [x] **Xelu CC0 glyphs** (Xbox Series set) bundled in `assets/controller/`,
+      loaded from the app bundle (`padglyphtex.mm`, `Resources::loadTexturePm`)
+      and drawn as real button art; falls back to the drawn glyphs
+      (`padglyph.cpp`: A/B/X/Y discs, LB/RB/LT/RT pills, sticks, D-pad, Menu/View)
+      if a texture is missing. Used by the touch overlay + controls-help bar.
+
+## ⏳ To do — full on-screen virtual gamepad
+- [ ] Touch overlay currently shows a subset (A/B/X/Y, View/Menu, move pad). Since
+      gameplay uses RB/RT/LB/LT/L3/R3/D-pad too, show the **full pad** in World
+      context and wire each glyph to its action; add touch ring-selection (drag to
+      aim, release to activate) so RB/LT rings are usable on touch.
 
 ## ⏳ Spec gaps / simplifications (control spec §1–§8) — deliberate, not blocking
 - [ ] Rings are **single-ring v1**: no concentric multi-ring + centre-easing

@@ -2,6 +2,8 @@
 
 #include <Tempest/Painter>
 #include <Tempest/Color>
+#include <Tempest/Brush>
+#include <Tempest/Texture2d>
 #include <cmath>
 
 #include "utils/gthfont.h"
@@ -35,6 +37,12 @@ static void centerLabel(Painter& p, const GthFont& fnt, float cx, float cy, std:
   }
 
 void PadGlyph::draw(Painter& p, const GthFont& fnt, Btn b, int x, int y, int s, float a) {
+  if(const Tempest::Texture2d* t = PadGlyph::texture(b)) {   // real Xelu art if bundled
+    p.setBrush(Brush(*t, Color(1.f,1.f,1.f,a)));
+    p.drawRect(x, y, s, s, 0, 0, int(t->w()), int(t->h()));
+    return;
+    }
+
   const float cx = float(x) + float(s)*0.5f;
   const float cy = float(y) + float(s)*0.5f;
   const float r  = float(s)*0.42f;

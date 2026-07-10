@@ -80,6 +80,13 @@ file(GLOB_RECURSE OPENGOTHIC_SOURCES
 
 target_sources(${PROJECT_NAME} PRIVATE ${OPENGOTHIC_SOURCES} ${ObjCSOURCES} icon.rc)
 
+# Bundle the CC0 controller glyphs (Xelu prompts) into the iOS app.
+if(IOS)
+  file(GLOB CONTROLLER_GLYPHS "${CMAKE_SOURCE_DIR}/assets/controller/*.png")
+  set_source_files_properties(${CONTROLLER_GLYPHS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+  target_sources(${PROJECT_NAME} PRIVATE ${CONTROLLER_GLYPHS})
+endif()
+
 # shaders
 add_subdirectory(shader)
 target_link_libraries(${PROJECT_NAME} GothicShaders)

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace Tempest { class Painter; }
+namespace Tempest { class Painter; class Texture2d; }
 class GthFont;
 
 // Draws controller-style button glyphs (round A/B/X/Y in Xbox colours, shoulder
@@ -27,4 +27,8 @@ namespace PadGlyph {
   // Returns the total advance in pixels (glyph + gap + text).
   int  drawLabelled(Tempest::Painter& p, const GthFont& fnt, Btn b,
                     int x, int y, int s, std::string_view label, float alpha=1.f);
+
+  // Bundled Xelu controller art for a button, or nullptr to use the drawn
+  // fallback. Loaded lazily; iOS-only (padglyphtex.mm), nullptr elsewhere.
+  const Tempest::Texture2d* texture(Btn b);
   }
