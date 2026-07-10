@@ -38,6 +38,18 @@
 
 using namespace Tempest;
 
+#if defined(__IOS__)
+#include <sys/sysctl.h>
+static uint64_t iosPhysMemBytes() {
+  uint64_t mem = 0;
+  size_t   sz  = sizeof(mem);
+  int      mib[2] = { CTL_HW, HW_MEMSIZE };
+  if(sysctl(mib, 2, &mem, &sz, nullptr, 0)!=0)
+    return 0;
+  return mem;
+  }
+#endif
+
 Resources* Resources::inst=nullptr;
 
 static void emplaceTag(char* buf, char tag){
@@ -157,8 +169,11 @@ void Resources::loadVdfs(const std::vector<std::u16string>& modvdfs, bool modFil
     try {
       auto in = zenkit::Read::from(i.name);
 #ifdef __IOS__
-      // causes OOM on iPhone7
-      if(i.name.find(u"Speech")!=std::string::npos)
+      // Speech*.vdf hold dialogue voice-over and are the largest volumes.
+      // On <4 GB devices (iPhone 7/8) mounting them can OOM, so skip and keep
+      // subtitles only; on newer devices mount them so dialogue has voice.
+      // ZenKit mmaps the archive (ZK_ENABLE_MMAP), so the resident cost is low.
+      if(i.name.find(u"Speech")!=std::string::npos && iosPhysMemBytes() < (uint64_t(4)<<30))
         continue;
 #endif
       inst->gothicAssets.mount_disk(i.name, zenkit::VfsOverwriteBehavior::OLDER);
