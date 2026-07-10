@@ -63,6 +63,8 @@ class MainWindow : public Tempest::Window {
     void padRingAim(float nx, float ny);
     void padRingCommit();
     void padQuickSave();
+    bool padVideoActive() const;               // an intro/cutscene bink is playing
+    void padSkipVideo();                        // skip it (mirrors desktop Esc)
 #endif
 
   private:

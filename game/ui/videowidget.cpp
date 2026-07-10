@@ -337,6 +337,10 @@ void VideoWidget::mouseDownEvent(Tempest::MouseEvent& event) {
 #endif
   }
 
+void VideoWidget::skip() {
+  stopVideo();
+  }
+
 void VideoWidget::stopVideo() {
   ctx.reset();
   if(!hasPendingVideo) {

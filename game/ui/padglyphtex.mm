@@ -27,10 +27,10 @@ static const char* glyphFile(PadGlyph::Btn b) {
     case PadGlyph::R3:        return "XboxSeriesX_Right_Stick_Click";
     case PadGlyph::LStick:    return "XboxSeriesX_Left_Stick";
     case PadGlyph::RStick:    return "XboxSeriesX_Right_Stick";
-    case PadGlyph::DPadUp:    return "XboxSeriesX_Dpad_Up";
-    case PadGlyph::DPadDown:  return "XboxSeriesX_Dpad_Down";
-    case PadGlyph::DPadLeft:  return "XboxSeriesX_Dpad_Left";
-    case PadGlyph::DPadRight: return "XboxSeriesX_Dpad_Right";
+    case PadGlyph::DPadUp:    return "Arrow_Up_Key_Dark";
+    case PadGlyph::DPadDown:  return "Arrow_Down_Key_Dark";
+    case PadGlyph::DPadLeft:  return "Arrow_Left_Key_Dark";
+    case PadGlyph::DPadRight: return "Arrow_Right_Key_Dark";
     case PadGlyph::Menu:      return "XboxSeriesX_Menu";
     case PadGlyph::View:      return "XboxSeriesX_View";
     }

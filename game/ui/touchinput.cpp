@@ -113,6 +113,14 @@ void TouchInput::paintEvent(PaintEvent& e) {
   Painter p(e);
   auto&   fnt = Resources::font(Gothic::interfaceScale(this));
 
+  if(owner.padVideoActive()) {
+    // A bink is playing: don't cover it with menu buttons, just hint that a tap skips it.
+    const char* hint = "Tap to skip";
+    const auto  ts   = fnt.textSize(hint);
+    fnt.drawText(p, w()-ts.w-h()/20, h()-h()/20, hint);
+    return;
+    }
+
   switch(owner.padContext()) {
     case PadCtx::World: {
       const int H  = h();
@@ -142,6 +150,8 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
   const Point  pos = e.pos();
   const int    id  = e.mouseID;
   const PadCtx ctx = owner.padContext();
+
+  if(owner.padVideoActive()) { owner.padSkipVideo(); return; }   // any tap skips the intro/cutscene
 
   if(ctx==PadCtx::World) {
     // A radial ring is open -> this touch aims it, release commits.

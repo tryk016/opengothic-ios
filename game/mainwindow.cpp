@@ -608,6 +608,8 @@ void MainWindow::padOpenItemRing()            { gamepad.openItemRing(); }
 void MainWindow::padRingAim(float nx,float ny){ gamepad.ringAim(nx,ny); }
 void MainWindow::padRingCommit()              { gamepad.ringCommit(); }
 void MainWindow::padQuickSave()               { gamepad.quickSave(); }
+bool MainWindow::padVideoActive() const       { return video.isActive(); }
+void MainWindow::padSkipVideo()               { video.skip(); }
 #endif
 
 void MainWindow::dispatchKey(Tempest::KeyEvent& e) {

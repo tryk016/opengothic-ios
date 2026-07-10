@@ -13,6 +13,7 @@ class VideoWidget : public Tempest::Widget {
 
     void pushVideo(std::string_view filename);
     bool isActive() const;
+    void skip();               // stop the current clip (used by touch skip)
 
     void tick();
     void paint(Tempest::Device& device, uint8_t fId);
