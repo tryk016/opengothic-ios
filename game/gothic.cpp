@@ -945,6 +945,11 @@ void Gothic::setupSettings() {
       continue;
     inventoryOrder.push_back(v);
     }
+
+  // User-toggleable on-screen FPS counter via Gothic.ini [GAME] showFpsCounter
+  // (benchmark mode still forces it on). Drawn by MainWindow when doFrate().
+  setFRate((settingsGetI("GAME","showFpsCounter")!=0) ||
+           CommandLine::inst().isBenchmarkMode()!=Benchmark::None);
   }
 
 std::unique_ptr<DocumentMenu::Show>& Gothic::getDocument(int id) {

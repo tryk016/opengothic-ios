@@ -201,7 +201,7 @@ void MainWindow::paintEvent(PaintEvent& event) {
     if(st==Gothic::LoadState::Saving) {
       drawSaving(p);
       } else {
-      if(auto back = Gothic::inst().loadingBanner()) {
+      if(auto back = Gothic::inst().loadingBanner(); back!=nullptr && !back->isEmpty()) {
         p.setBrush(Brush(*back,Painter::NoBlend));
         p.drawRect(0,0,this->w(),this->h(),
                    0,0,back->w(),back->h());
@@ -778,7 +778,7 @@ void MainWindow::drawLoading(Painter &p, int x, int y, int w, int h) {
   }
 
 void MainWindow::drawSaving(Painter &p) {
-  if(auto back = Gothic::inst().loadingBanner()) {
+  if(auto back = Gothic::inst().loadingBanner(); back!=nullptr && !back->isEmpty()) {
     p.setBrush(Brush(*back,Painter::NoBlend));
     p.drawRect(0,0,this->w(),this->h(),
                0,0,back->w(),back->h());
@@ -1118,6 +1118,27 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
     return;
   if(auto w = Gothic::inst().world(); w!=nullptr && w->currentCs()!=nullptr)
     return;
+
+#if defined(__IOS__)
+  // Capturing a GPU thumbnail here (screenshoot + submit + readPixels) aborts
+  // inside the Metal driver on iOS, crashing the save. Save with a small
+  // placeholder preview and no screenshot background instead.
+  {
+    const int sw = std::max(4, Gothic::options().saveGameImageSize.w);
+    const int sh = std::max(4, Gothic::options().saveGameImageSize.h);
+    Tempest::Pixmap pm(uint32_t(sw), uint32_t(sh), Tempest::TextureFormat::RGBA8);
+    Gothic::inst().startSave(Tempest::Texture2d(),
+      [slot=std::string(slot),name=std::string(name),pm](std::unique_ptr<GameSession>&& game){
+        if(!game)
+          return std::move(game);
+        Tempest::WFile f(slot);
+        Serialize      s(f);
+        game->save(s,name,pm);
+        return std::move(game);
+        });
+    return;
+  }
+#endif
 
   auto tex  = renderer.screenshoot(cmdId);
   auto lres = Attachment();

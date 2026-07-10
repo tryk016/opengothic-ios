@@ -93,3 +93,18 @@ else
     exit 1
   fi
 fi
+
+# Change: keep the screen awake during play. Without this iOS dims and locks the
+# display on its idle timer while the player isn't touching the screen (e.g.
+# using a gamepad). Re-assert it every time the app becomes active.
+if grep -q 'idleTimerDisabled' "$VC"; then
+  echo "skip: iosapi.mm idle timer (already patched)"
+else
+  perl -0777 -pi -e 's/(- \(void\)applicationDidBecomeActive:\(UIApplication \*\)application\s*\{\r?\n\s*\(void\)application;\r?\n)/${1}  application.idleTimerDisabled = YES;\n/s' "$VC"
+  if grep -q 'idleTimerDisabled' "$VC"; then
+    echo "patched: iosapi.mm idle timer (keep screen awake)"
+  else
+    echo "ERROR: failed to patch iosapi.mm idle timer (pattern not found)" >&2
+    exit 1
+  fi
+fi

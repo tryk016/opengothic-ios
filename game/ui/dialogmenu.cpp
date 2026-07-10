@@ -563,6 +563,13 @@ void DialogMenu::mouseWheelEvent(MouseEvent &e) {
 
 void DialogMenu::keyDownEvent(KeyEvent &e) {
   if(state==State::Idle || trade.isOpen()!=InventoryMenu::State::Closed){
+    // Output-only cutscenes have no interactive state, but a spoken line can
+    // still be skipped so the player isn't stuck watching it play out.
+    if(state==State::Idle && current.time>0 && trade.isOpen()==InventoryMenu::State::Closed &&
+       (e.key==Event::K_ESCAPE || e.key==Event::K_Return)) {
+      skipPhrase();
+      return;
+      }
     e.ignore();
     return;
     }

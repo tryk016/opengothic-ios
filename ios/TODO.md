@@ -4,6 +4,24 @@ Tracked work beyond the core "build + run + control" milestone.
 Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 "ideal gamepad" control spec.
 
+## ✅ Done — device-test round 1 fixes (2026-07-10)
+- [x] **Save crash** — `MainWindow::saveGame` captured a GPU thumbnail
+      (`screenshoot`+`submit`+`readPixels`) which aborts in the Metal driver on
+      iOS. On iOS: skip that path, save a small placeholder preview + empty
+      background; also guard the saving screen against an empty banner texture.
+- [x] **Skip cutscenes** — output-only cutscene lines (`state==Idle`,
+      `current.time>0`) ignored all input; `DialogMenu::keyDownEvent` now lets
+      Esc/Return (touch Skip, pad B) call `skipPhrase` there too.
+- [x] **Keep screen awake** — `application.idleTimerDisabled = YES` in
+      `applicationDidBecomeActive` (via `apply-patches.sh`); the display no
+      longer dims/locks mid-game when using a gamepad.
+- [x] **Game Mode** — `GCSupportsGameMode` + `LSApplicationCategoryType =
+      public.app-category.games` in `Info.plist` (lets iOS 18+ treat it as a game).
+- [x] **FPS counter** — the existing overlay (drawn on mobile) is now toggled by
+      `Gothic.ini [GAME] showFpsCounter=1` (read in `setupSettings`). NOTE: a
+      literal checkbox inside the in-game options menu needs MENU.DAT (game-data)
+      editing — not doable from engine code; the ini flag is the practical toggle.
+
 ## ✅ Done — critical bugfix cluster (2026-07-10)
 - [x] **Dialogue voice-over** — root cause was iOS unconditionally skipping
       `Speech*.vdf` (OOM guard for iPhone 7). Now mounted on ≥4 GB devices,
