@@ -22,6 +22,7 @@
 #include "game/globaleffects.h"
 #include "utils/gthfont.h"
 #include "utils/dbgpainter.h"
+#include "utils/gamepad.h"
 
 #include "commandline.h"
 #include "gothic.h"
@@ -269,6 +270,9 @@ void MainWindow::paintEvent(PaintEvent& event) {
   renderer.dbgDraw(p);
 
   const float scale = Gothic::interfaceScale(this);
+#if defined(__MOBILE_PLATFORM__)
+  drawPadHints(p, scale);
+#endif
   if(Gothic::inst().doFrate() && !Gothic::inst().isDesktop()) {
     char fpsT[64]={};
     std::snprintf(fpsT,sizeof(fpsT),"fps = %.2f",fps.get());
@@ -640,6 +644,20 @@ void MainWindow::paintFocus(Painter& p, const Focus& focus, const Matrix4x4& vp)
     iy = h();
   fnt.drawText(p,ix,iy,focus.displayName());
 
+  if(focus.npc!=nullptr && player.isTargetLocked()) {
+    // Lock-on reticle: four corner brackets around the pinned target.
+    const int cx = int((0.5f*pos.x+0.5f)*float(w()));
+    const int cy = int((0.5f*pos.y+0.5f)*float(h()));
+    const int r  = std::max(10,int(18*scale));
+    const int t  = std::max(2, int(2*scale));
+    const int l  = std::max(4, int(8*scale));
+    p.setBrush(Color(1.f,0.43f,0.43f,0.9f));         // (255,110,110) lock tint (spec 5.4)
+    p.drawRect(cx-r,   cy-r,   l, t); p.drawRect(cx-r,   cy-r,   t, l); // top-left
+    p.drawRect(cx+r-l, cy-r,   l, t); p.drawRect(cx+r-t, cy-r,   t, l); // top-right
+    p.drawRect(cx-r,   cy+r-t, l, t); p.drawRect(cx-r,   cy+r-l, t, l); // bottom-left
+    p.drawRect(cx+r-l, cy+r-t, l, t); p.drawRect(cx+r-t, cy+r-l, t, l); // bottom-right
+    }
+
   if(focus.npc!=nullptr && !focus.npc->isDead()) {
     float hp = float(focus.npc->attribute(ATR_HITPOINTS))/float(focus.npc->attribute(ATR_HITPOINTSMAX));
     drawBar(p,barHp, w()/2,10, hp, AlignHCenter|AlignTop);
@@ -742,6 +760,32 @@ void MainWindow::drawBar(Painter &p, const Tempest::Texture2d* bar, int x, int y
   p.drawRect(x+int(pd),y+dy,int(float(destW-pd*2)*v),int(destHin),
              0,0,bar->w(),bar->h());
   }
+
+#if defined(__MOBILE_PLATFORM__)
+void MainWindow::drawPadHints(Painter& p, float scale) {
+  if(Application::tickCount()>=padHintUntil)   // only flashes briefly after a context change
+    return;
+  if(!Gamepad::poll().connected)               // touch users don't need button hints
+    return;
+
+  std::string_view hint;
+  switch(padContext()) {
+    case PadCtx::World:     hint = "A interact   Y weapon   B jump   RT block   R3 lock-on   D-pad targets/items"; break;
+    case PadCtx::Dialog:    hint = "A select   B skip   D-pad choose"; break;
+    case PadCtx::Menu:      hint = "A OK   B back   D-pad navigate / change"; break;
+    case PadCtx::Inventory: hint = "A use/equip   B / View close   D-pad navigate"; break;
+    case PadCtx::Loading:   return;
+    }
+  if(hint.empty())
+    return;
+
+  auto&     fnt = Resources::font(scale);
+  const auto ts = fnt.textSize(hint);
+  const int  x  = (w()-ts.w)/2;
+  const int  y  = h() - std::max(8,int(12*scale));
+  fnt.drawText(p, x, y, hint);
+  }
+#endif
 
 void MainWindow::drawMsg(Tempest::Painter& p) {
   const float scale   = Gothic::interfaceScale(this);
@@ -920,6 +964,10 @@ uint64_t MainWindow::tick() {
 
 #if defined(__MOBILE_PLATFORM__)
   gamepad.tick(dt);
+  if(const PadCtx pc = padContext(); pc!=lastPadCtx) {
+    lastPadCtx   = pc;                       // flash the controls-help on context change
+    padHintUntil = Application::tickCount() + 4000;
+    }
 #endif
 
   auto st = Gothic::inst().checkLoading();

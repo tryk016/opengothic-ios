@@ -47,8 +47,14 @@ class GamepadInput {
     void key   (bool now, bool before, Tempest::Event::KeyType k);// synthetic KeyEvent
     void releaseAllWorld();                                       // drop held world actions
 
-    static constexpr float DEAD = 0.25f;   // stick dead-zone
-    static constexpr float TRIG = 0.50f;   // trigger press threshold
-    static constexpr float LOOK = 0.20f;   // camera speed per ms
-    bool  invertY = false;                 // camera Y invert (see review B6)
+    void loadConfig();                     // read the [GAMEPAD] section
+    void quickSaveRotating();              // rotating save slots (spec 6)
+    void quickLoadRotating();              // load the last rotating slot
+
+    // Tunables, overridable via Gothic.ini [GAMEPAD] (see loadConfig).
+    float deadZone   = 0.25f;   // stick dead-zone
+    float trigThresh = 0.50f;   // trigger press threshold
+    float lookSens   = 0.20f;   // camera speed per ms
+    bool  invertY    = false;   // camera Y invert (review B6)
+    int   saveSlots  = 5;       // rotating quick-save slot count
   };

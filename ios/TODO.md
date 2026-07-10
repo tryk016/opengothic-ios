@@ -84,13 +84,22 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       (`focusLeft/focusRight` → `moveFocus`). Existing focus highlight shows it.
       Replaces the provisional R3→`LookBack`.
 
-## ⏳ To do — "ideal controls" (bigger, self-contained; control spec §4–§8)
+## ✅ Done — ideal controls, batch 1 (2026-07-10)
+- [x] **[GAMEPAD] config** (spec §8) — `deadZone`, `triggerThreshold`,
+      `lookSensitivity`, `invertY`, `saveSlots` read from `Gothic.ini [GAMEPAD]`
+      in `GamepadInput::loadConfig`. Replaces the hard-coded tunables.
+- [x] **Rotating quick-saves** (spec §6) — LB+Menu saves to `save_slot_1..N`
+      (N=`saveSlots`), auto-named `Quick - <world>`; index persisted in
+      `[GAMEPAD] padQuickSlot`. LB+View loads the last rotating slot.
+- [x] **Controls-help overlay** (spec §5) — context-sensitive button hints,
+      flashed for ~4 s on context change, gamepad-only. Text glyphs (no bundled
+      assets). Target **lock-on reticle** (corner brackets) drawn on the pinned
+      target. Touch overlay auto-hides when a gamepad is connected.
+
+## ⏳ To do — "ideal controls" batch 2–3 (control spec §4, §7, §8-stuck)
 - [ ] Radial rings: weapons (RB) + items (LB) quick-bars. (spec §4)
-- [ ] Controls-help overlay + button glyphs (Xelu CC0) + target reticle. (spec §5)
-- [ ] Rotating quick-saves with auto-names. (spec §6)
-- [ ] Haptics via `GCController.haptics` / Core Haptics. (spec §7)
-- [ ] Stuck-protection + `[GAMEPAD]` config in `Gothic.ini` (dead-zones,
-      sensitivity, invert-Y, save slots). (spec §8) — wires the `invertY` field.
+- [ ] Haptics via Core Haptics. (spec §7)
+- [ ] Stuck-protection: L3+R3 hold → teleport to nearest waypoint. (spec §8)
 
 ## ✅ Done — UI / readability
 - [x] Scale up UI on iOS for high-DPI legibility (`MainWindow::uiScale`).

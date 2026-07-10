@@ -2,8 +2,12 @@
 
 #include <Tempest/Event>
 #include <cmath>
+#include <cstdio>
+#include <algorithm>
+#include <string>
 
 #include "game/playercontrol.h"
+#include "world/world.h"
 #include "mainwindow.h"
 #include "gothic.h"
 
@@ -13,6 +17,46 @@ using Tempest::Event;
 
 GamepadInput::GamepadInput(MainWindow& owner, PlayerControl& ctrl)
   : owner(owner), ctrl(ctrl) {
+  loadConfig();
+  }
+
+void GamepadInput::loadConfig() {
+  auto f = [](const char* n, float d){
+    const float v = Gothic::settingsGetF("GAMEPAD", n);
+    return v>0.f ? v : d;
+    };
+  deadZone   = f("deadZone",         0.25f);
+  trigThresh = f("triggerThreshold", 0.50f);
+  lookSens   = f("lookSensitivity",  0.20f);
+  invertY    = Gothic::settingsGetI("GAMEPAD","invertY")!=0;
+  const int slots = Gothic::settingsGetI("GAMEPAD","saveSlots");
+  saveSlots  = slots>0 ? slots : 5;
+  }
+
+void GamepadInput::quickSaveRotating() {
+  auto& g = Gothic::inst();
+  const int slots = std::max(1, saveSlots);
+  int idx = Gothic::settingsGetI("GAMEPAD","padQuickSlot");
+  idx = (idx % slots) + 1;                         // 1..slots
+  Gothic::settingsSetI("GAMEPAD","padQuickSlot", idx);
+  Gothic::flushSettings();                          // survive restart
+  char slot[32] = {};
+  std::snprintf(slot, sizeof(slot), "save_slot_%d.sav", idx);
+  std::string nm = "Quick";
+  if(auto w = g.world())
+    nm = "Quick - " + std::string(w->name());
+  g.save(slot, nm);
+  }
+
+void GamepadInput::quickLoadRotating() {
+  const int idx = Gothic::settingsGetI("GAMEPAD","padQuickSlot");
+  if(idx<=0) {
+    Gothic::inst().quickLoad();                     // nothing rotated yet
+    return;
+    }
+  char slot[32] = {};
+  std::snprintf(slot, sizeof(slot), "save_slot_%d.sav", idx);
+  Gothic::inst().load(slot);
   }
 
 void GamepadInput::edge(bool now, bool before, A a) {
@@ -78,17 +122,17 @@ void GamepadInput::tick(uint64_t dt) {
 
 void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
   // Left stick -> movement (digital, dead-zoned). Forward == stick up (ly>0).
-  const bool fwd   = s.ly >  DEAD, back  = s.ly < -DEAD;
-  const bool left  = s.lx < -DEAD, right = s.lx >  DEAD;
-  edge(fwd,   prev.ly >  DEAD, A::Forward);
-  edge(back,  prev.ly < -DEAD, A::Back);
-  edge(left,  prev.lx < -DEAD, A::Left);
-  edge(right, prev.lx >  DEAD, A::Right);
+  const bool fwd   = s.ly >  deadZone, back  = s.ly < -deadZone;
+  const bool left  = s.lx < -deadZone, right = s.lx >  deadZone;
+  edge(fwd,   prev.ly >  deadZone, A::Forward);
+  edge(back,  prev.ly < -deadZone, A::Back);
+  edge(left,  prev.lx < -deadZone, A::Left);
+  edge(right, prev.lx >  deadZone, A::Right);
 
   // Right stick -> analog camera look. Y is unified with the touch overlay
   // convention (stick up == look up); invertY flips it (review B6).
-  if(std::abs(s.rx) > DEAD || std::abs(s.ry) > DEAD) {
-    const float scale = float(dt) * LOOK;
+  if(std::abs(s.rx) > deadZone || std::abs(s.ry) > deadZone) {
+    const float scale = float(dt) * lookSens;
     const float yDir  = invertY ? -1.f : 1.f;
     ctrl.onRotateMouse(-s.rx * scale, s.ry * scale * yDir);
     }
@@ -100,7 +144,7 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
   edge(s.y, prev.y, A::Weapon);
 
   // Right trigger -> block/parry (analog, thresholded).
-  const bool rtDown = s.rt > TRIG;
+  const bool rtDown = s.rt > trigThresh;
   edge(rtDown, prevRT, A::Parade);
   prevRT = rtDown;
 
@@ -127,31 +171,31 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
     if(useQuickSaveKeys) {
       auto& g = Gothic::inst();
       if(s.menu    && !prev.menu    && g.isInGameAndAlive() && !g.isPause())
-        g.quickSave();
+        quickSaveRotating();
       if(s.options && !prev.options && !g.isPause())
-        g.quickLoad();
+        quickLoadRotating();
       }
     }
   }
 
 void GamepadInput::tickDialog(const GamepadState& s) {
-  const bool up   = s.ly >  DEAD || s.dup;
-  const bool down = s.ly < -DEAD || s.ddown;
-  key(up,   (prev.ly >  DEAD || prev.dup),   Event::K_Up);
-  key(down, (prev.ly < -DEAD || prev.ddown), Event::K_Down);
+  const bool up   = s.ly >  deadZone || s.dup;
+  const bool down = s.ly < -deadZone || s.ddown;
+  key(up,   (prev.ly >  deadZone || prev.dup),   Event::K_Up);
+  key(down, (prev.ly < -deadZone || prev.ddown), Event::K_Down);
   key(s.a,  prev.a, Event::K_Return);
   key(s.b,  prev.b, Event::K_ESCAPE);
   }
 
 void GamepadInput::tickMenu(const GamepadState& s) {
-  const bool up    = s.ly >  DEAD || s.dup;
-  const bool down  = s.ly < -DEAD || s.ddown;
-  const bool left  = s.lx < -DEAD || s.dleft;
-  const bool right = s.lx >  DEAD || s.dright;
-  key(up,    (prev.ly >  DEAD || prev.dup),    Event::K_Up);
-  key(down,  (prev.ly < -DEAD || prev.ddown),  Event::K_Down);
-  key(left,  (prev.lx < -DEAD || prev.dleft),  Event::K_Left);
-  key(right, (prev.lx >  DEAD || prev.dright), Event::K_Right);
+  const bool up    = s.ly >  deadZone || s.dup;
+  const bool down  = s.ly < -deadZone || s.ddown;
+  const bool left  = s.lx < -deadZone || s.dleft;
+  const bool right = s.lx >  deadZone || s.dright;
+  key(up,    (prev.ly >  deadZone || prev.dup),    Event::K_Up);
+  key(down,  (prev.ly < -deadZone || prev.ddown),  Event::K_Down);
+  key(left,  (prev.lx < -deadZone || prev.dleft),  Event::K_Left);
+  key(right, (prev.lx >  deadZone || prev.dright), Event::K_Right);
   key(s.a,    prev.a,    Event::K_Return);
   key(s.b,    prev.b,    Event::K_ESCAPE);
   key(s.menu, prev.menu, Event::K_ESCAPE);

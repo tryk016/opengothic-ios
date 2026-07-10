@@ -4,6 +4,7 @@
 #include <Tempest/Event>
 
 #include "game/playercontrol.h"
+#include "utils/gamepad.h"
 #include "mainwindow.h"
 #include "gothic.h"
 
@@ -64,6 +65,8 @@ std::array<TouchInput::MBtn,4> TouchInput::dialogLayout() const {
   }
 
 void TouchInput::paintEvent(PaintEvent& e) {
+  if(Gamepad::poll().connected)
+    return;                          // a gamepad drives the UI -> hide the touch overlay
   Painter p(e);
   switch(owner.padContext()) {
     case PadCtx::World: {
@@ -96,6 +99,8 @@ void TouchInput::paintEvent(PaintEvent& e) {
   }
 
 void TouchInput::mouseDownEvent(MouseEvent& e) {
+  if(Gamepad::poll().connected) { e.ignore(); return; }   // gamepad active -> ignore taps
+
   const Point  pos = e.pos();
   const int    id  = e.mouseID;
   const PadCtx ctx = owner.padContext();
