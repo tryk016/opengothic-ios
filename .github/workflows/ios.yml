@@ -1,11 +1,16 @@
 name: iOS build (unsigned .ipa)
 
-# Builds an UNSIGNED .ipa on a GitHub-hosted macOS runner.
-# Install it on device from Windows via AltStore/AltServer, which re-signs
-# it with your free Apple ID. No Mac and no paid Apple Developer account needed.
+# Builds an UNSIGNED .ipa on a GitHub-hosted macOS runner and publishes it to a
+# GitHub Release ("latest") so ANYONE can download it directly — no fork, no
+# account, no build. Recipients sign it with their OWN free Apple ID via
+# SideStore/AltStore/Sideloadly. No Mac and no paid Apple Developer account needed.
+#
+# Two stable URLs are produced (replace OWNER/REPO with your repo):
+#   .ipa    https://github.com/OWNER/REPO/releases/download/latest/OpenGothic-unsigned.ipa
+#   source  https://github.com/OWNER/REPO/releases/download/latest/apps.json   (add this in SideStore)
 #
 # macOS runner minutes are free for PUBLIC repositories. For private repos they
-# count 10x against your quota, so a public fork is recommended.
+# count 10x against your quota, so keep the repo public.
 
 on:
   push:
@@ -14,6 +19,9 @@ on:
       - '**.md'
       - 'docs/**'
   workflow_dispatch:
+
+permissions:
+  contents: write          # required to create/update the Release
 
 jobs:
   build:
@@ -55,7 +63,70 @@ jobs:
           cp -R "$APP" Payload/
           zip -r OpenGothic-unsigned.ipa Payload >/dev/null
 
-      - name: Upload .ipa artifact
+      - name: Generate SideStore/AltStore source (apps.json)
+        run: |
+          VERSION="1.0.${{ github.run_number }}"
+          DATE="$(date -u +%Y-%m-%d)"
+          SIZE="$(stat -f%z OpenGothic-unsigned.ipa)"
+          BASE="${{ github.server_url }}/${{ github.repository }}"
+          RAW="${{ github.server_url }}/${{ github.repository }}/raw/${{ github.ref_name }}"
+          IPA_URL="$BASE/releases/download/latest/OpenGothic-unsigned.ipa"
+          cat > apps.json <<EOF
+          {
+            "name": "OpenGothic iOS",
+            "identifier": "opengothic.gothic2.source",
+            "sourceURL": "$BASE/releases/download/latest/apps.json",
+            "apps": [
+              {
+                "name": "OpenGothic",
+                "bundleIdentifier": "opengothic.gothic2",
+                "developerName": "Try (engine) · iOS port",
+                "subtitle": "Unofficial iOS port of OpenGothic",
+                "localizedDescription": "Unofficial iOS port of OpenGothic — an open-source re-implementation of Gothic II: Night of the Raven. Requires your own legally-owned Gothic II game data (no assets included). Work in progress.",
+                "iconURL": "$RAW/scr0.png",
+                "tintColor": "8B0000",
+                "category": "games",
+                "version": "$VERSION",
+                "versionDate": "$DATE",
+                "versionDescription": "Automated CI build $VERSION.",
+                "downloadURL": "$IPA_URL",
+                "size": $SIZE,
+                "versions": [
+                  {
+                    "version": "$VERSION",
+                    "date": "$DATE",
+                    "localizedDescription": "Automated CI build $VERSION.",
+                    "downloadURL": "$IPA_URL",
+                    "size": $SIZE
+                  }
+                ]
+              }
+            ],
+            "news": []
+          }
+          EOF
+          echo "----- apps.json -----"; cat apps.json
+
+      - name: Publish to GitHub Release (latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Unsigned iOS build \`1.0.${{ github.run_number }}\` (commit ${{ github.sha }}).
+
+          **Download:** \`OpenGothic-unsigned.ipa\` below, then sideload with your own free Apple ID via SideStore / AltStore / Sideloadly.
+          **SideStore source:** add this URL in SideStore → Sources → +
+          \`${{ github.server_url }}/${{ github.repository }}/releases/download/latest/apps.json\`
+
+          Requires your own legally-owned Gothic II data. No game assets are included."
+          if gh release view latest >/dev/null 2>&1; then
+            gh release edit latest --prerelease --notes "$NOTES"
+            gh release upload latest OpenGothic-unsigned.ipa apps.json --clobber
+          else
+            gh release create latest OpenGothic-unsigned.ipa apps.json \
+              --title "OpenGothic iOS — latest" --prerelease --notes "$NOTES"
+          fi
+
+      - name: Upload .ipa artifact (backup, for logged-in users)
         uses: actions/upload-artifact@v4
         with:
           name: OpenGothic-ipa

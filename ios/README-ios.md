@@ -9,28 +9,40 @@ controller. Two routes are documented: **no Mac** (recommended for you) and
 
 ---
 
-## Route A — No Mac (GitHub Actions + AltStore on Windows)
+## Route A — No Mac, no build (download + sideload)
 
-### 1. Build an unsigned .ipa in the cloud
-- Fork/push this repo to **your GitHub account**. A **public** repo gets free
-  macOS runner minutes (private repos burn quota 10×).
-- The workflow `.github/workflows/ios.yml` runs on `macos-latest`, installs
-  `cmake`+`glslang`, builds for `iphoneos` (arm64) with signing disabled, and
-  uploads `OpenGothic-unsigned.ipa` as a build artifact.
-- Trigger it (push, or Actions tab → "iOS build" → Run workflow), wait for it to
-  finish, then download the `OpenGothic-ipa` artifact and unzip to get the `.ipa`.
+### 1. Get the unsigned .ipa
+You do **not** need to fork or build anything. Two ways, easiest first:
 
-### 2. Install from Windows with AltStore
-- Install **AltServer for Windows** (needs iTunes + iCloud from Apple's site —
-  **not** the Microsoft Store versions) and **AltStore** on the iPhone. Sign in
-  with a **free Apple ID**. See https://altstore.io.
-- In AltStore/AltServer choose **Install .ipa** and pick `OpenGothic-unsigned.ipa`.
-  AltServer **re-signs it with your Apple ID** and installs over USB/Wi‑Fi.
+- **SideStore source (recommended — one tap + auto-updates):** in SideStore →
+  **Sources → +**, paste
+  `https://github.com/tryk016/opengothic-ios/releases/download/latest/apps.json`,
+  then install **OpenGothic** from that source. New builds appear as updates.
+- **Direct download:** open the
+  **[Releases page](https://github.com/tryk016/opengothic-ios/releases/latest)** and
+  download the `OpenGothic-unsigned.ipa` asset.
+
+> Maintainers only: the workflow `.github/workflows/ios.yml` (macos runner,
+> `cmake`+`glslang`, `iphoneos` arm64, signing disabled) builds the `.ipa` and
+> **publishes it to the `latest` Release automatically** on every push, plus
+> uploads it as an artifact. Trigger via push or Actions → "iOS build" → Run
+> workflow. Regular users never need this.
+
+### 2. Sign & install with your own free Apple ID
+- **SideStore (recommended, refreshes on-device over Wi‑Fi):** after adding the
+  source above, tap install. SideStore re-signs with your free Apple ID **and
+  auto-refreshes the 7-day certificate itself over any Wi‑Fi — no PC needed**
+  after the one-time pairing setup. See https://sidestore.io.
+- **AltStore / Sideloadly (alternative):** install **AltServer for Windows**
+  (needs iTunes + iCloud from Apple's site — **not** the Microsoft Store
+  versions) and **AltStore** on the iPhone; sign in with a **free Apple ID**;
+  choose **Install .ipa** → `OpenGothic-unsigned.ipa`. AltServer re-signs and
+  installs over USB/Wi‑Fi, but auto-refresh needs the PC running on the same
+  Wi‑Fi. See https://altstore.io.
 - On the phone: Settings → General → VPN & Device Management → **trust** your
   developer certificate.
-- The free cert **expires after 7 days**. Keep AltServer running on the PC with
-  the phone on the same Wi‑Fi and AltStore **auto-refreshes** it. Free accounts
-  allow **3 sideloaded apps** at a time.
+- The free cert **expires after 7 days**; SideStore/AltStore auto-refresh it.
+  Free accounts allow **3 sideloaded apps** at a time.
 
 ### 3. Copy game data (from Windows)
 The app enables File Sharing (`Info.plist`: `UIFileSharingEnabled`,
