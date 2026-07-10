@@ -146,7 +146,9 @@ int main(int argc,const char** argv) {
     Tempest::Application app;
     return app.exec();
     }
-  catch(const std::exception& e) {
+  catch(const GothicNotFoundException& e) {
+    // Missing game data: this is thrown from CommandLine, before the window
+    // exists, so it is safe to keep a run-loop alive for the alert on iOS.
     Tempest::Log::e("fatal: ", e.what());
     SystemMsg::fatal("Gothic II data not found",
                      "Copy your Gothic II: NotR files (Data/, _work/, system/) "
@@ -158,5 +160,14 @@ int main(int argc,const char** argv) {
 #else
     return 1;
 #endif
+    }
+  catch(const std::exception& e) {
+    // Any other failure may have happened after the window was created and is
+    // being torn down by stack-unwinding. Do NOT spin up a second Application
+    // over a half-destroyed window (would drive render on a dangling pointer —
+    // see review B7); just report and exit.
+    Tempest::Log::e("fatal: ", e.what());
+    SystemMsg::fatal("Fatal error", e.what());
+    return 1;
     }
   }
