@@ -100,6 +100,8 @@ saveSlots=5             ; rotating quick-save slots
 
 ### Known limitations
 
+- **⚠️ Saving is currently broken** — saving the game does not work reliably on-device yet (crash / failed
+  save under investigation). Treat progress as unsafe until this is fixed; see `ios/TODO.md`.
 - **Not fully tested on-device yet** — this is a work in progress (see the notice above and `ios/TODO.md`).
 - Sideload certificate expires weekly (auto-refresh via AltStore/SideStore).
 - No TestFlight / App Store without a paid account (both require App Review).
