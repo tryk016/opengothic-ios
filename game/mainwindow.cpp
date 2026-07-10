@@ -1452,6 +1452,13 @@ void MainWindow::render(){
     swapchain.reset();
     renderer.resetSwapchain();
     }
+  catch(const std::exception& e) {
+    // A stray exception in the frame loop (e.g. during save/load finalize)
+    // must not abort the whole app via std::terminate. Log the cause and try
+    // to recover the device instead of crashing to the home screen.
+    Log::e("unhandled exception in render loop: ", e.what());
+    try { device.waitIdle(); } catch(...) {}
+    }
   }
 
 double MainWindow::Fps::get() const {

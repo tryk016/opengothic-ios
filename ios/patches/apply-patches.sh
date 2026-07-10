@@ -108,3 +108,21 @@ else
     exit 1
   fi
 fi
+
+# Fix: never let a C++ exception from event/render dispatch escape into the
+# fiber run-loop. Without a guard it unwinds through implProcessEvents into
+# implExec/main (no handler) -> std::terminate -> SIGABRT (crash to home).
+# Wrap the dispatch in try/catch so a stray throw (e.g. during save-game
+# finalize) is logged and the app keeps running instead of aborting.
+if grep -q 'uncaught exception in iOS event dispatch' "$VC"; then
+  echo "skip: iosapi.mm implProcessEvents exception guard (already patched)"
+else
+  perl -0777 -pi -e 's/(\@autoreleasepool \{\r?\n)(\s*auto& wnd   = \*mainWindow->owner;)/${1}    try {\n${2}/s' "$VC"
+  perl -0777 -pi -e 's/    \}(\r?\n)  swapContext\(\);(\r?\n)  \}(\r?\n\r?\n)void iOSApi::implSetWindowTitle/    }\n    catch(const std::exception& e){ Tempest::Log::e("uncaught exception in iOS event dispatch: ", e.what()); }\n    }${1}  swapContext();${2}  }${3}void iOSApi::implSetWindowTitle/s' "$VC"
+  if grep -q 'uncaught exception in iOS event dispatch' "$VC"; then
+    echo "patched: iosapi.mm implProcessEvents exception guard"
+  else
+    echo "ERROR: failed to patch iosapi.mm implProcessEvents guard (pattern not found)" >&2
+    exit 1
+  fi
+fi
