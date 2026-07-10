@@ -23,6 +23,7 @@
 #include "utils/gthfont.h"
 #include "utils/dbgpainter.h"
 #include "utils/gamepad.h"
+#include "utils/haptics.h"
 
 #include "commandline.h"
 #include "gothic.h"
@@ -969,6 +970,15 @@ uint64_t MainWindow::tick() {
   if(const PadCtx pc = padContext(); pc!=lastPadCtx) {
     lastPadCtx   = pc;                       // flash the controls-help on context change
     padHintUntil = Application::tickCount() + 4000;
+    }
+  // Damage haptic: pulse when the player's HP drops.
+  if(auto w = Gothic::inst().world(); w!=nullptr && w->player()!=nullptr) {
+    const int hp = w->player()->attribute(ATR_HITPOINTS);
+    if(lastPlayerHp>0 && hp<lastPlayerHp)
+      Haptics::impact(Haptics::Heavy);
+    lastPlayerHp = hp;
+    } else {
+    lastPlayerHp = -1;
     }
 #endif
 

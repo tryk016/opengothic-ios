@@ -164,6 +164,7 @@ class MainWindow : public Tempest::Window {
     GamepadInput              gamepad;
     PadCtx                    lastPadCtx   = PadCtx::Loading;
     uint64_t                  padHintUntil = 0;   // controls-help auto-hide time
+    int                       lastPlayerHp = -1;  // for damage haptics
 #endif
     RuntimeMode               runtimeMode = R_Normal;
 

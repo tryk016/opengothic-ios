@@ -104,9 +104,17 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       text labels + equipped/selection markers. `QuickRing` owned by
       `GamepadInput`, drawn by `MainWindow`.
 
-## ⏳ To do — "ideal controls" batch 3 (control spec §7, §8-stuck)
-- [ ] Haptics (Core Haptics / impact feedback) on damage + UI actions. (spec §7)
-- [ ] Stuck-protection: L3+R3 hold → teleport to nearest waypoint. (spec §8)
+## ✅ Done — ideal controls, batch 3 (2026-07-10)
+- [x] **Haptics** (spec §7) — `Haptics::impact` via `UIImpactFeedbackGenerator`
+      (haptics.mm/.cpp split like systemmsg). Heavy pulse when the player's HP
+      drops (polled, no combat-code changes); light on lock/ring-commit; medium
+      on quick-save.
+- [x] **Stuck-protection** (spec §8) — hold L3+R3 ~2 s to warp to the nearest
+      waypoint (`World::findWayPoint` + `Npc::setPosition`); opt out with
+      `[GAMEPAD] noStuckProtect=1`.
+
+**Ideal controls §4–§8 complete.** Everything below is polish / needs on-device
+tuning (ring feel, haptic intensity, hint wording).
 
 ## ✅ Done — UI / readability
 - [x] Scale up UI on iOS for high-DPI legibility (`MainWindow::uiScale`).

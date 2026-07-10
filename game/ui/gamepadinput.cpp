@@ -8,6 +8,9 @@
 
 #include "game/playercontrol.h"
 #include "world/world.h"
+#include "world/waypoint.h"
+#include "world/objects/npc.h"
+#include "utils/haptics.h"
 #include "mainwindow.h"
 #include "gothic.h"
 
@@ -31,6 +34,7 @@ void GamepadInput::loadConfig() {
   invertY    = Gothic::settingsGetI("GAMEPAD","invertY")!=0;
   const int slots = Gothic::settingsGetI("GAMEPAD","saveSlots");
   saveSlots  = slots>0 ? slots : 5;
+  stuckProtect = (Gothic::settingsGetI("GAMEPAD","noStuckProtect")==0); // opt-out
   }
 
 void GamepadInput::quickSaveRotating() {
@@ -46,6 +50,7 @@ void GamepadInput::quickSaveRotating() {
   if(auto w = g.world())
     nm = "Quick - " + std::string(w->name());
   g.save(slot, nm);
+  Haptics::impact(Haptics::Medium);
   }
 
 void GamepadInput::quickLoadRotating() {
@@ -86,11 +91,22 @@ void GamepadInput::tickRing(const GamepadState& s) {
 
   r.updateSelection(s.rx, s.ry);
   if(!held) {                        // released -> activate the aimed slice
-    if(auto pl = worldPlayer())
+    if(auto pl = worldPlayer()) {
       r.commit(*pl);
+      Haptics::impact(Haptics::Light);
+      }
     else
       r.close();
     }
+  }
+
+void GamepadInput::stuckTeleport() {
+  auto* pl = worldPlayer();
+  auto  w  = Gothic::inst().world();
+  if(pl==nullptr || w==nullptr)
+    return;
+  if(auto wp = w->findWayPoint(pl->position()))
+    pl->setPosition(wp->position());
   }
 
 void GamepadInput::edge(bool now, bool before, A a) {
@@ -201,9 +217,24 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
   prevRT = rtDown;
 
   // R3 = toggle target-lock (native focus); L3 = toggle walk/run.
-  if(s.r3 && !prev.r3)
+  if(s.r3 && !prev.r3) {
     ctrl.toggleTargetLock();
+    Haptics::impact(Haptics::Light);
+    }
   edge(s.l3, prev.l3, A::Walk);
+
+  // Stuck-protection: hold both sticks (L3+R3) ~2 s to warp to the nearest
+  // waypoint (opt out with [GAMEPAD] noStuckProtect=1).
+  if(stuckProtect && s.l3 && s.r3) {
+    stuckHoldMs += dt;
+    if(stuckHoldMs>=2000) {
+      stuckTeleport();
+      Haptics::impact(Haptics::Heavy);
+      stuckHoldMs = 0;
+      }
+    } else {
+    stuckHoldMs = 0;
+    }
 
   // D-pad up/down -> quick items (Heal / Potion). Left/right switch the locked
   // target (no-op when not locked).

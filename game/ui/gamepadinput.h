@@ -62,6 +62,7 @@ class GamepadInput {
     void  tickRing(const GamepadState& s); // drive an open radial quick-bar
     void  openRing(QuickRing& r);          // fill from inventory + open
     Npc*  worldPlayer() const;             // current player npc, or nullptr
+    void  stuckTeleport();                 // warp to the nearest waypoint (spec 8)
 
     // Tunables, overridable via Gothic.ini [GAMEPAD] (see loadConfig).
     float deadZone   = 0.25f;   // stick dead-zone
@@ -69,4 +70,7 @@ class GamepadInput {
     float lookSens   = 0.20f;   // camera speed per ms
     bool  invertY    = false;   // camera Y invert (review B6)
     int   saveSlots  = 5;       // rotating quick-save slot count
+    bool  stuckProtect = true;  // L3+R3 hold -> warp to nearest waypoint
+
+    uint64_t stuckHoldMs = 0;   // how long both sticks have been held
   };
