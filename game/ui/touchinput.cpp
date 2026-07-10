@@ -5,12 +5,39 @@
 
 #include "game/playercontrol.h"
 #include "utils/gamepad.h"
+#include "utils/gthfont.h"
+#include "ui/padglyph.h"
+#include "resources.h"
 #include "mainwindow.h"
 #include "gothic.h"
 
 using namespace Tempest;
 using A = KeyCodec::Action;
 using M = KeyCodec::Mapping;
+
+static PadGlyph::Btn glyphOfAction(KeyCodec::Action a) {
+  switch(a) {
+    case KeyCodec::ActionGeneric: return PadGlyph::A;
+    case KeyCodec::Jump:          return PadGlyph::B;
+    case KeyCodec::Sneak:         return PadGlyph::X;
+    case KeyCodec::Weapon:        return PadGlyph::Y;
+    case KeyCodec::Inventory:     return PadGlyph::View;
+    case KeyCodec::Escape:        return PadGlyph::Menu;
+    default:                      return PadGlyph::A;
+    }
+  }
+
+static PadGlyph::Btn glyphOfKey(Tempest::Event::KeyType k) {
+  switch(k) {
+    case Tempest::Event::K_Up:     return PadGlyph::DPadUp;
+    case Tempest::Event::K_Down:   return PadGlyph::DPadDown;
+    case Tempest::Event::K_Left:   return PadGlyph::DPadLeft;
+    case Tempest::Event::K_Right:  return PadGlyph::DPadRight;
+    case Tempest::Event::K_Return: return PadGlyph::A;
+    case Tempest::Event::K_ESCAPE: return PadGlyph::B;
+    default:                       return PadGlyph::A;
+    }
+  }
 
 TouchInput::TouchInput(MainWindow& owner, PlayerControl& ctrl)
   : owner(owner), ctrl(ctrl) {
@@ -67,31 +94,27 @@ std::array<TouchInput::MBtn,4> TouchInput::dialogLayout() const {
 void TouchInput::paintEvent(PaintEvent& e) {
   if(Gamepad::poll().connected)
     return;                          // a gamepad drives the UI -> hide the touch overlay
+
   Painter p(e);
+  auto&   fnt = Resources::font(Gothic::interfaceScale(this));
+
   switch(owner.padContext()) {
     case PadCtx::World: {
       const int H  = h();
       const int ms = H/3, mm = H/20;
-      p.setBrush(Color(1.f, 1.f, 1.f, 0.10f));           // movement pad (bottom-left)
-      p.drawRect(mm, H-ms-mm, ms, ms);
-      for(auto& b:layout()) {
-        p.setBrush(Color(b.r, b.g, b.b, 0.22f));
-        p.drawRect(b.x, b.y, b.s, b.s);
-        }
+      PadGlyph::draw(p, fnt, PadGlyph::LStick, mm, H-ms-mm, ms, 0.7f);   // movement pad
+      for(auto& b:layout())
+        PadGlyph::draw(p, fnt, glyphOfAction(b.act), b.x, b.y, b.s);
       break;
       }
     case PadCtx::Dialog:
-      for(auto& b:dialogLayout()) {
-        p.setBrush(Color(b.r, b.g, b.b, 0.30f));
-        p.drawRect(b.x, b.y, b.s, b.s);
-        }
+      for(auto& b:dialogLayout())
+        PadGlyph::draw(p, fnt, glyphOfKey(b.key), b.x, b.y, b.s);
       break;
     case PadCtx::Menu:
     case PadCtx::Inventory:
-      for(auto& b:menuLayout()) {
-        p.setBrush(Color(b.r, b.g, b.b, 0.30f));
-        p.drawRect(b.x, b.y, b.s, b.s);
-        }
+      for(auto& b:menuLayout())
+        PadGlyph::draw(p, fnt, glyphOfKey(b.key), b.x, b.y, b.s);
       break;
     case PadCtx::Loading:
       break;

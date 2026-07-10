@@ -113,8 +113,28 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       waypoint (`World::findWayPoint` + `Npc::setPosition`); opt out with
       `[GAMEPAD] noStuckProtect=1`.
 
-**Ideal controls §4–§8 complete.** Everything below is polish / needs on-device
-tuning (ring feel, haptic intensity, hint wording).
+## ✅ Done — controller glyphs (2026-07-10)
+- [x] **Drawn controller glyphs** (`game/ui/padglyph.*`) — round A/B/X/Y in Xbox
+      colours with letters, LB/RB/LT/RT pills, L3/R3 sticks, D-pad arrows,
+      Menu/View icons. Own vector rendering (discs via triangle fans) — no
+      external assets. Used by the touch overlay (buttons look like buttons, not
+      squares) and the controls-help hint bar (glyph + label).
+      NOTE: for the exact **Xelu CC0** art, drop the PNGs in and add a texture
+      loader with fallback to these drawn glyphs — assets can't be fetched here.
+
+## ⏳ Spec gaps / simplifications (control spec §1–§8) — deliberate, not blocking
+- [ ] Rings are **single-ring v1**: no concentric multi-ring + centre-easing
+      (`SmoothIncrease`), no world-pause while open, no pulsing highlight, text
+      labels instead of 3D item icons (spec §4.3–§4.5).
+- [ ] Target-lock has no **camera auto-pull** toward the pinned target (spec §3).
+- [ ] No dedicated **Dead**-screen / **Container**-vs-Inventory / **MapDoc**
+      pad contexts (folded into Menu/Inventory) (spec §1.1).
+- [ ] Inventory RB/LB **tab switching** + right-stick 3D item preview (spec §2.4).
+- [ ] Overlay **daylight tint** (spec §5.5, optional).
+- [ ] Deferred B9/N1 background pause (needs on-device fiber testing).
+
+Otherwise §1–§8 implemented; remaining is polish / on-device tuning (ring feel,
+haptic intensity, glyph sizing, hint wording).
 
 ## ✅ Done — UI / readability
 - [x] Scale up UI on iOS for high-DPI legibility (`MainWindow::uiScale`).

@@ -24,6 +24,9 @@
 #include "utils/dbgpainter.h"
 #include "utils/gamepad.h"
 #include "utils/haptics.h"
+#include "ui/padglyph.h"
+
+#include <array>
 
 #include "commandline.h"
 #include "gothic.h"
@@ -771,22 +774,41 @@ void MainWindow::drawPadHints(Painter& p, float scale) {
   if(!Gamepad::poll().connected)               // touch users don't need button hints
     return;
 
-  std::string_view hint;
+  struct Hint { PadGlyph::Btn b; std::string_view t; };
+  std::array<Hint,6> hints{};
+  size_t n = 0;
   switch(padContext()) {
-    case PadCtx::World:     hint = "A interact   Y weapon   B jump   RT block   R3 lock-on   D-pad targets/items"; break;
-    case PadCtx::Dialog:    hint = "A select   B skip   D-pad choose"; break;
-    case PadCtx::Menu:      hint = "A OK   B back   D-pad navigate / change"; break;
-    case PadCtx::Inventory: hint = "A use/equip   B / View close   D-pad navigate"; break;
-    case PadCtx::Loading:   return;
+    case PadCtx::World:
+      hints = {{ {PadGlyph::A,"Action"},{PadGlyph::Y,"Weapon"},{PadGlyph::B,"Jump"},
+                 {PadGlyph::RT,"Block"},{PadGlyph::R3,"Lock"},{PadGlyph::RB,"Weapons"} }};
+      n = 6; break;
+    case PadCtx::Dialog:
+      hints = {{ {PadGlyph::A,"Select"},{PadGlyph::B,"Skip"},{PadGlyph::DPadUp,"Choose"} }};
+      n = 3; break;
+    case PadCtx::Menu:
+      hints = {{ {PadGlyph::A,"OK"},{PadGlyph::B,"Back"},{PadGlyph::DPadLeft,"Change"} }};
+      n = 3; break;
+    case PadCtx::Inventory:
+      hints = {{ {PadGlyph::A,"Use"},{PadGlyph::B,"Close"},{PadGlyph::DPadUp,"Move"} }};
+      n = 3; break;
+    case PadCtx::Loading:
+      return;
     }
-  if(hint.empty())
+  if(n==0)
     return;
 
   auto&     fnt = Resources::font(scale);
-  const auto ts = fnt.textSize(hint);
-  const int  x  = (w()-ts.w)/2;
-  const int  y  = h() - std::max(8,int(12*scale));
-  fnt.drawText(p, x, y, hint);
+  const int s   = std::max(16,int(26*scale));
+  const int gap = std::max(2, s/6);
+
+  int total = 0;
+  for(size_t i=0;i<n;++i)
+    total += s + gap + fnt.textSize(hints[i].t).w + gap*2;
+
+  int       x = (w()-total)/2;
+  const int y = h() - s - std::max(6,int(10*scale));
+  for(size_t i=0;i<n;++i)
+    x += PadGlyph::drawLabelled(p, fnt, hints[i].b, x, y, s, hints[i].t);
   }
 #endif
 
