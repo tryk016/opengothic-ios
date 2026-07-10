@@ -20,6 +20,7 @@
 
 #include "utils/crashlog.h"
 #include "utils/systemmsg.h"
+#include "utils/audiosession.h"
 #include "mainwindow.h"
 #include "gothic.h"
 #include "build.h"
@@ -129,6 +130,8 @@ int main(int argc,const char** argv) {
   Workers::setThreadName("Main thread");
 
   try {
+    AudioSession::activate();   // configure the iOS audio session before any SoundDevice
+
     CommandLine          cmd{argc,argv};
     auto                 api     = mkApi(cmd);
     const auto           gpuName = selectDevice(*api);

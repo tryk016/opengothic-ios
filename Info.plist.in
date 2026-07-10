@@ -41,5 +41,13 @@
     <key>UIColorName</key>
     <string>black</string>
   </dict>
+  <key>UIRequiresFullScreen</key>
+  <true/>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+  <key>GCSupportsControllerUserInteraction</key>
+  <true/>
+  <key>UIApplicationSupportsIndirectInputEvents</key>
+  <true/>
 </dict>
 </plist>
