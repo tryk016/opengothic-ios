@@ -25,17 +25,29 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 - [x] **B6** — camera Y sign unified with the touch overlay; `invertY` field added.
 - [x] Touch navigation for **inventory** — resolved by the same dispatcher.
 
-## ⏳ To do — next: iOS lifecycle & audio hardening
-- [ ] **B4** — handle `touchesCancelled` in Tempest `iosapi.mm` (Control Center /
-      incoming call → stuck movement + leaked touch id). Via `ios/patches/` + PR upstream.
-- [ ] **B8** — configure `AVAudioSession` (playback category, interruption obs.);
-      link `-framework AVFoundation`. (`game/utils/audiosession.mm`, `CMakeLists.txt`)
-- [ ] **B9 / N1** — pause game tick + `displayLink` in background (sim + battery
-      drain while backgrounded). (Tempest `iosapi.mm`)
-- [ ] **N2** — `implDestroyWindow` empty → invalidate `displayLink`, null `owner`.
-- [ ] **N3** — 1 MB fiber stack for the whole engine → enlarge to 8–16 MB / guard page.
-- [ ] **N5** — `Info.plist.in`: `UIRequiresFullScreen`, explicit landscape
-      orientations, `ITSAppUsesNonExemptEncryption=false`, GameController keys.
+## ✅ Done — iOS lifecycle & audio hardening (2026-07-10)
+- [x] **B4** — `touchesCancelled` handled in Tempest `iosapi.mm` (forwards to
+      `touchesEnded`); fixes stuck movement + leaked touch id on system touch
+      cancel. Applied via `ios/patches/apply-patches.sh`.
+- [x] **B8** — `AVAudioSession` (Playback category, activated before any
+      SoundDevice); linked `-framework AVFoundation`.
+      (`game/utils/audiosession.{h,mm,cpp}`, `main.cpp`, `CMakeLists.txt`)
+- [x] **N2** — `implDestroyWindow` invalidates `displayLink` + nulls `owner`
+      (pairs with B7). Applied via `apply-patches.sh`.
+- [x] **N3** — fiber stack 1 MB → 8 MB (deep VM/vob recursion headroom).
+      Applied via `apply-patches.sh`.
+- [x] **N5** — `Info.plist.in`: `UIRequiresFullScreen`, `ITSAppUsesNonExempt-
+      Encryption=false`, `GCSupportsControllerUserInteraction`,
+      `UIApplicationSupportsIndirectInputEvents`.
+
+## ⏳ To do — deferred (needs on-device iteration)
+- [ ] **B9 / N1** — pause game tick (`onTimer`) + `displayLink` while
+      backgrounded. Deferred: the manual setjmp/longjmp fiber loop in `implExec`
+      means naively sleeping the main context starves the UIKit run loop; needs
+      careful on-device testing. (Render is already gated on `isApplicationActive`.)
+- [ ] Landscape orientation lock — behaviour change; wants coordinated
+      `Info.plist` + `ViewController::supportedInterfaceOrientations` update and
+      a call on whether portrait should be allowed.
 
 ## ⏳ To do — "ideal controls" (bigger, self-contained; control spec §3–§8)
 - [ ] Target-lock via native focus (`moveFocus`/`setTarget`) — replaces provisional
