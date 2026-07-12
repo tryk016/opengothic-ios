@@ -182,12 +182,12 @@ void Renderer::setupSettings() {
 
   {
   // shadow-map size: overridable via Gothic.ini [ENGINE] shadowResolution.
-  // On phones default to 1024 - quarter the fill cost of 2048 for a mild
-  // softening of shadow edges. resetShadowmap() below picks the change up.
+  // On phones default to 512 - a fraction of the 2048 fill cost, softer
+  // shadow edges. resetShadowmap() below picks the change up.
   int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
 #if defined(__IOS__)
   if(sr<=0)
-    sr = 1024;
+    sr = 512;
 #endif
   if(sr>0)
     settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));

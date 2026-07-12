@@ -113,7 +113,7 @@ class Renderer final {
 
     struct Settings {
       // shadow-map size; overridable via Gothic.ini [ENGINE] shadowResolution
-      // (see setupSettings; phones default to 1024)
+      // (see setupSettings; phones default to 512)
       uint32_t       shadowResolution   = 2048;
       bool           vsmEnabled         = false;
       bool           rtsmEnabled        = false;

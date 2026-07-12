@@ -171,8 +171,8 @@ vidResIndex=2           ; 3D render scale: 0=full, 1=upscale(75%), 2=upscale(hal
 
 [ENGINE]
 zCloudShadowScale=0     ; 0 = SSAO off ("Cloud shadows" in the video menu)
-shadowResolution=1024   ; shadow-map size (iOS default 1024; PC default 2048;
-                        ; 512 = more fps, softer shadow edges)
+shadowResolution=512    ; shadow-map size (iOS default 512; PC default 2048;
+                        ; raise to 1024/2048 for crisper shadow edges)
 
 [GAMEPAD]
 deadZone=0.25           ; stick dead zone (0..1)

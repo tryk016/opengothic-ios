@@ -1,6 +1,31 @@
 # iOS port — status & backlog
 
+## ⏳ Backlog — next round (reported 2026-07-12, device round 3)
+- [ ] **Torch cannot be stowed** — once lit/carried, the player cannot put the
+      torch back into the inventory. Investigate the torch use/stow path:
+      `Npc::processDefInvTorch` (npc.cpp), `invTorch` flag, `ITM_CAT_LIGHT`
+      use handling in `Inventory::use`, and what key/action stows it on PC.
+- [ ] **External-controller movement overshoots** — a small stick deflection
+      makes the character take several steps or keep turning for a while
+      instead of one step / a small turn. The stick is mapped digitally
+      (deadZone edge -> press/release of Forward/RotateL/R in
+      `GamepadInput::tickWorld`); likely needs analog rotation speed scaled
+      by deflection (like the camera path does with `onRotateMouse`) and/or
+      press/release hysteresis so a grazing deflection does not latch a
+      long-lived key-down. Not seen on the touch overlay (same digital
+      mapping, bigger dead-zone?) — compare both.
+- [ ] **shadowResolution=512** — set as the new iOS default (1024 showed no
+      measurable fps gain on device; verify 512 and the visual cost).
+- [ ] **Remove the `[mobsi]` diagnostic logs** (interactive.cpp attach,
+      npc.cpp quitInteraction) after one clean confirmation round.
+- [ ] **Upstream PRs** (all device-confirmed in this fork): the
+      `Interactive::attach` root-vs-feet fix; `MenuRoot::setMenu` + onTick;
+      `fixNpcPosition` rejecting spots on top of interactive colliders.
+
 ## ✅ Done — Remake-style D-pad, magic ring, shadows (2026-07-12, round 2)
+> **DEVICE-CONFIRMED (round 3):** mobsi levitation gone (player + NPCs), the
+> magic quick-ring works, D-pad quick-slot binding works. Shadows at 1024
+> showed no measurable fps change (still 35–45); trying 512 next.
 - [x] **D-pad, Gothic-Remake style** — ▲ draws melee (`WeaponMele`), ▼ bow/
       crossbow (`WeaponBow`), ◀/▶ are **player-assignable quick slots**: hold
       ◀/▶ ~0.6 s on a highlighted inventory item to bind (short press still
