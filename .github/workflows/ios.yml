@@ -43,7 +43,8 @@ jobs:
           cmake -S . -B build-ios -G Xcode \
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DOPENGOTHIC_IOS_VERSION="1.0.${{ github.run_number }}"
 
       - name: Build (code signing disabled)
         run: |
