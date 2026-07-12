@@ -4,6 +4,7 @@
 #include <Tempest/Fence>
 #include <Tempest/Log>
 #include <Tempest/StorageImage>
+#include <algorithm>
 #include <cassert>
 
 #include "ui/inventorymenu.h"
@@ -178,6 +179,19 @@ void Renderer::resetSwapchain() {
 void Renderer::setupSettings() {
   settings.zEnvMappingEnabled = Gothic::settingsGetI("ENGINE","zEnvMappingEnabled")!=0;
   settings.zCloudShadowScale  = Gothic::settingsGetI("ENGINE","zCloudShadowScale") !=0;
+
+  {
+  // shadow-map size: overridable via Gothic.ini [ENGINE] shadowResolution.
+  // On phones default to 1024 - quarter the fill cost of 2048 for a mild
+  // softening of shadow edges. resetShadowmap() below picks the change up.
+  int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
+#if defined(__IOS__)
+  if(sr<=0)
+    sr = 1024;
+#endif
+  if(sr>0)
+    settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
+  }
   settings.zFogRadial         = Gothic::settingsGetI("RENDERER_D3D","zFogRadial")!=0;
 
   settings.zVidBrightness     = Gothic::settingsGetF("VIDEO","zVidBrightness");
