@@ -239,8 +239,9 @@ void TouchInput::mouseDragEvent(MouseEvent& e) {
       };
     set(0, dy < -dz, A::Forward);
     set(1, dy >  dz, A::Back);
-    set(2, dx < -dz, A::Left);
-    set(3, dx >  dz, A::Right);
+    // pad X turns the character (Gothic-classic rotate), it does not strafe
+    set(2, dx < -dz, A::RotateL);
+    set(3, dx >  dz, A::RotateR);
     return;
     }
   e.ignore();
@@ -266,8 +267,8 @@ void TouchInput::mouseUpEvent(MouseEvent& e) {
   if(id==moveId) {
     if(mv[0]) ctrl.onKeyReleased(A::Forward, M::Primary);
     if(mv[1]) ctrl.onKeyReleased(A::Back,    M::Primary);
-    if(mv[2]) ctrl.onKeyReleased(A::Left,    M::Primary);
-    if(mv[3]) ctrl.onKeyReleased(A::Right,   M::Primary);
+    if(mv[2]) ctrl.onKeyReleased(A::RotateL, M::Primary);
+    if(mv[3]) ctrl.onKeyReleased(A::RotateR, M::Primary);
     mv[0]=mv[1]=mv[2]=mv[3]=false;
     moveId = -1;
     return;

@@ -162,6 +162,7 @@ void GamepadInput::key(bool now, bool before, Event::KeyType k) {
 
 void GamepadInput::releaseAllWorld() {
   for(A a : { A::Forward, A::Back, A::Left, A::Right,
+              A::RotateL, A::RotateR,
               A::ActionGeneric, A::Jump, A::Sneak, A::Weapon,
               A::Parade, A::Walk, A::LookBack, A::Heal, A::Potion })
     ctrl.onKeyReleased(a, M::Primary);   // releasing a non-held action is harmless
@@ -222,12 +223,13 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
     }
 
   // Left stick -> movement (digital, dead-zoned). Forward == stick up (ly>0).
+  // Stick X turns the character (Gothic-classic rotate), it does not strafe.
   const bool fwd   = s.ly >  deadZone, back  = s.ly < -deadZone;
   const bool left  = s.lx < -deadZone, right = s.lx >  deadZone;
   edge(fwd,   prev.ly >  deadZone, A::Forward);
   edge(back,  prev.ly < -deadZone, A::Back);
-  edge(left,  prev.lx < -deadZone, A::Left);
-  edge(right, prev.lx >  deadZone, A::Right);
+  edge(left,  prev.lx < -deadZone, A::RotateL);
+  edge(right, prev.lx >  deadZone, A::RotateR);
 
   // Right stick -> analog camera look. Y is unified with the touch overlay
   // convention (stick up == look up); invertY flips it (review B6).

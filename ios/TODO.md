@@ -26,8 +26,20 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       flush gate widened: items also draw when the ring collected them while
       the menu is closed (`Renderer::draw`), leftover icons cleared on ring
       close.
-- [x] **NPC/player standing on top of mobsi** — root cause found in
-      `GameScript::fixNpcPosition`: when the npc overlaps another NPC at the
+- [x] **Stick/pad X = turn** — left-stick X and the touch move-pad now send
+      `RotateL/RotateR` (Gothic-classic turning) instead of strafing; combat
+      side-steps stay reachable as rotate+jump (`playercontrol.cpp:565`).
+- [x] **Runes & scrolls in the item quick-ring** — `ITM_CAT_RUNE` added to the
+      Items ring filter; selecting one equips it.
+- [ ] **Mobsi levitation — round 2 (fix below did NOT cure it on device)** —
+      diagnostics added: `[mobsi] attach:`/`[mobsi] quit:` lines are logged
+      (visible in `Documents/stderr.log`) whenever an interaction user ends
+      >15 cm above the walkable ground, incl. whether the "ground" is a mobsi
+      collider, whether the node itself was elevated (`nodeDy`) and whether
+      `fixNpcPosition` relocated them (`fixMoved`). Grab the log after a
+      levitation repro to pick the real mechanism.
+- [x] **Mobsi levitation — candidate #1 closed (not the observed cause)** —
+      a real bug in `GameScript::fixNpcPosition`: when the npc overlaps another NPC at the
       `ZS_POS` node, the ring-search down-ray (`+100cm → −1000cm`) can land on
       TOP of the interactive's collider (`DynamicWorld::ray` hits `C_Object`
       too) and the spot passes the npc-vs-npc-only `hasCollision()` check —

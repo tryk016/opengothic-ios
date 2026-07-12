@@ -109,12 +109,15 @@ FPS_Limit=30       ; 0 = uncapped
 | Secondary / draw weapon | Y | △ |
 | Jump / climb / swim up | B | ○ |
 | Crouch / dive / sneak | X | □ |
-| Move | Left stick | Left stick |
+| Move (stick left/right = turn) | Left stick | Left stick |
 | Look | Right stick | Right stick |
+| Weapon quick-ring | RB | R1 |
+| Item quick-ring (potions, food, runes/scrolls) | LT | L2 |
 | Toggle sprint | L3 | L3 |
 | Lock-on target | R3 | R3 |
 | Block / parry | RT | R2 |
-| Quick-access items | D-pad | D-pad |
+| Quick heal / quick mana potion | D-pad ▲ / ▼ | D-pad ▲ / ▼ |
+| Switch locked target | D-pad ◀ / ▶ | D-pad ◀ / ▶ |
 | Inventory | View | Touchpad |
 | Pause menu | Menu | Options |
 | Quick save | LB + Menu | L1 + Options |

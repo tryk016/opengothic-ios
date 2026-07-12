@@ -32,7 +32,8 @@ void QuickRing::open(Npc& pl) {
     if(kind==Weapons)
       match = (flg & (ITM_CAT_NF|ITM_CAT_FF))!=0;
     else
-      match = (flg & (ITM_CAT_POTION|ITM_CAT_FOOD))!=0;
+      // runes and scrolls share ITM_CAT_RUNE; selecting one equips it
+      match = (flg & (ITM_CAT_POTION|ITM_CAT_FOOD|ITM_CAT_RUNE))!=0;
     if(!match)
       continue;
 

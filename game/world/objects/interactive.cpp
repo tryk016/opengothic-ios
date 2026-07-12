@@ -801,6 +801,20 @@ bool Interactive::attach(Npc& npc, Interactive::Pos& to) {
 
   setDir(npc,mat);
 
+  {
+  // diagnostics for the "user ends up standing on top of the mobsi" reports:
+  // log whenever the final attach position is well above the walkable ground
+  const auto fin = npc.position();
+  const auto gnd = world.physic()->ray(fin+Tempest::Vec3(0,10,0), fin+Tempest::Vec3(0,-1000,0));
+  if(gnd.hasCol && (fin.y-gnd.v.y)>15.f)
+    Tempest::Log::e("[mobsi] attach: ", schemeName(), "/", to.name,
+                    " dyGround=",      int(fin.y-gnd.v.y),
+                    " groundIsMobsi=", gnd.vob!=nullptr ? 1 : 0,
+                    " nodeDy=",        int(mv.y-position().y),
+                    " fixMoved=",      int((fin-mv).length()),
+                    npc.isPlayer() ? " (player)" : "");
+  }
+
   if(vobType==zenkit::VirtualObjectType::oCMobLadder) {
     if(&to!=&attPos[0])
       state = -1; else

@@ -4291,6 +4291,17 @@ bool Npc::setInteraction(Interactive *id, bool quick) {
 void Npc::quitInteraction() {
   if(currentInteract==nullptr)
     return;
+  {
+  // diagnostics for the mobsi-levitation reports: where does the user END up?
+  // (pairs with the attach-side log in Interactive::attach)
+  const auto fin = position();
+  const auto gnd = owner.physic()->ray(fin+Tempest::Vec3(0,10,0), fin+Tempest::Vec3(0,-1000,0));
+  if(gnd.hasCol && (fin.y-gnd.v.y)>15.f)
+    Tempest::Log::e("[mobsi] quit: ", currentInteract->schemeName(),
+                    " dyGround=",      int(fin.y-gnd.v.y),
+                    " groundIsMobsi=", gnd.vob!=nullptr ? 1 : 0,
+                    isPlayer() ? " (player)" : "");
+  }
   if(invTorch)
     processDefInvTorch();
   setDirectionY(0);
