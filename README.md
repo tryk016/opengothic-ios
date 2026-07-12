@@ -5,11 +5,11 @@ re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbin
 and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-screen virtual gamepad.
 
 > ### ⚠️ Work in progress
-> This fork is under **active development**. The core loop — gameplay, the controller mapping, the
-> on-screen virtual gamepad, save/load and haptics — has been **tested and confirmed on a device**,
-> and the hard 30 fps cap is lifted (ProMotion). It is still rough in places and being tuned, so
-> expect bugs. See [`ios/TODO.md`](ios/TODO.md) for the current, device-verified status and the
-> remaining gaps.
+> This fork is under **active development**. The core loop — gameplay, the on-screen virtual gamepad,
+> save/load and haptics — has been **tested and confirmed on a device**, and the hard 30 fps cap is
+> lifted (ProMotion). The latest physical-controller response rewrite is CI-green and awaits device
+> reconfirmation. It is still rough in places and being tuned, so expect bugs. See
+> [`ios/TODO.md`](ios/TODO.md) for the current status and remaining gaps.
 
 > ### Credit
 > **The entire engine is the work of [Try](https://github.com/Try) and the OpenGothic contributors.**
@@ -55,7 +55,7 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 
 | Function | Xbox / PS5 | | Function | Xbox / PS5 |
 |---|---|---|---|---|
-| Interact / attack | A / ✕ | | Move (stick ◀▶ = turn) | Left stick |
+| Interact / attack | A / ✕ | | Move (proportional turn on ◀▶) | Left stick |
 | Jump / climb | B / ○ | | Look | Right stick |
 | Sneak / crouch | X / □ | | Block / parry | RT / R2 |
 | Draw weapon | Y / △ | | Magic quick-ring (runes, scrolls) | RB / R1 (hold) |
@@ -70,8 +70,12 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 - **Quick slots (D-pad ← / →):** bind any inventory item — potion, food, rune, scroll, torch — by
   highlighting it in the inventory and **holding D-pad ← or → for ~0.6 s**. Unassigned slots drink the
   best healing (←) / mana (→) potion.
-- Config lives in `Documents/Gothic.ini` under `[GAMEPAD]` — `deadZone`, `lookSensitivity`, `invertY`,
-  `triggerThreshold`, `saveSlots`, `noStuckProtect` (quick-slot bindings are stored there too).
+- **Left-stick response:** Y keeps Gothic's animation-driven movement with press/release hysteresis;
+  X turns proportionally to the deflection. Returning to neutral, opening a ring/UI, disconnecting or
+  resuming the app releases controller-owned actions before input can re-arm.
+- Config lives in `Documents/Gothic.ini` under `[GAMEPAD]` — `deadZone`, `releaseZone`,
+  `lookSensitivity`, `invertY`, `triggerThreshold`, `saveSlots`, `noStuckProtect` (quick-slot bindings
+  are stored there too).
 
 **On-screen virtual gamepad (no controller):** a full pad is drawn during play — move pad + camera area,
 A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. Tap a quick-ring button,
@@ -103,10 +107,12 @@ shadowResolution=512    ; shadow-map size (iOS default 512, PC 2048)
 
 [GAMEPAD]
 deadZone=0.25
+releaseZone=0.15        ; release threshold; keep lower than deadZone
 lookSensitivity=0.20
 invertY=0
 saveSlots=5             ; rotating quick-save slots
 ; noStuckProtect=1      ; disable the L3+R3 unstuck warp
+; debugInput=1          ; transition-only controller diagnostics in stderr.log
 ```
 
 See the **Recommended settings** section of [ios/README-ios.md](ios/README-ios.md) for the full
@@ -127,11 +133,11 @@ performance guide (upscale + SSAO give the biggest wins).
 
 - **Build/distribution:** cloud build of an unsigned `.ipa` (`.github/workflows/ios.yml`); `ios/` build
   script, sideload/data guide, and submodule patches (`ios/patches/apply-patches.sh`).
-- **Controller:** GameController support (`game/utils/gamepad.*`), a context-aware dispatcher that also
-  drives menus/dialogues (`game/ui/gamepadinput.*`), native target lock-on, radial magic/item rings with
-  3D item icons (`game/ui/quickring.*`), Remake-style D-pad with two player-assignable quick slots,
-  rotating quick-saves, haptics (`game/utils/haptics.*`), stuck-protection, and a `[GAMEPAD]` config
-  section.
+- **Controller:** event-driven GameController snapshots (`game/utils/gamepad.*`), a release-safe,
+  context-aware dispatcher with left-stick hysteresis and proportional turning that also drives
+  menus/dialogues (`game/ui/gamepadinput.*`), native target lock-on, radial magic/item rings with 3D
+  item icons (`game/ui/quickring.*`), Remake-style D-pad with two player-assignable quick slots,
+  rotating quick-saves, haptics (`game/utils/haptics.*`), stuck-protection, and a `[GAMEPAD]` config.
 - **On-screen input:** a full virtual gamepad + menu/dialogue/inventory controls with controller glyphs
   (`game/ui/touchinput.*`, `game/ui/padglyph.*`, `assets/controller/`), a controls-help hint bar and a
   lock-on reticle.

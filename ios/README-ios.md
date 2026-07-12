@@ -114,7 +114,7 @@ FPS_Limit=60       ; 0 = uncapped (default). Don't set below ~45 or you undo Pro
 | Secondary / draw weapon | Y | △ |
 | Jump / climb / swim up | B | ○ |
 | Crouch / dive / sneak | X | □ |
-| Move (stick left/right = turn) | Left stick | Left stick |
+| Move (proportional left/right turn) | Left stick | Left stick |
 | Look | Right stick | Right stick |
 | Magic quick-ring (runes, scrolls) | RB | R1 |
 | Item quick-ring (potions, food) | LT | L2 |
@@ -132,7 +132,7 @@ FPS_Limit=60       ; 0 = uncapped (default). Don't set below ~45 or you undo Pro
 
 Notes on feel and on-screen input:
 - **Quick-rings** are *hold-to-aim*: hold the ring button, steer the highlight
-  with the right stick, release to equip a weapon / use an item. Contents are
+  with the right stick, release to equip magic / use an item. Contents are
   pulled live from your inventory and shown as **real 3D item icons**.
 - **Target lock-on** (R3) pins the current focus via the engine's native focus
   (not a camera hack); it auto-releases when the target dies or leaves. While
@@ -143,6 +143,10 @@ Notes on feel and on-screen input:
   **hold D-pad ◀ or ▶ for ~0.6 s** (a short press still navigates). Slots
   persist in `Gothic.ini`; unassigned slots drink the best healing (◀) / mana
   (▶) potion.
+- **Left-stick response:** forward/back keeps Gothic's animation-driven motion
+  but uses separate press/release thresholds; horizontal turning is scaled by
+  the stick deflection. Rings, UI transitions, controller resets and app resume
+  release held world actions and require a return to neutral before re-arming.
 - **On-screen virtual gamepad:** with no controller, a full pad is drawn during
   play (buttons, sticks, D-pad, move + camera area). Tap a ring button, drag to
   aim, release to activate. It **auto-hides the moment a controller connects**.
@@ -175,7 +179,8 @@ shadowResolution=512    ; shadow-map size (iOS default 512; PC default 2048;
                         ; raise to 1024/2048 for crisper shadow edges)
 
 [GAMEPAD]
-deadZone=0.25           ; stick dead zone (0..1)
+deadZone=0.25           ; axis press threshold (0..1)
+releaseZone=0.15        ; release threshold; must stay below deadZone
 triggerThreshold=0.50   ; how far RT/R2 must be pressed to register (0..1)
 lookSensitivity=0.20    ; right-stick look speed
 invertY=0               ; 1 = invert vertical look
@@ -184,10 +189,14 @@ saveSlots=5             ; rotating quick-save slot count
 ;padQuickSlot=<n>       ; managed automatically (rotating save index)
 ;quickSlotL=<cls>       ; managed automatically (D-pad ◀ assignment)
 ;quickSlotR=<cls>       ; managed automatically (D-pad ▶ assignment)
+;debugInput=1           ; transition-only controller trace in stderr.log
 ```
 
-A connected controller works out of the box — every `[GAMEPAD]` value above is
-the built-in default. Add a line only when you want a different value.
+A connected controller works out of the box — the uncommented `[GAMEPAD]`
+values above are the built-in defaults; commented entries are optional. Add a
+line only when you want a different value. Keep `0 < releaseZone < deadZone < 1`;
+the lower release threshold is the hysteresis that prevents noise near the
+press threshold from repeatedly latching movement.
 
 ## Known limitations / follow-ups
 - **Save-slot thumbnails** are not captured on iOS yet — slots show name, date

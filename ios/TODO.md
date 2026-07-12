@@ -5,15 +5,19 @@
       torch back into the inventory. Investigate the torch use/stow path:
       `Npc::processDefInvTorch` (npc.cpp), `invTorch` flag, `ITM_CAT_LIGHT`
       use handling in `Inventory::use`, and what key/action stows it on PC.
-- [ ] **External-controller movement overshoots** — a small stick deflection
-      makes the character take several steps or keep turning for a while
-      instead of one step / a small turn. The stick is mapped digitally
-      (deadZone edge -> press/release of Forward/RotateL/R in
-      `GamepadInput::tickWorld`); likely needs analog rotation speed scaled
-      by deflection (like the camera path does with `onRotateMouse`) and/or
-      press/release hysteresis so a grazing deflection does not latch a
-      long-lived key-down. Not seen on the touch overlay (same digital
-      mapping, bigger dead-zone?) — compare both.
+- [ ] **External-controller movement fix — IMPLEMENTED, CI GREEN; device
+      confirmation pending** (`6a5db6a8`). The implementation addresses two
+      code-level causes found in review: the physical stick was flattened to
+      digital full-speed actions with one threshold, and input snapshots were
+      coupled to rendered frames. Fix: stateful pad-owned
+      actions, `deadZone=0.25` / `releaseZone=0.15` hysteresis, proportional X
+      turning, neutral re-arm after rings/UI/`clearInput`, and an event-driven
+      GameController snapshot on a dedicated queue. A controller/lifecycle
+      epoch catches disconnect→reconnect or suspend→resume entirely between
+      frames; releases no longer guess inactive Heal/Potion actions. iOS build,
+      packaging and release passed in Actions run `29196747359`. Still verify
+      on hardware: 20 short X/Y flicks, ring/context transitions, disconnect +
+      background/resume, and 30 / 40–45 / 60 FPS; then move this item to Done.
 - [ ] **shadowResolution=512** — set as the new iOS default (1024 showed no
       measurable fps gain on device; verify 512 and the visual cost).
 - [ ] **Remove the `[mobsi]` diagnostic logs** (interactive.cpp attach,
@@ -38,8 +42,9 @@
 - [x] **Target switch = right-stick flick** while locked (>0.75 deflection,
       350 ms cooldown) — frees the D-pad for the slots.
 - [x] **shadowResolution** — no longer hard-coded 2048: `[ENGINE]
-      shadowResolution` in Gothic.ini, default **1024 on iOS** (quarter fill
-      cost, mildly softer edges). Rebuilds live via setupSettings.
+      shadowResolution` in Gothic.ini, default **512 on iOS** (1024 showed no
+      measurable device gain; 512 visual verification is still queued).
+      Rebuilds live via setupSettings.
 - [x] **Mobsi levitation — ROOT CAUSE FOUND & FIXED** (device log round 1:
       every attach lands ~1 m up, `nodeDy≈97 fixMoved=0 groundIsMobsi=0`).
       ZS_POS is a skeleton-root point but `Interactive::attach` fed it to
@@ -79,18 +84,16 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       flush gate widened: items also draw when the ring collected them while
       the menu is closed (`Renderer::draw`), leftover icons cleared on ring
       close.
-- [x] **Stick/pad X = turn** — left-stick X and the touch move-pad now send
-      `RotateL/RotateR` (Gothic-classic turning) instead of strafing; combat
-      side-steps stay reachable as rotate+jump (`playercontrol.cpp:565`).
-- [x] **Runes & scrolls in the item quick-ring** — `ITM_CAT_RUNE` added to the
-      Items ring filter; selecting one equips it.
-- [ ] **Mobsi levitation — round 2 (fix below did NOT cure it on device)** —
-      diagnostics added: `[mobsi] attach:`/`[mobsi] quit:` lines are logged
-      (visible in `Documents/stderr.log`) whenever an interaction user ends
-      >15 cm above the walkable ground, incl. whether the "ground" is a mobsi
-      collider, whether the node itself was elevated (`nodeDy`) and whether
-      `fixNpcPosition` relocated them (`fixMoved`). Grab the log after a
-      levitation repro to pick the real mechanism.
+- [x] **Stick/pad X = turn** — physical left-stick X now turns proportionally
+      while retaining `RotateL/RotateR` edges for classic combat, lockpicking
+      and rotate+jump side-steps; the touch move-pad remains digital classic
+      turning (`playercontrol.cpp:565`).
+- [x] **Runes & scrolls in the magic quick-ring** — `ITM_CAT_RUNE` is the Magic
+      ring filter; selecting a rune or scroll equips it.
+- [x] **Mobsi levitation — round-2 diagnostics closed/superseded.** The added
+      `[mobsi] attach:`/`[mobsi] quit:` data (`nodeDy≈97`, `fixMoved=0`) led to
+      the root-vs-feet `Interactive::attach` fix documented above. Keep the logs
+      for one final clean device round, then remove them via the backlog item.
 - [x] **Mobsi levitation — candidate #1 closed (not the observed cause)** —
       a real bug in `GameScript::fixNpcPosition`: when the npc overlaps another NPC at the
       `ZS_POS` node, the ring-search down-ray (`+100cm → −1000cm`) can land on
@@ -136,7 +139,10 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       key events, not just gameplay. (`gamepadinput.*`, `mainwindow.*`)
 - [x] **B3** — gamepad quick save/load wired to `Gothic::quickSave/quickLoad`
       with the F5/F9 guards (LB+Menu / LB+View). (`gamepadinput.cpp`)
-- [x] **B5** — pad disconnect mid-hold releases all world actions (no stuck keys).
+- [x] **B5** — controller disconnect, lifecycle reset, ring and UI transition
+      release only world actions actually held by the pad, then require neutral
+      re-arm. A generation epoch covers resets occurring between rendered frames
+      and avoids release-side effects from inactive Heal/Potion actions.
 - [x] **B6** — camera Y sign unified with the touch overlay; `invertY` field added.
 - [x] Touch navigation for **inventory** — resolved by the same dispatcher.
 
@@ -239,14 +245,16 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 - [x] **Target-lock via native focus** (spec §3) — R3 pins the current npc focus
       (`PlayerControl::toggleTargetLock`); `tickFocus` keeps it instead of
       re-finding by aim, and auto-releases when the target dies/leaves
-      (`World::validateFocus` + `Npc::isDead`). D-pad ←/→ switch target
+      (`World::validateFocus` + `Npc::isDead`). A horizontal right-stick flick
+      switches target
       (`focusLeft/focusRight` → `moveFocus`). Existing focus highlight shows it.
       Replaces the provisional R3→`LookBack`.
 
 ## ✅ Done — ideal controls, batch 1 (2026-07-10)
-- [x] **[GAMEPAD] config** (spec §8) — `deadZone`, `triggerThreshold`,
-      `lookSensitivity`, `invertY`, `saveSlots` read from `Gothic.ini [GAMEPAD]`
-      in `GamepadInput::loadConfig`. Replaces the hard-coded tunables.
+- [x] **[GAMEPAD] config** (spec §8) — `deadZone`, `releaseZone`,
+      `triggerThreshold`, `lookSensitivity`, `invertY`, `saveSlots` and optional
+      transition-only `debugInput` diagnostics are read from
+      `Gothic.ini [GAMEPAD]` in `GamepadInput::loadConfig`.
 - [x] **Rotating quick-saves** (spec §6) — LB+Menu saves to `save_slot_1..N`
       (N=`saveSlots`), auto-named `Quick - <world>`; index persisted in
       `[GAMEPAD] padQuickSlot`. LB+View loads the last rotating slot.
@@ -256,12 +264,11 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       target. Touch overlay auto-hides when a gamepad is connected.
 
 ## ✅ Done — ideal controls, batch 2 (2026-07-10)
-- [x] **Radial rings** (spec §4) — RB opens the weapon quick-bar, LT the item
-      quick-bar; hold to aim with the right stick, release to activate
-      (`Npc::useItem` equips weapons / consumes items). Content pulled live from
-      inventory (weapons = NF|FF, items = POTION|FOOD), own vector segments with
-      text labels + equipped/selection markers. `QuickRing` owned by
-      `GamepadInput`, drawn by `MainWindow`.
+- [x] **Radial rings** (spec §4) — RB opens the magic quick-bar (runes +
+      scrolls), LT the item quick-bar (potions + food); hold to aim with the
+      right stick, release to activate. Content is pulled live from inventory
+      and rendered with 3D item icons. `QuickRing` is owned by `GamepadInput`
+      and drawn by `MainWindow`.
 
 ## ✅ Done — ideal controls, batch 3 (2026-07-10)
 - [x] **Haptics** (spec §7) — `Haptics::impact` via `UIImpactFeedbackGenerator`
@@ -281,8 +288,9 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 
 ## ✅ Done — full on-screen virtual gamepad (2026-07-10)
 - [x] World touch overlay is now a **full virtual pad** (16 glyph buttons):
-      A/B/X/Y, RB(weapon ring)/RT(block)/LB(quick-save)/LT(item ring), L3(walk)/
-      R3(lock), D-pad (Heal/Potion + focus L/R), View/Menu, plus move pad + camera.
+      A/B/X/Y, RB(magic ring)/RT(block)/LB(quick-save)/LT(item ring), L3(walk)/
+      R3(lock), D-pad (melee/bow + assignable slots), View/Menu, plus move pad +
+      camera.
       Each wired to its action via `ctrl`/`uiAction`/new `MainWindow::pad*`
       bridges. **Touch ring-selection**: tapping RB/LT opens the radial, drag aims
       it, release activates (`GamepadInput::ring*` hooks). Uses Xelu glyphs.
