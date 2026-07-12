@@ -28,9 +28,25 @@ using A = KeyCodec::Action;
 using M = KeyCodec::Mapping;
 using Tempest::Event;
 
+namespace {
+const char* actionName(A a) {
+  switch(a) {
+    case A::Forward:       return "Forward";
+    case A::Back:          return "Back";
+    case A::RotateL:       return "RotateL";
+    case A::RotateR:       return "RotateR";
+    case A::ActionGeneric: return "Action";
+    case A::Jump:          return "Jump";
+    case A::Parade:        return "Parade";
+    default:                return "Other";
+    }
+  }
+}
+
 GamepadInput::GamepadInput(MainWindow& owner, PlayerControl& ctrl)
   : owner(owner), ctrl(ctrl) {
   loadConfig();
+  observedInputGen = ctrl.inputGeneration();
   }
 
 void GamepadInput::loadConfig() {
@@ -38,13 +54,16 @@ void GamepadInput::loadConfig() {
     const float v = Gothic::settingsGetF("GAMEPAD", n);
     return v>0.f ? v : d;
     };
-  deadZone   = f("deadZone",         0.25f);
+  deadZone   = std::clamp(f("deadZone", 0.25f), 0.05f, 0.95f);
+  releaseZone= std::clamp(f("releaseZone", 0.15f), 0.01f,
+                          std::max(0.01f, deadZone-0.01f));
   trigThresh = f("triggerThreshold", 0.50f);
   lookSens   = f("lookSensitivity",  0.20f);
   invertY    = Gothic::settingsGetI("GAMEPAD","invertY")!=0;
   const int slots = Gothic::settingsGetI("GAMEPAD","saveSlots");
   saveSlots  = slots>0 ? slots : 5;
   stuckProtect = (Gothic::settingsGetI("GAMEPAD","noStuckProtect")==0); // opt-out
+  debugInput = Gothic::settingsGetI("GAMEPAD","debugInput")!=0;
 
   const int sl = Gothic::settingsGetI("GAMEPAD","quickSlotL");
   const int sr = Gothic::settingsGetI("GAMEPAD","quickSlotR");
@@ -199,6 +218,41 @@ void GamepadInput::edge(bool now, bool before, A a) {
     ctrl.onKeyReleased(a, M::Primary);
   }
 
+void GamepadInput::setWorldHeld(A a, bool held) {
+  auto& current = worldHeld[size_t(a)];
+  if(current==held)
+    return;
+  current = held;
+  if(debugInput) {
+    std::fprintf(stderr, "[pad] t=%llu ctx=World lx=%.3f ly=%.3f action=%s event=%s\n",
+                 static_cast<unsigned long long>(Tempest::Application::tickCount()),
+                 double(debugLx), double(debugLy), actionName(a), held ? "press" : "release");
+    std::fflush(stderr);
+    }
+  if(held)
+    ctrl.onKeyPressed(a, Event::K_NoKey, M::Primary);
+  else
+    ctrl.onKeyReleased(a, M::Primary);
+  }
+
+void GamepadInput::setWorldAxis(A negative, bool negativeHeld,
+                                A positive, bool positiveHeld) {
+  const bool hadNegative = worldHeld[size_t(negative)];
+  const bool hadPositive = worldHeld[size_t(positive)];
+
+  // PlayerControl::onKeyReleased clears transient combat actions. On a direct
+  // axis reversal all old directions therefore have to be released before the
+  // new direction is pressed.
+  if(hadNegative && !negativeHeld)
+    setWorldHeld(negative, false);
+  if(hadPositive && !positiveHeld)
+    setWorldHeld(positive, false);
+  if(!hadNegative && negativeHeld)
+    setWorldHeld(negative, true);
+  if(!hadPositive && positiveHeld)
+    setWorldHeld(positive, true);
+  }
+
 void GamepadInput::uiEdge(bool now, bool before, A a) {
   if(now && !before)
     owner.uiAction(a);
@@ -212,17 +266,51 @@ void GamepadInput::key(bool now, bool before, Event::KeyType k) {
   }
 
 void GamepadInput::releaseAllWorld() {
-  for(A a : { A::Forward, A::Back, A::Left, A::Right,
-              A::RotateL, A::RotateR,
-              A::ActionGeneric, A::Jump, A::Sneak, A::Weapon,
-              A::WeaponMele, A::WeaponBow,
-              A::Parade, A::Walk, A::LookBack, A::Heal, A::Potion })
-    ctrl.onKeyReleased(a, M::Primary);   // releasing a non-held action is harmless
-  prevRT = false;
+  for(size_t i=0; i<worldHeld.size(); ++i)
+    if(worldHeld[i])
+      setWorldHeld(A(i), false);
+  moveAxis.reset();
+  turnAxis.reset();
+  ctrl.setGamepadTurn(0.f);
+  suppressWorldUntilNeutral = true;
   }
 
 void GamepadInput::tick(uint64_t dt) {
   GamepadState s = Gamepad::poll();
+  debugLx = s.lx;
+  debugLy = s.ly;
+
+  if(s.generation!=observedControllerGen) {
+    // A disconnect/suspend can happen entirely between rendered frames. The
+    // generation survives a fast reconnect so a stale held action is still
+    // released even when no disconnected snapshot was rendered.
+    releaseAllWorld();
+    observedControllerGen = s.generation;
+    if(debugInput) {
+      std::fprintf(stderr, "[pad] t=%llu controller-reset generation=%llu\n",
+                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
+                   static_cast<unsigned long long>(s.generation));
+      std::fflush(stderr);
+      }
+    }
+
+  const uint64_t inputGen = ctrl.inputGeneration();
+  if(inputGen!=observedInputGen) {
+    // PlayerControl can clear itself from interactions, cutscenes or loading.
+    // It already discarded the input, so do not synthesize releases here.
+    worldHeld.fill(false);
+    moveAxis.reset();
+    turnAxis.reset();
+    ctrl.setGamepadTurn(0.f);
+    suppressWorldUntilNeutral = true;
+    observedInputGen = inputGen;
+    if(debugInput) {
+      std::fprintf(stderr, "[pad] t=%llu input-reset generation=%llu\n",
+                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
+                   static_cast<unsigned long long>(inputGen));
+      std::fflush(stderr);
+      }
+    }
   if(!s.connected) {                 // pad vanished mid-hold -> release everything (B5)
     if(prev.connected)
       releaseAllWorld();
@@ -240,21 +328,17 @@ void GamepadInput::tick(uint64_t dt) {
 
   const PadCtx ctx = owner.padContext();
 
-  // Leaving gameplay for any UI: release held world actions so the character
-  // doesn't keep walking/attacking while a menu or dialogue is open.
+  // Leaving gameplay releases only stateful actions that this pad owns.
   if(ctx!=PadCtx::World && prevCtx==PadCtx::World)
     releaseAllWorld();
-  // Entering gameplay: neutralize prev so still-held inputs re-fire as presses
-  // — except the D-pad: its buttons are one-shots now (weapon draw, quick
-  // slots), and re-firing them would e.g. drink a potion the moment the
-  // inventory closes with ◀ still held after a bind.
+  // Entering gameplay synchronizes one-shot edges with the physical state and
+  // requires continuous controls to return to neutral before they can re-arm.
   if(ctx==PadCtx::World && prevCtx!=PadCtx::World) {
-    prev = GamepadState{};
-    prev.connected = true;
-    prev.dup    = s.dup;
-    prev.ddown  = s.ddown;
-    prev.dleft  = s.dleft;
-    prev.dright = s.dright;
+    prev = s;
+    moveAxis.reset();
+    turnAxis.reset();
+    ctrl.setGamepadTurn(0.f);
+    suppressWorldUntilNeutral = true;
     }
 
   // Any context switch aborts a pending hold-to-bind.
@@ -287,14 +371,44 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
     return;
     }
 
-  // Left stick -> movement (digital, dead-zoned). Forward == stick up (ly>0).
-  // Stick X turns the character (Gothic-classic rotate), it does not strafe.
-  const bool fwd   = s.ly >  deadZone, back  = s.ly < -deadZone;
-  const bool left  = s.lx < -deadZone, right = s.lx >  deadZone;
-  edge(fwd,   prev.ly >  deadZone, A::Forward);
-  edge(back,  prev.ly < -deadZone, A::Back);
-  edge(left,  prev.lx < -deadZone, A::RotateL);
-  edge(right, prev.lx >  deadZone, A::RotateR);
+  const bool continuousNeutral = std::abs(s.lx)<=releaseZone &&
+                                 std::abs(s.ly)<=releaseZone &&
+                                 !s.a && !s.b && s.rt<=trigThresh;
+  if(suppressWorldUntilNeutral && continuousNeutral)
+    suppressWorldUntilNeutral = false;
+
+  if(!suppressWorldUntilNeutral) {
+    // Y keeps Gothic's animation-driven start/stop movement, with hysteresis
+    // so noise around deadZone cannot chatter or keep a key latched.
+    moveAxis.update(s.ly, deadZone, releaseZone);
+    setWorldAxis(A::Back,    moveAxis.negative(),
+                 A::Forward, moveAxis.positive());
+
+    // X is genuinely analog: remove the inner dead-zone and scale the classic
+    // turn rate in PlayerControl by the remaining -1..1 deflection.
+    const bool wasLeft  = turnAxis.negative();
+    const bool wasRight = turnAxis.positive();
+    turnAxis.update(s.lx, deadZone, releaseZone);
+    const float turn = turnAxis.scaled(s.lx, releaseZone);
+    ctrl.setGamepadTurn(turn);
+    // Keep RotateL/RotateR edge semantics for lockpicking, classic combat and
+    // rotate+jump side-steps. PlayerControl prefers gamepadTurn for speed.
+    setWorldAxis(A::RotateL, turnAxis.negative(),
+                 A::RotateR, turnAxis.positive());
+    if(debugInput && (wasLeft!=turnAxis.negative() || wasRight!=turnAxis.positive())) {
+      std::fprintf(stderr, "[pad] t=%llu ctx=World lx=%.3f turn=%.3f event=%s\n",
+                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
+                   double(s.lx), double(turn), turn==0.f ? "release" : "press");
+      std::fflush(stderr);
+      }
+
+    setWorldHeld(A::ActionGeneric, s.a);
+    setWorldHeld(A::Jump,          s.b);
+    setWorldHeld(A::Parade,        s.rt>trigThresh);
+    }
+  else {
+    ctrl.setGamepadTurn(0.f);
+    }
 
   // Right stick -> analog camera look. Y is unified with the touch overlay
   // convention (stick up == look up); invertY flips it (review B6).
@@ -316,16 +430,9 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s) {
       }
     }
 
-  // Face buttons: A = interact/attack, B = jump, X = sneak, Y = draw weapon.
-  edge(s.a, prev.a, A::ActionGeneric);
-  edge(s.b, prev.b, A::Jump);
+  // A/B are continuous and handled above; X/Y are one-shot toggles.
   edge(s.x, prev.x, A::Sneak);
   edge(s.y, prev.y, A::Weapon);
-
-  // Right trigger -> block/parry (analog, thresholded).
-  const bool rtDown = s.rt > trigThresh;
-  edge(rtDown, prevRT, A::Parade);
-  prevRT = rtDown;
 
   // R3 = toggle target-lock (native focus); L3 = toggle walk/run.
   if(s.r3 && !prev.r3) {

@@ -1,11 +1,13 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include <Tempest/Event>
 
 #include "utils/gamepad.h"
 #include "utils/keycodec.h"
+#include "ui/gamepadaxisstate.h"
 #include "ui/quickring.h"
 
 class PlayerControl;
@@ -50,7 +52,12 @@ class GamepadInput {
     PlayerControl& ctrl;
     GamepadState   prev;
     PadCtx         prevCtx = PadCtx::Loading;
-    bool           prevRT  = false;
+    std::array<bool,KeyCodec::Last> worldHeld{};
+    GamepadAxisState moveAxis;
+    GamepadAxisState turnAxis;
+    uint64_t         observedInputGen = 0;
+    uint64_t         observedControllerGen = 0;
+    bool             suppressWorldUntilNeutral = true;
 
     QuickRing      ringMagic{QuickRing::Magic};
     QuickRing      ringItems{QuickRing::Items};
@@ -62,6 +69,9 @@ class GamepadInput {
     bool assignQuickSlot(int idx);         // bind the inventory selection
 
     void edge  (bool now, bool before, KeyCodec::Action a);       // -> PlayerControl
+    void setWorldHeld(KeyCodec::Action a, bool held);             // stateful world action
+    void setWorldAxis(KeyCodec::Action negative, bool negativeHeld,
+                      KeyCodec::Action positive, bool positiveHeld);
     void uiEdge(bool now, bool before, KeyCodec::Action a);       // -> MainWindow::uiAction
     void key   (bool now, bool before, Tempest::Event::KeyType k);// synthetic KeyEvent
     void releaseAllWorld();                                       // drop held world actions
@@ -76,12 +86,17 @@ class GamepadInput {
     void  stuckTeleport();                 // warp to the nearest waypoint (spec 8)
 
     // Tunables, overridable via Gothic.ini [GAMEPAD] (see loadConfig).
-    float deadZone   = 0.25f;   // stick dead-zone
+    float deadZone   = 0.25f;   // stick press dead-zone
+    float releaseZone= 0.15f;   // lower threshold for releasing an active axis
     float trigThresh = 0.50f;   // trigger press threshold
     float lookSens   = 0.20f;   // camera speed per ms
     bool  invertY    = false;   // camera Y invert (review B6)
     int   saveSlots  = 5;       // rotating quick-save slot count
     bool  stuckProtect = true;  // L3+R3 hold -> warp to nearest waypoint
+    bool  debugInput = false;   // transition-only stderr diagnostics
+
+    float debugLx = 0.f;
+    float debugLy = 0.f;
 
     uint64_t stuckHoldMs = 0;   // how long both sticks have been held
 

@@ -38,6 +38,7 @@ class TouchInput : public Tempest::Widget {
     std::array<MBtn,4> dialogLayout() const;   // dialogue: up/down/select/skip
 
     void aimRing(const Tempest::Point& pos);
+    void releaseWorldTouches();
 
     MainWindow&    owner;
     PlayerControl& ctrl;

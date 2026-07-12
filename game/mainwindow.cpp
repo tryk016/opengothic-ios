@@ -39,12 +39,12 @@ MainWindow::MainWindow(Device& device)
     atlas(device),renderer(swapchain),
     rootMenu(keycodec),inventory(keycodec),
     dialogs(inventory),document(keycodec),
-    console(*this),
+    console(*this),player(dialogs,inventory),
 #if defined(__MOBILE_PLATFORM__)
     mobileUi(*this,player),
     gamepad(*this,player),
 #endif
-    player(dialogs,inventory) {
+    runtimeMode(R_Normal) {
   Gothic::inst().onSettingsChanged.bind(this,&MainWindow::onSettings);
   onSettings();
   safeArea = SafeArea::insets();

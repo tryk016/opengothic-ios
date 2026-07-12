@@ -174,6 +174,7 @@ class MainWindow : public Tempest::Window {
     DocumentMenu              document;
     ChapterScreen             chapter;
     ConsoleWidget             console;
+    PlayerControl             player;
 #if defined(__MOBILE_PLATFORM__)
     TouchInput                mobileUi;
     GamepadInput              gamepad;
@@ -186,7 +187,6 @@ class MainWindow : public Tempest::Window {
 
     Tempest::Widget*          uiKeyUp=nullptr;
     Tempest::Point            dMouse;
-    PlayerControl             player;
     uint64_t                  lastTick=0;
 
     Tempest::Shortcut         funcKey[11];

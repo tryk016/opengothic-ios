@@ -113,6 +113,20 @@ void TouchInput::aimRing(const Point& pos) {
   owner.padRingAim(nx, ny);
   }
 
+void TouchInput::releaseWorldTouches() {
+  if(mv[0]) ctrl.onKeyReleased(A::Forward, M::Primary);
+  if(mv[1]) ctrl.onKeyReleased(A::Back,    M::Primary);
+  if(mv[2]) ctrl.onKeyReleased(A::RotateL, M::Primary);
+  if(mv[3]) ctrl.onKeyReleased(A::RotateR, M::Primary);
+  mv[0]=mv[1]=mv[2]=mv[3]=false;
+  moveId = -1;
+  lookId = -1;
+
+  for(auto& held : btnDown)
+    ctrl.onKeyReleased(held.second, M::Primary);
+  btnDown.clear();
+  }
+
 void TouchInput::paintEvent(PaintEvent& e) {
   if(Gamepad::poll().connected)
     return;                          // a gamepad drives the UI -> hide the touch overlay
@@ -172,8 +186,10 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
             ctrl.onKeyPressed(b.act, Event::K_NoKey, M::Primary);
             btnDown[id] = b.act;
             return;
-          case TAct::MagicRing:  owner.padOpenMagicRing();  ringId = id; return;
-          case TAct::ItemRing:   owner.padOpenItemRing();   ringId = id; return;
+          case TAct::MagicRing:
+            releaseWorldTouches(); owner.padOpenMagicRing(); ringId = id; return;
+          case TAct::ItemRing:
+            releaseWorldTouches(); owner.padOpenItemRing(); ringId = id; return;
           case TAct::Lock:       ctrl.toggleTargetLock();   return;
           case TAct::SlotL:      owner.padUseQuickSlot(0);  return;
           case TAct::SlotR:      owner.padUseQuickSlot(1);  return;

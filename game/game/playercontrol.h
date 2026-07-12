@@ -25,6 +25,8 @@ class PlayerControl final {
     void  onKeyReleased(KeyCodec::Action a, KeyCodec::Mapping mapping);
     bool  isPressed(KeyCodec::Action a) const;
     void  onRotateMouse(float dAngleX, float dAngleY);
+    void  setGamepadTurn(float value);
+    uint64_t inputGeneration() const { return inputGen; }
 
     void  drawVobRay(DbgPainter& p) const;
 
@@ -151,11 +153,13 @@ class PlayerControl final {
     bool           targetLock=false;
     float          rotMouse=0;
     float          rotMouseY=0;
+    float          gamepadTurn=0;
     bool           casting = false;
     size_t         pickLockProgress = 0;
 
     float          runAngleDest   = 0.f;
     uint64_t       turnAniSmooth  = 0;
+    uint64_t       inputGen       = 0;
     int            rotationAni    = 0;
     bool           g2Ctrl         = false;
 

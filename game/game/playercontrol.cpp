@@ -1,5 +1,6 @@
 #include "playercontrol.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "world/objects/npc.h"
@@ -252,6 +253,10 @@ void PlayerControl::onRotateMouse(float dAngleX, float dAngleY) {
   rotMouseY += dAngleY;
   }
 
+void PlayerControl::setGamepadTurn(float value) {
+  gamepadTurn = std::clamp(value, -1.f, 1.f);
+  }
+
 void PlayerControl::drawVobRay(DbgPainter& p) const {
   auto w = Gothic::inst().world();
   if(w==nullptr || w->player()==nullptr)
@@ -476,6 +481,8 @@ void PlayerControl::clearInput() {
   std::memset(ctrl, 0,sizeof(ctrl));
   std::memset(actrl,0,sizeof(actrl));
   std::memset(wctrl,0,sizeof(wctrl));
+  gamepadTurn = 0.f;
+  ++inputGen;
   }
 
 void PlayerControl::marvinF8(uint64_t dt) {
@@ -571,11 +578,13 @@ bool PlayerControl::tickCameraMove(uint64_t dt) {
     return true;
     }
 
-  auto turningVal = movement.turnRightLeft.value();
+  auto turningVal = gamepadTurn;
+  if(turningVal==0.f)
+    turningVal = movement.turnRightLeft.value();
   if(turningVal > 0.f)
-    camera->rotateRight(dt);
+    camera->rotateRight(uint64_t(float(dt)*turningVal));
   else if(turningVal < 0.f)
-    camera->rotateLeft(dt);
+    camera->rotateLeft(uint64_t(float(dt)*-turningVal));
 
   auto forwardVal = movement.forwardBackward.value();
   if(forwardVal > 0.f)
@@ -714,13 +723,16 @@ void PlayerControl::implMove(uint64_t dt) {
 
   int rotation = 0;
   if(allowRot) {
-    if(this->wantsToTurnLeft()) {
-      rot += rspeed;
+    float turn = gamepadTurn;
+    if(turn==0.f)
+      turn = movement.turnRightLeft.value();
+    if(turn<0.f) {
+      rot += rspeed*-turn;
       rotation = -1;
       rotMouse=0;
       }
-    if(this->wantsToTurnRight()) {
-      rot -= rspeed;
+    if(turn>0.f) {
+      rot -= rspeed*turn;
       rotation = 1;
       rotMouse=0;
       }
@@ -976,7 +988,8 @@ void PlayerControl::implMove(uint64_t dt) {
       pl.setAnim(ani);
     }
 
-  setAnimRotate(pl, rot, ani==Npc::Anim::Idle ? rotation : 0, movement.turnRightLeft.any(), dt);
+  const bool forceTurn = movement.turnRightLeft.any() || gamepadTurn!=0.f;
+  setAnimRotate(pl, rot, ani==Npc::Anim::Idle ? rotation : 0, forceTurn, dt);
   if(actrl[ActGeneric] || ani==Npc::Anim::MoveL || ani==Npc::Anim::MoveR || pl.isFinishingMove()) {
     processAutoRotate(pl,rot,dt);
     }
