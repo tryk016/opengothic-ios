@@ -57,23 +57,38 @@ class GamepadInput {
     GamepadAxisState turnAxis;
     uint64_t         observedInputGen = 0;
     uint64_t         observedControllerGen = 0;
-    bool             suppressWorldUntilNeutral = true;
+    bool             suppressMoveUntilNeutral = true;
+    bool             suppressTurnUntilNeutral = true;
+    bool             suppressAUntilRelease = true;
+    bool             suppressBUntilRelease = true;
+    bool             suppressRtUntilRelease = true;
 
     QuickRing      ringMagic{QuickRing::Magic};
     QuickRing      ringItems{QuickRing::Items};
 
-    void tickWorld (uint64_t dt, const GamepadState& s);
-    void tickDialog(const GamepadState& s);
-    void tickMenu  (const GamepadState& s);
-    void tickInvent(uint64_t dt, const GamepadState& s);
+    void tickWorld (uint64_t dt, const GamepadState& s,
+                    const std::vector<GamepadButtonEvent>& events);
+    void tickDialog(const GamepadState& s,
+                    const std::vector<GamepadButtonEvent>& events);
+    void tickMenu  (const GamepadState& s,
+                    const std::vector<GamepadButtonEvent>& events);
+    void tickInvent(uint64_t dt, const GamepadState& s,
+                    const std::vector<GamepadButtonEvent>& events);
     bool assignQuickSlot(int idx);         // bind the inventory selection
 
     void edge  (bool now, bool before, KeyCodec::Action a);       // -> PlayerControl
     void setWorldHeld(KeyCodec::Action a, bool held);             // stateful world action
+    void setWorldButton(GamepadButton button, bool physicalHeld,
+                        KeyCodec::Action action,
+                        const std::vector<GamepadButtonEvent>& events);
     void setWorldAxis(KeyCodec::Action negative, bool negativeHeld,
                       KeyCodec::Action positive, bool positiveHeld);
     void uiEdge(bool now, bool before, KeyCodec::Action a);       // -> MainWindow::uiAction
     void key   (bool now, bool before, Tempest::Event::KeyType k);// synthetic KeyEvent
+    void keyTap(Tempest::Event::KeyType k, PadCtx ctx,
+                const GamepadButtonEvent& source,
+                const GamepadState& state);
+    void suppressCarriedWorldInput();                            // per-control neutral gates
     void releaseAllWorld();                                       // drop held world actions
 
     void loadConfig();                     // read the [GAMEPAD] section
@@ -87,7 +102,7 @@ class GamepadInput {
 
     // Tunables, overridable via Gothic.ini [GAMEPAD] (see loadConfig).
     float deadZone   = 0.25f;   // stick press dead-zone
-    float releaseZone= 0.15f;   // lower threshold for releasing an active axis
+    float releaseZone= 0.15f;   // inner neutral threshold for re-arming an axis
     float trigThresh = 0.50f;   // trigger press threshold
     float lookSens   = 0.20f;   // camera speed per ms
     bool  invertY    = false;   // camera Y invert (review B6)
@@ -97,6 +112,7 @@ class GamepadInput {
 
     float debugLx = 0.f;
     float debugLy = 0.f;
+    std::array<bool,KeyCodec::Last> worldPulseRelease{};
 
     uint64_t stuckHoldMs = 0;   // how long both sticks have been held
 

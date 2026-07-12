@@ -53,7 +53,7 @@ class MainWindow : public Tempest::Window {
 
     // UI hooks shared by GamepadInput / TouchInput.
     PadCtx padContext() const;                 // which context the pad routes to
-    void   dispatchKey(Tempest::KeyEvent& e);  // send a synthetic key to the active UI
+    void   dispatchKey(Tempest::KeyEvent& e);  // route a complete synthetic key tap
     void   uiAction(KeyCodec::Action a);       // window-level Escape/Inventory/Log/Status
 
 #if defined(__MOBILE_PLATFORM__)

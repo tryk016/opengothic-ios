@@ -599,14 +599,18 @@ PadCtx MainWindow::padContext() const {
   auto& g = Gothic::inst();
   if(g.checkLoading()!=Gothic::LoadState::Idle)
     return PadCtx::Loading;
-  if(video.isActive() || chapter.isActive() || document.isActive())
+  // Keep the routing context in the same priority order as keyDownEvent and
+  // dispatchKey; overlapping UI must use the mapping of its actual receiver.
+  if(video.isActive() || rootMenu.isActive() ||
+     chapter.isActive() || document.isActive())
     return PadCtx::Menu;
-  if(dialogs.isActive())
-    return PadCtx::Dialog;
+  // Trade keeps DialogMenu active, but it deliberately ignores input while
+  // the inventory owns the interaction. Choose Inventory here so horizontal
+  // navigation is available before dispatchKey falls through the dialog.
   if(inventory.isActive())
     return PadCtx::Inventory;
-  if(rootMenu.isActive())
-    return PadCtx::Menu;
+  if(dialogs.isActive())
+    return PadCtx::Dialog;
   return PadCtx::World;
   }
 
@@ -624,13 +628,48 @@ void MainWindow::padSkipVideo()               { video.skip(); }
 #endif
 
 void MainWindow::dispatchKey(Tempest::KeyEvent& e) {
-  // Route a synthetic key to whichever UI is active, mirroring keyDownEvent.
-  if(video.isActive())     { video.keyDownEvent(e);     return; }
-  if(rootMenu.isActive())  { rootMenu.keyDownEvent(e);  return; }
-  if(chapter.isActive())   { chapter.keyDownEvent(e);   return; }
-  if(document.isActive())  { document.keyDownEvent(e);  return; }
-  if(dialogs.isActive())   { dialogs.keyDownEvent(e);   return; }
-  if(inventory.isActive()) { inventory.keyDownEvent(e); return; }
+  // Synthetic pad/touch input follows the same UI priority and accept/ignore
+  // contract as keyDownEvent. Deliver key-up to the widget that accepted the
+  // press even if handling key-down changed its active state.
+  auto dispatchTap = [&e](auto& widget) {
+    e.accept();
+    widget.keyDownEvent(e);
+    if(!e.isAccepted())
+      return false;
+
+    Tempest::KeyEvent up(e.key, e.code, e.modifier, Tempest::Event::KeyUp);
+    widget.keyUpEvent(up);
+    return true;
+    };
+
+  if(video.isActive() && dispatchTap(video))
+    return;
+
+  // MenuRoot handles menu actions on key-down and has no public key-up path.
+  if(rootMenu.isActive()) {
+    e.accept();
+    rootMenu.keyDownEvent(e);
+    if(e.isAccepted())
+      return;
+    }
+
+  if(chapter.isActive() && dispatchTap(chapter))
+    return;
+  if(document.isActive() && dispatchTap(document))
+    return;
+  if(dialogs.isActive() && dispatchTap(dialogs))
+    return;
+  if(inventory.isActive() && dispatchTap(inventory))
+    return;
+
+  // No UI consumed the synthetic key. Complete the same PlayerControl tap as
+  // the regular key-down/key-up path without leaving a held action behind.
+  e.accept();
+  const auto act     = keycodec.tr(e);
+  const auto mapping = keycodec.mapping(e);
+  player.onKeyPressed(act, e.key, mapping);
+  uiAction(act);
+  player.onKeyReleased(act, mapping);
   }
 
 void MainWindow::focusEvent(FocusEvent &event) {

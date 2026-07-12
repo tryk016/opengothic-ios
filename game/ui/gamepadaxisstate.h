@@ -4,7 +4,9 @@
 
 // Pure state reducer for one signed gamepad axis. It deliberately owns no
 // callbacks: consumers compare positive()/negative() before and after update
-// and decide which gameplay actions to press or release.
+// and decide which gameplay actions to press or release. The press threshold
+// also releases an active direction; the lower release threshold only rearms
+// a direction after the stick has returned to the neutral band.
 class GamepadAxisState final {
   public:
     constexpr void update(float value, float pressThreshold,
@@ -13,23 +15,41 @@ class GamepadAxisState final {
       const float release = min(clamp01(releaseThreshold), press);
       value = clampSigned(value);
 
+      // A direction which has just been released must reach the inner neutral
+      // band before it can fire again. This prevents chatter around the press
+      // threshold without prolonging the gameplay action itself.
+      if(value>=-release && value<=release) {
+        negativeArmed = true;
+        positiveArmed = true;
+        }
+
       switch(dir) {
         case Direction::Neutral:
-          if(value>press)
+          if(value>press && positiveArmed) {
             dir = Direction::Positive;
-          else if(value<-press)
+            positiveArmed = false;
+            }
+          else if(value<-press && negativeArmed) {
             dir = Direction::Negative;
+            negativeArmed = false;
+            }
           break;
         case Direction::Positive:
-          if(value<-press)
+          // A true reversal is a new direction, not threshold chatter. Allow
+          // it even when that side has not passed through the neutral band.
+          if(value<-press) {
             dir = Direction::Negative;
-          else if(value<=release)
+            negativeArmed = false;
+            }
+          else if(value<=press)
             dir = Direction::Neutral;
           break;
         case Direction::Negative:
-          if(value>press)
+          if(value>press) {
             dir = Direction::Positive;
-          else if(value>=-release)
+            positiveArmed = false;
+            }
+          else if(value>=-press)
             dir = Direction::Neutral;
           break;
         }
@@ -37,6 +57,8 @@ class GamepadAxisState final {
 
     constexpr void reset() {
       dir = Direction::Neutral;
+      negativeArmed = true;
+      positiveArmed = true;
       }
 
     constexpr bool positive() const {
@@ -67,6 +89,8 @@ class GamepadAxisState final {
       };
 
     Direction dir = Direction::Neutral;
+    bool negativeArmed = true;
+    bool positiveArmed = true;
 
     static constexpr float min(float a, float b) {
       return a<b ? a : b;
@@ -92,42 +116,50 @@ class GamepadAxisState final {
   };
 
 namespace GamepadAxisStateCompileTests {
-constexpr bool pressHoldRelease() {
+constexpr bool releaseAtPressAndRearmAtNeutral() {
   GamepadAxisState axis;
   axis.update(0.25f, 0.25f, 0.15f);
   if(axis.positive() || axis.negative())
     return false;
-  axis.update(0.26f, 0.25f, 0.15f);
+  axis.update(0.251f, 0.25f, 0.15f);
   if(!axis.positive() || axis.scaled(1.f, 0.15f)!=1.f)
     return false;
-  axis.update(0.20f, 0.25f, 0.15f);
-  if(!axis.positive())
+  axis.update(0.24f, 0.25f, 0.15f);
+  if(axis.positive() || axis.negative() || axis.scaled(1.f, 0.15f)!=0.f)
+    return false;
+  axis.update(0.26f, 0.25f, 0.15f);
+  if(axis.positive() || axis.negative())
     return false;
   axis.update(0.15f, 0.25f, 0.15f);
-  return !axis.positive() && !axis.negative() &&
-         axis.scaled(1.f, 0.15f)==0.f;
+  axis.update(0.26f, 0.25f, 0.15f);
+  return axis.positive() && !axis.negative();
   }
 
 constexpr bool changesSignAndResets() {
   GamepadAxisState axis;
   axis.update(0.50f, 0.25f, 0.15f);
+  if(!axis.positive() || axis.negative())
+    return false;
   axis.update(-0.50f, 0.25f, 0.15f);
   if(!axis.negative() || axis.positive() || axis.scaled(-1.f, 0.15f)!=-1.f)
+    return false;
+  axis.update(0.50f, 0.25f, 0.15f);
+  if(!axis.positive() || axis.negative() || axis.scaled(1.f, 0.15f)!=1.f)
     return false;
   axis.reset();
   return !axis.negative() && !axis.positive();
   }
 
-constexpr bool ignoresJitter() {
+constexpr bool ignoresThresholdChatter() {
   GamepadAxisState axis;
   axis.update(0.26f, 0.25f, 0.15f);
   axis.update(0.24f, 0.25f, 0.15f);
   axis.update(0.26f, 0.25f, 0.15f);
   axis.update(0.23f, 0.25f, 0.15f);
-  return axis.positive() && !axis.negative();
+  return !axis.positive() && !axis.negative();
   }
 
-static_assert(pressHoldRelease());
+static_assert(releaseAtPressAndRearmAtNeutral());
 static_assert(changesSignAndResets());
-static_assert(ignoresJitter());
+static_assert(ignoresThresholdChatter());
 }

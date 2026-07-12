@@ -11,6 +11,10 @@ namespace Gamepad {
 GamepadState poll() {
   return GamepadState{};
   }
+
+GamepadInputFrame consume() {
+  return GamepadInputFrame{};
+  }
 }
 
 #endif
