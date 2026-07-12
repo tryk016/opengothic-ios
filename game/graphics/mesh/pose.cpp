@@ -651,6 +651,16 @@ bool Pose::isJumpAnim() const {
   return false;
   }
 
+bool Pose::isJumpLandingAnim() const {
+  for(auto& i:lay) {
+    if(i.bs!=BS_JUMP || i.seq->animCls!=Animation::Transition)
+      continue;
+    if(i.seq->name.starts_with("T_JUMP_2_"))
+      return true;
+    }
+  return false;
+  }
+
 bool Pose::isFlyAnim() const {
   return isFlyCombined>0;
   }

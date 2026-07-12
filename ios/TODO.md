@@ -1,48 +1,36 @@
 # iOS port — status & backlog
 
-## ⏳ Backlog — next round (updated 2026-07-12, device round 4 pending)
-- [ ] **Torch stow — IMPLEMENTED, device confirmation pending.** Root cause:
-      lighting consumed the `ItLsTorch` item (`Inventory::use` ITM_TORCH
-      branch), the lit torch is only a hand visual, and the stow branch never
-      refunded the item — with the last torch lit there was no path back at
-      all (no inventory row, quick slot bailed on "not in inventory"). Fix:
-      (1) stowing refunds one `ItLsTorch` (light+stow is now lossless);
-      (2) `Inventory::use` stows the hand torch even at count 0 when called
-      with the torch cls; (3) the D-pad/touch quick slot falls through to that
-      path when the item is missing but a torch is lit. Verify on device:
-      bind torch to a slot, light → stow → light again; also stow via
-      inventory when a spare torch remains. (`processDefInvTorch`/`invTorch`
-      turned out to be only the temporary mobsi hide/restore, not a stow.)
-- [ ] **Post-jump hover — IMPLEMENTED, device confirmation pending.** After a
-      jump the character hung ~30 cm in the air for 0.2–0.5 s. Cause (upstream
-      bug, code identical to upstream): during `Jump` the engine trusts anim
-      root motion with no ground attach, and the `Jump→InAir` handoff starts
-      the fall from the whole-anim *average* velocity ≈ 0 — a 30 cm free fall
-      from rest takes ~0.25 s (g=0.00098 cm/ms²). Fix: when the jump anim
-      ends, snap to the ground if it is within `stepHeight()` (50 cm, the same
-      tolerance grounded movement uses); deep water excluded so jumps into
-      water still splash. A temporary `[jump] end: dY=…` log (movealgo.cpp)
-      confirms on-device; remove after one clean round. If hover persists,
-      the log will show `fall` + the case is the climb/jump-up path instead
-      (tickClimb end / tickJumpup — see recon notes in the session).
+## ⏳ Backlog — next round (updated 2026-07-12, device round 4)
+- [ ] **Post-jump hover — second fix implemented, device confirmation pending.**
+      Round-4 logs proved that the original ground snap works (`dY=16/20`, both
+      `snapped`), but landing transition `T_JUMP_2_*` was classified as a fresh
+      `BS_JUMP` on the next tick. That re-entered `MoveAlgo::Jump` and replayed
+      landing root motion without the normal ground-stick. `Pose` now identifies
+      jump-landing transitions and excludes them from Run→Jump; partial snaps
+      are also checked by their residual ground distance instead of trusting a
+      boolean move result. Temporary `[jump]` residual and `[jumpup]` handoff
+      logs stay for one confirmation round.
 - [ ] **External-controller movement fix — device confirmation pending**
-      (`6a5db6a8` + `df4d7f7e`, user-authored event-queue input model; CI
-      green in run `29196747359`). Verify on hardware: 20 short X/Y flicks,
-      ring/context transitions, disconnect + background/resume.
-- [ ] **shadowResolution=512** — new iOS default; verify fps + visual cost.
-- [ ] **Remove the `[jump]` diagnostic log** (movealgo.cpp Jump branch) after
-      one clean confirmation round. (`[mobsi]` logs removed 2026-07-12.)
+      (`df4d7f7e` event queue + `bb65d567` activation-only cross-axis guard;
+      CI green in runs `29199588062` and `29204749285`). Verify on hardware:
+      20 short X/Y flicks, true diagonals, ring/context transitions,
+      disconnect + background/resume.
+- [ ] **Remove the `[jump]` / `[jumpup]` diagnostic logs** after one clean
+      confirmation round. (`[mobsi]` logs removed 2026-07-12.)
 - [ ] **Upstream PRs** (device-confirmed in this fork): `Interactive::attach`
       root-vs-feet fix; `MenuRoot::setMenu` + onTick; `fixNpcPosition`
-      rejecting spots on top of interactive colliders; once device-confirmed,
-      add the jump-end ground attach and the torch stow refund (both are
-      upstream bugs too — the second silently destroys a torch per
-      light+stow cycle on all platforms).
+      rejecting spots on top of interactive colliders; torch stow/refund
+      (upstream also silently destroys one torch per light+stow cycle). Add
+      jump-end ground attach only after the remaining hover is fixed and
+      device-confirmed.
 
-## ✅ Done — Remake-style D-pad, magic ring, shadows (2026-07-12, round 2)
+## ✅ Done — controller, inventory and shadows (2026-07-12, rounds 2–4)
 > **DEVICE-CONFIRMED (round 3):** mobsi levitation gone (player + NPCs), the
-> magic quick-ring works, D-pad quick-slot binding works. Shadows at 1024
-> showed no measurable fps change (still 35–45); trying 512 next.
+> magic quick-ring works, D-pad quick-slot binding works. **Round 4:** torch
+> stow works and shadow maps at 512 are accepted on device.
+- [x] **Torch stow/refund — device-confirmed.** Stowing refunds one
+      `ItLsTorch`; the last lit torch can be returned through its quick slot
+      even though it has no inventory row. Light→stow is lossless.
 - [x] **D-pad, Gothic-Remake style** — ▲ draws melee (`WeaponMele`), ▼ bow/
       crossbow (`WeaponBow`), ◀/▶ are **player-assignable quick slots**: hold
       ◀/▶ ~0.6 s on a highlighted inventory item to bind (short press still
@@ -56,8 +44,8 @@
       350 ms cooldown) — frees the D-pad for the slots.
 - [x] **shadowResolution** — no longer hard-coded 2048: `[ENGINE]
       shadowResolution` in Gothic.ini, default **512 on iOS** (1024 showed no
-      measurable device gain; 512 visual verification is still queued).
-      Rebuilds live via setupSettings.
+      measurable device gain; 512 is now device-confirmed). Rebuilds live via
+      setupSettings.
 - [x] **Mobsi levitation — ROOT CAUSE FOUND & FIXED** (device log round 1:
       every attach lands ~1 m up, `nodeDy≈97 fixMoved=0 groundIsMobsi=0`).
       ZS_POS is a skeleton-root point but `Interactive::attach` fed it to
@@ -268,6 +256,10 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       `crossAxisGuard`, `triggerThreshold`, `lookSensitivity`, `invertY`,
       `saveSlots` and optional transition-only `debugInput` diagnostics are read from
       `Gothic.ini [GAMEPAD]` in `GamepadInput::loadConfig`.
+- [x] **First-run iOS profile** — when `Documents/Gothic.ini` is absent, create
+      and flush a focused override with performance, shadow, quick-save and
+      complete controller defaults; never copy or overwrite `system/Gothic.ini`
+      and never auto-populate an existing root override.
 - [x] **Rotating quick-saves** (spec §6) — LB+Menu saves to `save_slot_1..N`
       (N=`saveSlots`), auto-named `Quick - <world>`; index persisted in
       `[GAMEPAD] padQuickSlot`. LB+View loads the last rotating slot.
@@ -331,6 +323,9 @@ haptic intensity, glyph sizing, hint wording).
 - [x] Controller-layout labels wrap to at most two lines, use height-aware
       callout spacing, reserve the build-version line, and infer EN/DE/PL from
       the active `MENU.DAT` strings (including Polish data with `GAME.language=-1`).
+- [x] README controller tables replaced by a clickable, HiDPI-safe mapping SVG;
+      the complete text mapping remains available in a collapsed accessible
+      fallback.
 
 ## ⏳ To do — Language
 - [ ] Polish requires Polish game data (e.g. GOG Gold Edition or a PL install);

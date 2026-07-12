@@ -1079,6 +1079,10 @@ bool Npc::isJumpAnim() const {
   return visual.pose().isJumpAnim();
   }
 
+bool Npc::isJumpLandingAnim() const {
+  return visual.pose().isJumpLandingAnim();
+  }
+
 bool Npc::isFlyAnim() const {
   return visual.pose().isFlyAnim();
   }

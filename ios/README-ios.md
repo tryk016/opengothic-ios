@@ -73,62 +73,36 @@ on-screen alert instead of a crash.
 
 ---
 
-## Recommended settings (do this first)
-
-The hard 30 fps cap is gone — the iOS build now unlocks ProMotion / high refresh.
-Device-confirmed: ~60 fps in menus and ~40–45 fps in-game on recent hardware
-(was a hard 30). The engine still defaults to full native resolution with SSAO
-on, which drags the 3D scene down and heats the phone. Set the two options below
-once after the first launch; the change applies live, no restart needed:
-
-**Path A — in-game menu (no file editing):**
-1. Options → Video → *resolution*: **upscale(half)** (safe everywhere) or
-   **upscale(75%)** (newer devices, e.g. A17 Pro / A18).
-2. Options → Video → untick **Cloud shadows** — in OpenGothic this switch is
-   actually SSAO; disabling it is the single biggest fps win.
-
-Only the 3D scene is rendered at the reduced resolution and upscaled (Lanczos);
-HUD, menus and subtitles always stay sharp at native resolution.
-
-**Path B — the same via config files:** in `Documents/Gothic.ini` set
-`vidResIndex` and `zCloudShadowScale` as shown in the config reference below.
-
-**Optional frame cap** — the build runs uncapped by default (recommended, so
-ProMotion can do its job). Add a cap only if you want steadier pacing or less
-heat / battery drain on long sessions, and keep it at your display's refresh —
-capping below in-game fps just undoes the ProMotion unlock. Create
-`Documents/system/SystemPack.ini` (if it does not exist):
-
-```ini
-[PARAMETERS]
-FPS_Limit=60       ; 0 = uncapped (default). Don't set below ~45 or you undo ProMotion.
-```
-
----
-
 ## Controls (Gothic Classic scheme)
 
-| Function | Xbox | PS5 |
+[![OpenGothic controller mapping for Xbox and PlayStation pads](../assets/controller/OpenGothic_Controller_Layout.svg)](../assets/controller/OpenGothic_Controller_Layout.svg)
+
+<details>
+<summary>Text alternative: complete button mapping</summary>
+
+| Function | Xbox | PlayStation |
 |---|---|---|
-| Primary interact / attack | A | ✕ |
-| Secondary / draw weapon | Y | △ |
+| Interact / attack | A | ✕ |
+| Draw / sheathe weapon | Y | △ |
 | Jump / climb / swim up | B | ○ |
-| Crouch / dive / sneak | X | □ |
-| Move (proportional left/right turn) | Left stick | Left stick |
-| Look | Right stick | Right stick |
-| Magic quick-ring (runes, scrolls) | RB | R1 |
-| Item quick-ring (potions, food) | LT | L2 |
-| Toggle sprint | L3 | L3 |
-| Lock-on target | R3 | R3 |
-| Block / parry | RT | R2 |
-| Draw melee weapon / bow | D-pad ▲ / ▼ | D-pad ▲ / ▼ |
-| Quick slots (player-assignable) | D-pad ◀ / ▶ | D-pad ◀ / ▶ |
-| Switch locked target | flick Right stick ◀/▶ | flick Right stick ◀/▶ |
-| Inventory | View | Touchpad |
-| Pause menu | Menu | Options |
+| Sneak / dive | X | □ |
+| Move / turn | Left stick | Left stick |
+| Camera | Right stick | Right stick |
+| Magic quick-ring | RB (hold) | R1 (hold) |
+| Item quick-ring | LT (hold) | L2 (hold) |
+| Walk / run | L3 | L3 |
+| Target lock | R3 | R3 |
+| Switch locked target | flick Right stick ← / → | flick Right stick ← / → |
+| Parry | RT | R2 |
+| Melee / ranged weapon | D-pad ↑ / ↓ | D-pad ↑ / ↓ |
+| Quick slots 1 / 2 | D-pad ← / → | D-pad ← / → |
+| Inventory | View | Share / Create |
+| Game menu | Menu | Options |
 | Quick save | LB + Menu | L1 + Options |
-| Quick load | LB + View | L1 + Touchpad |
-| Warp to nearest waypoint (unstuck) | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
+| Quick load | LB + View | L1 + Share / Create |
+| Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
+
+</details>
 
 Notes on feel and on-screen input:
 - **Quick-rings** are *hold-to-aim*: hold the ring button, steer the highlight
@@ -165,47 +139,74 @@ Notes on feel and on-screen input:
   scene stays full-bleed.
 
 ---
-## Config reference (Documents/Gothic.ini)
+## iOS configuration
 
-`Documents/Gothic.ini` is created by the app on first run. Its values override
-the `system/Gothic.ini` you copied from the PC, so this is the right place for
-device-specific tweaks. Add only the entries you want to change:
+The app uses two separate files; it never overwrites the PC configuration you
+copied with the game data:
+
+1. `Documents/system/Gothic.ini` — read-only base from the PC install.
+2. `Documents/Gothic.ini` — writable iOS override, with higher priority.
+
+On a fresh install, when the second file does not exist, OpenGothic creates it
+immediately with this complete iOS profile. An existing override is not
+auto-populated or replaced; values changed later through the game menu are still
+written there normally.
 
 ```ini
 [GAME]
-showFpsCounter=1        ; on-screen FPS counter (mobile)
-language=2              ; force Polish if you have Polish data
-useQuickSaveKeys=1      ; enable quick save/load (may default off)
+useQuickSaveKeys=1
 
 [INTERNAL]
-vidResIndex=2           ; 3D render scale: 0=full, 1=upscale(75%), 2=upscale(half)
+vidResIndex=2
 
 [ENGINE]
-zCloudShadowScale=0     ; 0 = SSAO off ("Cloud shadows" in the video menu)
-shadowResolution=512    ; shadow-map size (iOS default 512; PC default 2048;
-                        ; raise to 1024/2048 for crisper shadow edges)
+zCloudShadowScale=0
+shadowResolution=512
 
 [GAMEPAD]
-deadZone=0.25           ; axis press threshold (0..1)
-releaseZone=0.15        ; release threshold; must stay below deadZone
-crossAxisGuard=0.12     ; raises the perpendicular threshold near cardinal directions; 0 disables it
-triggerThreshold=0.50   ; how far RT/R2 must be pressed to register (0..1)
-lookSensitivity=0.20    ; right-stick look speed
-invertY=0               ; 1 = invert vertical look
-saveSlots=5             ; rotating quick-save slot count
-;noStuckProtect=1       ; disable the L3+R3 unstuck warp
-;padQuickSlot=<n>       ; managed automatically (rotating save index)
-;quickSlotL=<cls>       ; managed automatically (D-pad ◀ assignment)
-;quickSlotR=<cls>       ; managed automatically (D-pad ▶ assignment)
-;debugInput=1           ; transition-only controller trace in stderr.log
+deadZone=0.25
+releaseZone=0.15
+crossAxisGuard=0.12
+triggerThreshold=0.50
+lookSensitivity=0.20
+invertY=0
+saveSlots=5
 ```
 
-A connected controller works out of the box — the uncommented `[GAMEPAD]`
-values above are the built-in defaults; commented entries are optional. Add a
-  line only when you want a different value. Keep `0 < releaseZone < deadZone < 1`;
-  the lower release threshold is the hysteresis that prevents noise near the
-  press threshold from repeatedly latching movement. `crossAxisGuard` rejects
-  the small perpendicular component produced by imperfect cardinal stick motion.
+When upgrading from an older build, a root override may already exist with only
+the settings saved previously. Keep it and add any desired values from the
+profile above, or rename/delete it once to let the app generate the complete
+profile on the next launch. The copied `system/Gothic.ini` is unaffected.
+
+`vidResIndex=2` renders only the 3D scene at half resolution and upscales it;
+HUD, menus and subtitles remain native and sharp. `zCloudShadowScale=0` disables
+the expensive SSAO option labelled “Cloud shadows”. Both can still be changed
+in Options → Video. Keep `releaseZone < deadZone`; `crossAxisGuard` rejects the
+small perpendicular component of imperfect cardinal stick motion (`0` disables
+the guard).
+
+Optional overrides can be added to the same root file:
+
+```ini
+[GAME]
+showFpsCounter=1        ; on-screen FPS counter
+language=2              ; force Polish when Polish data is installed
+
+[GAMEPAD]
+noStuckProtect=1        ; disable the L3+R3 unstuck warp
+debugInput=1            ; transition-only controller trace in stderr.log
+```
+
+Quick-slot ids and the rotating-save index are managed by the game and written
+to this override automatically.
+
+The build runs uncapped by default for ProMotion. An optional display-rate cap
+uses a different file, `Documents/system/SystemPack.ini`:
+
+```ini
+[PARAMETERS]
+FPS_Limit=60            ; 0 = uncapped; do not cap below normal in-game fps
+```
 
 ## Known limitations / follow-ups
 - **Save-slot thumbnails** are not captured on iOS yet — slots show name, date

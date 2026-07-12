@@ -106,6 +106,15 @@ void MoveAlgo::tickJumpup(uint64_t dt) {
   if(climb.anim==Npc::Anim::JumpHang) {
     startClimb(climb);
     } else {
+    if(npc.isPlayer()) {
+      const auto at = npc.position();
+      bool groundValid = false;
+      const float ground = dropRay(at,groundValid);
+      if(groundValid)
+        Tempest::Log::i("[jumpup] handoff: dY=",int(at.y-ground));
+      else
+        Tempest::Log::i("[jumpup] handoff: ground outside short ray");
+      }
     setState(InAir);
     clearSpeed();
     }
@@ -251,7 +260,8 @@ bool MoveAlgo::implTick(uint64_t dt, MvFlags moveFlg) {
     return false;
 
   // jump animation (lift off)
-  if(bs==BS_JUMP && state!=InAir && state!=Jump && state!=JumpUp) {
+  if(bs==BS_JUMP && !npc.isJumpLandingAnim() &&
+     state!=InAir && state!=Jump && state!=JumpUp) {
     setState(Jump);
     return true;
     }
@@ -270,12 +280,16 @@ bool MoveAlgo::implTick(uint64_t dt, MvFlags moveFlg) {
       // slopes and deep water keep the InAir path (rough landing / splash).
       const float dYg  = pos.y-ground;
       const bool  deep = std::isfinite(water) && ground+chest<water;
-      const bool  snap = gValid && !deep && 0.f<dYg && dYg<=stepHeight() &&
-                         !testSlide(pos,normal,info) &&
-                         npc.tryMove(Tempest::Vec3(0,-dYg,0));
+      const bool  canSnap = gValid && !deep && 0.f<dYg && dYg<=stepHeight() &&
+                            !testSlide(pos,normal,info);
+      const bool  moved = canSnap && npc.tryMove(Tempest::Vec3(0,-dYg,0));
+      const float residual = moved ? npc.position().y-ground : dYg;
+      const bool  snap = moved && std::abs(residual)<=eps;
       setState(snap ? Run : InAir);
-      if(dYg>15.f)
-        Tempest::Log::i("[jump] end: dY=", int(dYg), snap ? " snapped" : " fall");
+      if(npc.isPlayer() && (dYg>15.f || (canSnap && !snap)))
+        Tempest::Log::i("[jump] end: dY=", int(dYg), " moved=", moved ? 1 : 0,
+                        " residual=", int(residual),
+                        snap ? " snapped" : " fall");
       }
     return true;
     }

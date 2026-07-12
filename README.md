@@ -53,17 +53,34 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 
 **Bluetooth controller (Gothic Classic scheme — Xbox / PS5 buttons):**
 
-| Function | Xbox / PS5 | | Function | Xbox / PS5 |
-|---|---|---|---|---|
-| Interact / attack | A / ✕ | | Move (proportional turn on ◀▶) | Left stick |
-| Jump / climb | B / ○ | | Look | Right stick |
-| Sneak / crouch | X / □ | | Block / parry | RT / R2 |
-| Draw weapon | Y / △ | | Magic quick-ring (runes, scrolls) | RB / R1 (hold) |
-| Walk/run toggle | L3 | | Item quick-ring (potions, food) | LT / L2 (hold) |
-| Target lock-on | R3 | | Draw melee / bow | D-pad ↑ / ↓ |
-| Switch target (locked) | flick Right stick ◀▶ | | Quick slots (assignable) | D-pad ← / → |
-| Pause / menu | Menu / Options | | Inventory | View / Touchpad |
-| Quick save / load | LB + Menu / LB + View | | Unstuck warp | hold L3 + R3 ~2 s |
+[![OpenGothic controller mapping for Xbox and PlayStation pads](assets/controller/OpenGothic_Controller_Layout.svg)](assets/controller/OpenGothic_Controller_Layout.svg)
+
+<details>
+<summary>Text alternative: complete button mapping</summary>
+
+| Function | Xbox | PlayStation |
+|---|---|---|
+| Interact / attack | A | ✕ |
+| Draw / sheathe weapon | Y | △ |
+| Jump / climb / swim up | B | ○ |
+| Sneak / dive | X | □ |
+| Move / turn | Left stick | Left stick |
+| Camera | Right stick | Right stick |
+| Magic quick-ring | RB (hold) | R1 (hold) |
+| Item quick-ring | LT (hold) | L2 (hold) |
+| Walk / run | L3 | L3 |
+| Target lock | R3 | R3 |
+| Switch locked target | flick Right stick ← / → | flick Right stick ← / → |
+| Parry | RT | R2 |
+| Melee / ranged weapon | D-pad ↑ / ↓ | D-pad ↑ / ↓ |
+| Quick slots 1 / 2 | D-pad ← / → | D-pad ← / → |
+| Inventory | View | Share / Create |
+| Game menu | Menu | Options |
+| Quick save | LB + Menu | L1 + Options |
+| Quick load | LB + View | L1 + Share / Create |
+| Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
+
+</details>
 
 - **Quick-rings:** hold RB (magic) or LT (items), aim with the right stick, release to equip/use —
   tiles show real 3D item icons.
@@ -95,32 +112,18 @@ app's Documents folder.
 Dialogue voice-over lives in `Speech.vdf` / `Speech_Addon.vdf` — these are mounted on devices with ≥4 GB
 RAM (skipped on iPhone 7/8 to avoid running out of memory, leaving subtitles only).
 
-### Optional settings (`Documents/Gothic.ini`)
+### iOS configuration
 
-```ini
-[GAME]
-showFpsCounter=1        ; on-screen FPS counter
+The copied `Documents/system/Gothic.ini` is never overwritten. On a fresh
+install, OpenGothic creates a separate `Documents/Gothic.ini` override with the
+complete iOS profile: half-resolution 3D rendering, SSAO off, 512 px shadow
+maps, quick-save support and all stable `[GAMEPAD]` defaults (including
+`crossAxisGuard=0.12`). Existing root overrides are not auto-populated or
+replaced.
 
-[INTERNAL]
-vidResIndex=2           ; 3D render scale: 0=full, 1=75%, 2=half (big fps win)
-
-[ENGINE]
-zCloudShadowScale=0     ; SSAO off ("Cloud shadows" in the video menu)
-shadowResolution=512    ; shadow-map size (iOS default 512, PC 2048)
-
-[GAMEPAD]
-deadZone=0.25
-releaseZone=0.15        ; release threshold; keep lower than deadZone
-crossAxisGuard=0.12     ; suppress perpendicular drift near cardinal directions; 0 disables it
-lookSensitivity=0.20
-invertY=0
-saveSlots=5             ; rotating quick-save slots
-; noStuckProtect=1      ; disable the L3+R3 unstuck warp
-; debugInput=1          ; transition-only controller diagnostics in stderr.log
-```
-
-See the **Recommended settings** section of [ios/README-ios.md](ios/README-ios.md) for the full
-performance guide (upscale + SSAO give the biggest wins).
+The generated profile, upgrade note, override priority, optional FPS cap,
+language and diagnostic settings are documented in the
+[iOS configuration reference](ios/README-ios.md#ios-configuration).
 
 ### Known limitations
 

@@ -61,6 +61,7 @@ class Pose final {
     bool               isDefence(uint64_t tickCount) const;
     bool               isJumpBack(uint64_t tickCount) const;
     bool               isJumpAnim() const;
+    bool               isJumpLandingAnim() const;
     bool               isFlyAnim() const;
     bool               isStanding() const;
     bool               isPrehit(uint64_t now) const;

@@ -110,10 +110,31 @@ Gothic::Gothic() {
   wrldDef = CommandLine::inst().wrldDef;
 
   baseIniFile.reset(new IniFile(nestedPath({u"system",u"Gothic.ini"},Dir::FT_File)));
-  iniFile    .reset(new IniFile(u"Gothic.ini"));
-  if(!iniFile->has("INTERNAL", "vidResIndex")) {
-    iniFile->set("INTERNAL", "vidResIndex", 0); // full-res
+#if defined(__IOS__)
+  const bool hasUserIni = FileUtil::exists(std::u16string(u"Gothic.ini"));
+#endif
+  iniFile.reset(new IniFile(u"Gothic.ini"));
+#if defined(__IOS__)
+  if(!hasUserIni) {
+    // Keep the copied PC system/Gothic.ini untouched. This small writable
+    // overlay gives a fresh iOS install its device profile immediately.
+    iniFile->set("GAME",     "useQuickSaveKeys",  1);
+    iniFile->set("INTERNAL", "vidResIndex",       2);
+    iniFile->set("ENGINE",   "zCloudShadowScale", 0);
+    iniFile->set("ENGINE",   "shadowResolution", 512);
+    iniFile->set("GAMEPAD",  "deadZone",          0.25f);
+    iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
+    iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
+    iniFile->set("GAMEPAD",  "triggerThreshold",  0.50f);
+    iniFile->set("GAMEPAD",  "lookSensitivity",   0.20f);
+    iniFile->set("GAMEPAD",  "invertY",           0);
+    iniFile->set("GAMEPAD",  "saveSlots",         5);
+    iniFile->flush();
     }
+#else
+  if(!iniFile->has("INTERNAL", "vidResIndex"))
+    iniFile->set("INTERNAL", "vidResIndex", 0); // full-res
+#endif
   {
   defaults.reset(new IniFile());
   defaults->set("GAME", "enableMouse",         1);
