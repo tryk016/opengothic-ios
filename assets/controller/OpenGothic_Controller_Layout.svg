@@ -22,7 +22,7 @@
       .key{font:600 17px 'Segoe UI Symbol','Segoe UI',Arial,sans-serif;fill:#f7e9c5;text-anchor:middle}
       .action{font:500 19px 'Segoe UI',Arial,sans-serif;fill:#edf1f3}
       .small{font:400 16px 'Segoe UI',Arial,sans-serif;fill:#aebbc5}
-      .wire{fill:none;stroke:#9b895e;stroke-width:2;opacity:.72}
+      .wire{fill:none;stroke:#b5a06c;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round;opacity:.92}
       .dot{fill:#d2b66d}
       .pad{fill:url(#pad);stroke:#b9a268;stroke-width:4}
       .control{fill:#0b1218;stroke:#81909a;stroke-width:3}
@@ -37,18 +37,6 @@
   <text x="800" y="58" class="title" text-anchor="middle">OpenGothic controller layout</text>
   <text x="800" y="90" class="subtitle" text-anchor="middle">Xbox / PlayStation · Gothic Classic scheme</text>
 
-  <!-- Leader lines, drawn below the pad and labels. -->
-  <g class="wire">
-    <path d="M470 157 H545 L605 270"/><path d="M470 225 H565 L646 412"/>
-    <path d="M470 293 H545 L646 412"/><path d="M470 361 H575 L688 523"/>
-    <path d="M470 429 H552 L688 523"/><path d="M470 497 H575 L688 523"/>
-    <path d="M470 565 H610 L760 382"/>
-    <path d="M1130 157 H1055 L995 270"/><path d="M1130 225 H1035 L955 224"/>
-    <path d="M1130 293 H1060 L997 380"/><path d="M1130 361 H1060 L1040 420"/>
-    <path d="M1130 429 H1040 L954 420"/><path d="M1130 497 H1035 L997 462"/>
-    <path d="M1130 565 H1030 L900 520"/><path d="M1130 633 H1000 L840 382"/>
-  </g>
-
   <!-- Controller silhouette. -->
   <g filter="url(#shadow)">
     <path class="pad" d="M620 280 C568 280 532 327 512 406 L456 606
@@ -56,6 +44,23 @@
       L1060 662 C1107 711 1162 670 1144 606 L1088 406
       C1068 327 1032 280 980 280 C931 280 897 310 860 320 H740
       C703 310 669 280 620 280 Z"/>
+  </g>
+
+  <!-- Leader lines: above the pad body, below the physical controls/cards. -->
+  <g class="wire">
+    <path d="M470 157 H545 L605 270"/><path d="M470 225 H565 L646 412"/>
+    <path d="M470 293 H545 L646 412"/>
+    <!-- One bracket groups all three D-pad mappings; one leader reaches the pad. -->
+    <path d="M470 345 H494 V513 H470 M494 429 H535 L620 523 H688"/>
+    <path d="M470 565 H610 L760 382"/>
+    <path d="M1130 157 H1055 L995 270"/><path d="M1130 225 H1035 L955 224"/>
+    <path d="M1130 293 H1060 L997 380"/><path d="M1130 361 H1060 L1040 420"/>
+    <path d="M1130 429 H1040 L954 420"/><path d="M1130 497 H1035 L997 462"/>
+    <path d="M1130 565 H1030 L900 520"/><path d="M1130 633 H1000 L840 382"/>
+  </g>
+
+  <!-- Physical controls cover the leader endpoints without hiding their route. -->
+  <g filter="url(#shadow)">
     <rect x="570" y="245" width="150" height="48" rx="22" class="control"/>
     <rect x="880" y="245" width="150" height="48" rx="22" class="control"/>
     <rect x="600" y="202" width="90" height="38" rx="18" class="control"/>

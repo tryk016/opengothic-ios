@@ -7,8 +7,8 @@ and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-
 > ### ⚠️ Work in progress
 > This fork is under **active development**. The core loop — gameplay, the on-screen virtual gamepad,
 > save/load and haptics — has been **tested and confirmed on a device**, and the hard 30 fps cap is
-> lifted (ProMotion). The latest physical-controller response rewrite is CI-green and awaits device
-> reconfirmation. It is still rough in places and being tuned, so expect bugs. See
+> lifted (ProMotion). The physical-controller movement response and jump landing are also
+> device-confirmed. It is still rough in places and being tuned, so expect bugs. See
 > [`ios/TODO.md`](ios/TODO.md) for the current status and remaining gaps.
 
 > ### Credit
@@ -28,7 +28,7 @@ and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-
 ### Prerequisites
 
 *Gothic II: Night of the Raven* is required — OpenGothic ships **no** game assets or scripts. You must
-legally own the game and supply its data yourself (see *Language & voices* below for edition notes).
+legally own the game and supply its data yourself.
 
 Target: iPhone/iPad on **iOS 15+**, arm64. Best on modern GPUs (A-series / M-series). Locked to landscape.
 
@@ -101,17 +101,6 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. Tap a quick-ring button,
 drag to aim, release to activate. Menus and dialogues get on-screen D-pad + OK/Back/Skip.
 
-### Language & voices
-
-Language — and whether dialogue has voice-over — comes entirely from **your game data**, not the app.
-The Steam release is usually English. For Polish (text + voices) you need Polish game data (e.g. the GOG
-*Gold Edition*, which is multi-language, or a Polish install/localization). Once Polish data is in place
-it is used automatically; you can also force it with `[GAME] language=2` in a `Gothic.ini` placed in the
-app's Documents folder.
-
-Dialogue voice-over lives in `Speech.vdf` / `Speech_Addon.vdf` — these are mounted on devices with ≥4 GB
-RAM (skipped on iPhone 7/8 to avoid running out of memory, leaving subtitles only).
-
 ### iOS configuration
 
 The copied `Documents/system/Gothic.ini` is never overwritten. On a fresh
@@ -121,8 +110,8 @@ maps, quick-save support and all stable `[GAMEPAD]` defaults (including
 `crossAxisGuard=0.12`). Existing root overrides are not auto-populated or
 replaced.
 
-The generated profile, upgrade note, override priority, optional FPS cap,
-language and diagnostic settings are documented in the
+The generated profile, upgrade note, override priority, optional FPS cap and
+diagnostic settings are documented in the
 [iOS configuration reference](ios/README-ios.md#ios-configuration).
 
 ### Known limitations
@@ -146,19 +135,14 @@ language and diagnostic settings are documented in the
   item icons (`game/ui/quickring.*`), Remake-style D-pad with two player-assignable quick slots,
   rotating quick-saves, haptics (`game/utils/haptics.*`), stuck-protection, and a `[GAMEPAD]` config.
 - **On-screen input:** a full virtual gamepad + menu/dialogue/inventory controls with controller glyphs
-  (`game/ui/touchinput.*`, `game/ui/padglyph.*`, `assets/controller/`), a controls-help hint bar and a
-  lock-on reticle.
+  (`game/ui/touchinput.*`, `game/ui/padglyph.*`, `assets/controller/`), a complete controller-layout
+  screen and a lock-on reticle.
 - **iOS lifecycle/robustness:** graceful "data not found" message instead of a crash
   (`game/utils/systemmsg.*`), audio-session setup (`game/utils/audiosession.*`), landscape lock, keep
   the screen awake, Game Mode keys, a save-crash fix, and dialogue voice-over on ≥4 GB devices.
 - **Performance & display:** ProMotion unlock + triple-buffered Metal swapchain (lifts the hard 30 fps
   cap), safe-area-aware HUD (nothing hides under the notch / Dynamic Island), configurable shadow
   resolution, and the upscale-based render-scale guide.
-- **Engine fixes (upstream-ready):** interaction users no longer float ~1 m above the ground
-  (root-vs-feet regression in `Interactive::attach`), menus get their geometry on first open
-  (`MenuRoot::setMenu`), and NPC de-overlap no longer parks characters on top of furniture colliders
-  (`GameScript::fixNpcPosition`).
-
 ---
 
 *For the engine itself — Windows/Linux/macOS builds, features, mods, command-line arguments, graphics

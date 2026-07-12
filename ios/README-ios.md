@@ -126,17 +126,18 @@ Notes on feel and on-screen input:
 - **On-screen virtual gamepad:** with no controller, a full pad is drawn during
   play (buttons, sticks, D-pad, move + camera area). Tap a ring button, drag to
   aim, release to activate. It **auto-hides the moment a controller connects**.
-- **Controls-help hint bar** flashes context-sensitive button prompts, and a
-  **lock-on reticle** brackets the pinned target (gamepad only).
+- A **lock-on reticle** brackets the pinned target (gamepad only). The former
+  transient controls-hint bar is disabled; the complete mapping lives in
+  Options → Controls.
 - **Controller-layout screen:** Options → Controls shows a full pad diagram
   (Xelu line-art) with leader lines, button glyphs and localized labels
   (EN/DE/PL) for the whole mapping — instead of the keyboard bindings list,
   which is dead weight without a keyboard. B/Escape (or the touch Back button)
   returns to Options.
 - **Haptics** fire on taking damage, on lock-on / ring-commit, and on quick-save.
-- **HUD is safe-area aware** — HP/mana/swim bars, world clock, fps counter and
-  the hint bar avoid the notch / Dynamic Island and the rounded corners; the 3D
-  scene stays full-bleed.
+- **HUD is safe-area aware** — HP/mana/swim bars, world clock and fps counter
+  avoid the notch / Dynamic Island and the rounded corners; the 3D scene stays
+  full-bleed.
 
 ---
 ## iOS configuration

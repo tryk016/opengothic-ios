@@ -1,7 +1,5 @@
 #include "movealgo.h"
 
-#include <Tempest/Log>
-
 #include "world/objects/npc.h"
 #include "world/objects/interactive.h"
 #include "world/world.h"
@@ -106,15 +104,6 @@ void MoveAlgo::tickJumpup(uint64_t dt) {
   if(climb.anim==Npc::Anim::JumpHang) {
     startClimb(climb);
     } else {
-    if(npc.isPlayer()) {
-      const auto at = npc.position();
-      bool groundValid = false;
-      const float ground = dropRay(at,groundValid);
-      if(groundValid)
-        Tempest::Log::i("[jumpup] handoff: dY=",int(at.y-ground));
-      else
-        Tempest::Log::i("[jumpup] handoff: ground outside short ray");
-      }
     setState(InAir);
     clearSpeed();
     }
@@ -286,10 +275,6 @@ bool MoveAlgo::implTick(uint64_t dt, MvFlags moveFlg) {
       const float residual = moved ? npc.position().y-ground : dYg;
       const bool  snap = moved && std::abs(residual)<=eps;
       setState(snap ? Run : InAir);
-      if(npc.isPlayer() && (dYg>15.f || (canSnap && !snap)))
-        Tempest::Log::i("[jump] end: dY=", int(dYg), " moved=", moved ? 1 : 0,
-                        " residual=", int(residual),
-                        snap ? " snapped" : " fall");
       }
     return true;
     }

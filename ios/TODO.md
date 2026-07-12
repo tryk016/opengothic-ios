@@ -1,33 +1,28 @@
 # iOS port — status & backlog
 
-## ⏳ Backlog — next round (updated 2026-07-12, device round 4)
-- [ ] **Post-jump hover — second fix implemented, device confirmation pending.**
-      Round-4 logs proved that the original ground snap works (`dY=16/20`, both
-      `snapped`), but landing transition `T_JUMP_2_*` was classified as a fresh
-      `BS_JUMP` on the next tick. That re-entered `MoveAlgo::Jump` and replayed
-      landing root motion without the normal ground-stick. `Pose` now identifies
-      jump-landing transitions and excludes them from Run→Jump; partial snaps
-      are also checked by their residual ground distance instead of trusting a
-      boolean move result. Temporary `[jump]` residual and `[jumpup]` handoff
-      logs stay for one confirmation round.
-- [ ] **External-controller movement fix — device confirmation pending**
-      (`df4d7f7e` event queue + `bb65d567` activation-only cross-axis guard;
-      CI green in runs `29199588062` and `29204749285`). Verify on hardware:
-      20 short X/Y flicks, true diagonals, ring/context transitions,
-      disconnect + background/resume.
-- [ ] **Remove the `[jump]` / `[jumpup]` diagnostic logs** after one clean
-      confirmation round. (`[mobsi]` logs removed 2026-07-12.)
-- [ ] **Upstream PRs** (device-confirmed in this fork): `Interactive::attach`
-      root-vs-feet fix; `MenuRoot::setMenu` + onTick; `fixNpcPosition`
-      rejecting spots on top of interactive colliders; torch stow/refund
-      (upstream also silently destroys one torch per light+stow cycle). Add
-      jump-end ground attach only after the remaining hover is fixed and
-      device-confirmed.
+## ⏳ Backlog — next round (updated 2026-07-12, device round 5)
+- [ ] **Right-stick vertical camera — implementation complete, device
+      confirmation pending.** The iOS backend already supplied `ry`, but the
+      dispatcher sent it only to `PlayerControl`; normal gameplay discards
+      `Npc::setDirectionY`, so only horizontal look appeared to work. The pad
+      now drives `Camera::onRotateMouse` with per-axis dead-zones and a 50 ms
+      local frame-time cap. Verify up/down, `invertY=1`, diagonal look and idle
+      drift on hardware.
 
-## ✅ Done — controller, inventory and shadows (2026-07-12, rounds 2–4)
+## ✅ Done — controller, landing, inventory and shadows (2026-07-12, rounds 2–5)
 > **DEVICE-CONFIRMED (round 3):** mobsi levitation gone (player + NPCs), the
 > magic quick-ring works, D-pad quick-slot binding works. **Round 4:** torch
-> stow works and shadow maps at 512 are accepted on device.
+> stow works and shadow maps at 512 are accepted on device. **Round 5:** the
+> external-controller movement stalls and post-jump hover are gone.
+- [x] **External-controller movement stability — device-confirmed.** The
+      event queue (`df4d7f7e`) preserves short press/release transitions, and
+      the activation-only cross-axis guard (`bb65d567`) rejects cardinal-axis
+      noise without blocking intentional diagonals.
+- [x] **Post-jump hover — device-confirmed.** Landing transitions
+      `T_JUMP_2_*` are excluded from fresh Run→Jump entry, and a successful
+      ground snap is accepted only when its residual distance is within the
+      collision epsilon. Temporary `[jump]` / `[jumpup]` logs were removed
+      after the clean device round.
 - [x] **Torch stow/refund — device-confirmed.** Stowing refunds one
       `ItLsTorch`; the last lit torch can be returned through its quick slot
       even though it has no inventory row. Light→stow is lossless.
@@ -56,8 +51,8 @@
       collides with nothing, so `fixMoved=0`. Not iOS-specific: the May-17
       Windows release (v0.92) has ac2316d4 but predates a2318ba2, hence "works
       on Windows". Fix: convert root→feet via `mv-(centerPosition()-position())`
-      before `setPos` (pure-Y, preserves beds/ladders). **Upstream PR-ready.**
-      Diagnostics kept for one confirmation round (`s0=`/`lay=` fields added).
+      before `setPos` (pure-Y, preserves beds/ladders). Diagnostics were
+      removed after device confirmation.
 
 Tracked work beyond the core "build + run + control" milestone.
 Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
@@ -76,9 +71,8 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       `UIWindow.safeAreaInsets`×`contentScaleFactor`; cached per painted frame
       in `MainWindow::paintEvent` (ctor can run pre-layout, and a same-size
       relayout never reaches `resizeEvent` — Widget::resize early-outs).
-      HP/mana/swim bars, fps counter, world clock and the pad-hint bar no
-      longer fall under the rounded corners / Dynamic Island. 3D stays
-      full-bleed.
+      HP/mana/swim bars, fps counter and world clock no longer fall under the
+      rounded corners / Dynamic Island. 3D stays full-bleed.
 - [x] **Quick-ring 3D item icons** (spec §4.5) — `QuickRing::paint` collects
       live icons into `InventoryMenu`'s `InventoryRenderer` (resolved by cls
       via one inventory-iterator pass; vanished items = empty tile). Renderer
@@ -93,8 +87,8 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       ring filter; selecting a rune or scroll equips it.
 - [x] **Mobsi levitation — round-2 diagnostics closed/superseded.** The added
       `[mobsi] attach:`/`[mobsi] quit:` data (`nodeDy≈97`, `fixMoved=0`) led to
-      the root-vs-feet `Interactive::attach` fix documented above. Keep the logs
-      for one final clean device round, then remove them via the backlog item.
+      the root-vs-feet `Interactive::attach` fix documented above; the logs
+      were removed after the clean device round.
 - [x] **Mobsi levitation — candidate #1 closed (not the observed cause)** —
       a real bug in `GameScript::fixNpcPosition`: when the npc overlaps another NPC at the
       `ZS_POS` node, the ring-search down-ray (`+100cm → −1000cm`) can land on
@@ -263,10 +257,11 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 - [x] **Rotating quick-saves** (spec §6) — LB+Menu saves to `save_slot_1..N`
       (N=`saveSlots`), auto-named `Quick - <world>`; index persisted in
       `[GAMEPAD] padQuickSlot`. LB+View loads the last rotating slot.
-- [x] **Controls-help overlay** (spec §5) — context-sensitive button hints,
-      flashed for ~4 s on context change, gamepad-only. Text glyphs (no bundled
-      assets). Target **lock-on reticle** (corner brackets) drawn on the pinned
-      target. Touch overlay auto-hides when a gamepad is connected.
+- [x] **Controller help + lock-on reticle** (spec §5) — the full mapping is
+      available in Options → Controls; the former transient context-hint bar
+      was retired because it duplicated that screen and obscured gameplay.
+      The target reticle still brackets the pinned target, and the touch
+      overlay auto-hides when a gamepad is connected.
 
 ## ✅ Done — ideal controls, batch 2 (2026-07-10)
 - [x] **Radial rings** (spec §4) — RB opens the magic quick-bar (runes +
@@ -289,7 +284,7 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       loaded from the app bundle (`padglyphtex.mm`, `Resources::loadTexturePm`)
       and drawn as real button art; falls back to the drawn glyphs
       (`padglyph.cpp`: A/B/X/Y discs, LB/RB/LT/RT pills, sticks, D-pad, Menu/View)
-      if a texture is missing. Used by the touch overlay + controls-help bar.
+      if a texture is missing. Used by the touch overlay.
 
 ## ✅ Done — full on-screen virtual gamepad (2026-07-10)
 - [x] World touch overlay is now a **full virtual pad** (16 glyph buttons):
@@ -313,7 +308,7 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 - [ ] Deferred B9/N1 background pause (needs on-device fiber testing).
 
 Otherwise §1–§8 implemented; remaining is polish / on-device tuning (ring feel,
-haptic intensity, glyph sizing, hint wording).
+haptic intensity and glyph sizing).
 
 ## ✅ Done — UI / readability
 - [x] Scale up UI on iOS for high-DPI legibility (`MainWindow::uiScale`).
@@ -326,7 +321,3 @@ haptic intensity, glyph sizing, hint wording).
 - [x] README controller tables replaced by a clickable, HiDPI-safe mapping SVG;
       the complete text mapping remains available in a collapsed accessible
       fallback.
-
-## ⏳ To do — Language
-- [ ] Polish requires Polish game data (e.g. GOG Gold Edition or a PL install);
-      then automatic, or force via `[GAME] language=2` in Documents/Gothic.ini.

@@ -23,6 +23,7 @@
 #include "utils/haptics.h"
 #include "mainwindow.h"
 #include "gothic.h"
+#include "camera.h"
 
 using A = KeyCodec::Action;
 using M = KeyCodec::Mapping;
@@ -617,12 +618,26 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
   if(!suppressRtUntilRelease)
     setWorldHeld(A::Parade,        s.rt>trigThresh);
 
-  // Right stick -> analog camera look. Y is unified with the touch overlay
-  // convention (stick up == look up); invertY flips it (review B6).
-  if(std::abs(s.rx) > deadZone || std::abs(s.ry) > deadZone) {
-    const float scale = float(dt) * lookSens;
+  // Right stick -> analog camera look. PlayerControl consumes yaw, but normal
+  // gameplay deliberately ignores Npc::setDirectionY; feed Camera as well so
+  // pitch works outside swimming/climbing. Apply the dead-zone per axis to
+  // avoid turning an X-only look into vertical drift.
+  const float rx = std::abs(s.rx)>deadZone ? s.rx : 0.f;
+  const float ry = std::abs(s.ry)>deadZone ? s.ry : 0.f;
+  if(rx!=0.f || ry!=0.f) {
+    const float scale = float(std::min<uint64_t>(dt,50)) * lookSens;
     const float yDir  = invertY ? -1.f : 1.f;
-    ctrl.onRotateMouse(-s.rx * scale, s.ry * scale * yDir);
+    const float yaw   = -rx * scale;
+    const float pitch =  ry * scale * yDir;
+
+    // Match MainWindow::tickMouse: camera receives {-pitch,yaw}, while the
+    // player receives {yaw,pitch}. gamepad.tick runs before the global dt
+    // clamp, hence the local 50 ms cap above.
+    if(auto* camera = Gothic::inst().camera();
+       camera!=nullptr && !camera->isCutscene() && !Gothic::inst().isPause()) {
+      camera->onRotateMouse(Tempest::PointF(-pitch,yaw));
+      ctrl.onRotateMouse(yaw,pitch);
+      }
     }
 
   // While locked, a hard horizontal flick of the right stick steps the locked

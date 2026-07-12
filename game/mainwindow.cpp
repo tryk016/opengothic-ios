@@ -282,7 +282,9 @@ void MainWindow::paintEvent(PaintEvent& event) {
 
   const float scale = Gothic::interfaceScale(this);
 #if defined(__MOBILE_PLATFORM__)
-  drawPadHints(p, scale);
+  // Context hints are intentionally disabled: Options -> Controls contains
+  // the complete controller layout and the transient bar obscured gameplay.
+  // drawPadHints(p, scale);
   if(auto* ring = gamepad.activeRing())
     ring->paint(p, inventory.itemRenderer(), Gothic::inst().player(), w(), h(), scale);
   else if(!inventory.isActive())
