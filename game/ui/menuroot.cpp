@@ -59,8 +59,12 @@ void MenuRoot::setMenu(std::string_view menuEv, KeyCodec::Action key) {
 
 void MenuRoot::setMenu(GameMenu *w) {
   removeAllWidgets();
-  if(w)
+  if(w) {
     addWidget(w);
+    // a fresh GameMenu has zero geometry until onTick(); without this call the
+    // menu stays invisible until a resize or the 100 ms timer catches up
+    w->onTick();
+    }
   current=w;
   }
 
