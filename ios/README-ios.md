@@ -75,6 +75,9 @@ on-screen alert instead of a crash.
 
 ## Controls (contextual Gothic scheme)
 
+Maintainers: the input pipeline, combat semantics, ring layout and device-test matrix
+are documented in [`CONTROLLER-TECHNICAL.md`](CONTROLLER-TECHNICAL.md).
+
 [![OpenGothic controller mapping for Xbox and PlayStation pads](../assets/controller/OpenGothic_Controller_Layout.svg)](../assets/controller/OpenGothic_Controller_Layout.svg)
 
 <details>

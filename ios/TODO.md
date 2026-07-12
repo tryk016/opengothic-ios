@@ -1,5 +1,8 @@
 # iOS port — status & backlog
 
+Controller architecture and its device verification matrix are maintained in
+[`CONTROLLER-TECHNICAL.md`](CONTROLLER-TECHNICAL.md).
+
 ## ⏳ Backlog — next round (updated 2026-07-12, device round 5)
 - [ ] **Right-stick vertical camera — implementation complete, device
       confirmation pending.** The iOS backend already supplied `ry`, but the
