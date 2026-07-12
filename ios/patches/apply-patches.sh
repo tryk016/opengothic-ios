@@ -109,6 +109,25 @@ else
   fi
 fi
 
+# Change: unlock ProMotion refresh. The CADisplayLink is created with default
+# settings, so iOS caps it at 60 Hz — and because one tick must fit sim +
+# render + present, a >16.7 ms cycle drops every other vsync, pinning the game
+# at a hard 30 fps. Ask for up to 120 Hz (min 30 lets the system lower the
+# cadence under thermal pressure). Pairs with the
+# CADisableMinimumFrameDurationOnPhone key in Info.plist.in; no effect on
+# 60 Hz (non-ProMotion) displays.
+if grep -q 'preferredFrameRateRange' "$VC"; then
+  echo "skip: iosapi.mm preferredFrameRateRange (already patched)"
+else
+  perl -0777 -pi -e 's/(window->displayLink = \[CADisplayLink displayLinkWithTarget:window selector:\@selector\(drawFrame\)\];)/$1\n  if (\@available(iOS 15.0, *)) {\n    window->displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 120, 120);\n    }/' "$VC"
+  if grep -q 'preferredFrameRateRange' "$VC"; then
+    echo "patched: iosapi.mm preferredFrameRateRange (30..120 Hz)"
+  else
+    echo "ERROR: failed to patch iosapi.mm preferredFrameRateRange (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
 # Fix: never let a C++ exception from event/render dispatch escape into the
 # fiber run-loop. Without a guard it unwinds through implProcessEvents into
 # implExec/main (no handler) -> std::terminate -> SIGABRT (crash to home).

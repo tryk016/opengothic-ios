@@ -63,6 +63,8 @@
   </array>
   <key>GCSupportsGameMode</key>
   <true/>
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.games</string>
 </dict>
