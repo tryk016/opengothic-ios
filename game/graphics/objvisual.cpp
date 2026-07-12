@@ -304,8 +304,3 @@ const Tempest::Matrix4x4& ObjVisual::bone(size_t i) const {
   return m;
   }
 
-bool ObjVisual::isAnimActive() const {
-  if(type==M_Mdl)
-    return mdl.view.pose().hasAnim();
-  return false;
-  }

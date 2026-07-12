@@ -35,7 +35,6 @@ class ObjVisual {
 
     const ProtoMesh* protoMesh() const;
     const Tempest::Matrix4x4& bone(size_t i) const;
-    bool isAnimActive() const;   // any animation layer sampled into the pose
 
   private:
     enum Type : uint8_t {

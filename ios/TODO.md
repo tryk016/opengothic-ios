@@ -1,30 +1,43 @@
 # iOS port — status & backlog
 
-## ⏳ Backlog — next round (reported 2026-07-12, device round 3)
-- [ ] **Torch cannot be stowed** — once lit/carried, the player cannot put the
-      torch back into the inventory. Investigate the torch use/stow path:
-      `Npc::processDefInvTorch` (npc.cpp), `invTorch` flag, `ITM_CAT_LIGHT`
-      use handling in `Inventory::use`, and what key/action stows it on PC.
-- [ ] **External-controller movement fix — IMPLEMENTED, CI GREEN; device
-      confirmation pending** (`6a5db6a8`). The implementation addresses two
-      code-level causes found in review: the physical stick was flattened to
-      digital full-speed actions with one threshold, and input snapshots were
-      coupled to rendered frames. Fix: stateful pad-owned
-      actions, `deadZone=0.25` / `releaseZone=0.15` hysteresis, proportional X
-      turning, neutral re-arm after rings/UI/`clearInput`, and an event-driven
-      GameController snapshot on a dedicated queue. A controller/lifecycle
-      epoch catches disconnect→reconnect or suspend→resume entirely between
-      frames; releases no longer guess inactive Heal/Potion actions. iOS build,
-      packaging and release passed in Actions run `29196747359`. Still verify
-      on hardware: 20 short X/Y flicks, ring/context transitions, disconnect +
-      background/resume, and 30 / 40–45 / 60 FPS; then move this item to Done.
-- [ ] **shadowResolution=512** — set as the new iOS default (1024 showed no
-      measurable fps gain on device; verify 512 and the visual cost).
-- [ ] **Remove the `[mobsi]` diagnostic logs** (interactive.cpp attach,
-      npc.cpp quitInteraction) after one clean confirmation round.
-- [ ] **Upstream PRs** (all device-confirmed in this fork): the
-      `Interactive::attach` root-vs-feet fix; `MenuRoot::setMenu` + onTick;
-      `fixNpcPosition` rejecting spots on top of interactive colliders.
+## ⏳ Backlog — next round (updated 2026-07-12, device round 4 pending)
+- [ ] **Torch stow — IMPLEMENTED, device confirmation pending.** Root cause:
+      lighting consumed the `ItLsTorch` item (`Inventory::use` ITM_TORCH
+      branch), the lit torch is only a hand visual, and the stow branch never
+      refunded the item — with the last torch lit there was no path back at
+      all (no inventory row, quick slot bailed on "not in inventory"). Fix:
+      (1) stowing refunds one `ItLsTorch` (light+stow is now lossless);
+      (2) `Inventory::use` stows the hand torch even at count 0 when called
+      with the torch cls; (3) the D-pad/touch quick slot falls through to that
+      path when the item is missing but a torch is lit. Verify on device:
+      bind torch to a slot, light → stow → light again; also stow via
+      inventory when a spare torch remains. (`processDefInvTorch`/`invTorch`
+      turned out to be only the temporary mobsi hide/restore, not a stow.)
+- [ ] **Post-jump hover — IMPLEMENTED, device confirmation pending.** After a
+      jump the character hung ~30 cm in the air for 0.2–0.5 s. Cause (upstream
+      bug, code identical to upstream): during `Jump` the engine trusts anim
+      root motion with no ground attach, and the `Jump→InAir` handoff starts
+      the fall from the whole-anim *average* velocity ≈ 0 — a 30 cm free fall
+      from rest takes ~0.25 s (g=0.00098 cm/ms²). Fix: when the jump anim
+      ends, snap to the ground if it is within `stepHeight()` (50 cm, the same
+      tolerance grounded movement uses); deep water excluded so jumps into
+      water still splash. A temporary `[jump] end: dY=…` log (movealgo.cpp)
+      confirms on-device; remove after one clean round. If hover persists,
+      the log will show `fall` + the case is the climb/jump-up path instead
+      (tickClimb end / tickJumpup — see recon notes in the session).
+- [ ] **External-controller movement fix — device confirmation pending**
+      (`6a5db6a8` + `df4d7f7e`, user-authored event-queue input model; CI
+      green in run `29196747359`). Verify on hardware: 20 short X/Y flicks,
+      ring/context transitions, disconnect + background/resume.
+- [ ] **shadowResolution=512** — new iOS default; verify fps + visual cost.
+- [ ] **Remove the `[jump]` diagnostic log** (movealgo.cpp Jump branch) after
+      one clean confirmation round. (`[mobsi]` logs removed 2026-07-12.)
+- [ ] **Upstream PRs** (device-confirmed in this fork): `Interactive::attach`
+      root-vs-feet fix; `MenuRoot::setMenu` + onTick; `fixNpcPosition`
+      rejecting spots on top of interactive colliders; once device-confirmed,
+      add the jump-end ground attach and the torch stow refund (both are
+      upstream bugs too — the second silently destroys a torch per
+      light+stow cycle on all platforms).
 
 ## ✅ Done — Remake-style D-pad, magic ring, shadows (2026-07-12, round 2)
 > **DEVICE-CONFIRMED (round 3):** mobsi levitation gone (player + NPCs), the
