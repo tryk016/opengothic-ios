@@ -29,11 +29,11 @@ void QuickRing::open(Npc& pl) {
     const Item& itm = *it;
     const auto  flg = itm.mainFlag();
     bool match = false;
-    if(kind==Weapons)
-      match = (flg & (ITM_CAT_NF|ITM_CAT_FF))!=0;
-    else
+    if(kind==Magic)
       // runes and scrolls share ITM_CAT_RUNE; selecting one equips it
-      match = (flg & (ITM_CAT_POTION|ITM_CAT_FOOD|ITM_CAT_RUNE))!=0;
+      match = (flg & ITM_CAT_RUNE)!=0;
+    else
+      match = (flg & (ITM_CAT_POTION|ITM_CAT_FOOD))!=0;
     if(!match)
       continue;
 
@@ -88,7 +88,7 @@ void QuickRing::paint(Painter& p, InventoryRenderer& ir, const Npc* pl,
   const int cy  = screenH/2;
 
   if(cells.empty()) {
-    std::string_view msg = (kind==Weapons) ? "no weapons" : "no items";
+    std::string_view msg = (kind==Magic) ? "no runes or scrolls" : "no items";
     const auto ts = fnt.textSize(msg);
     fnt.drawText(p, cx-ts.w/2, cy, msg);
     return;
@@ -141,7 +141,7 @@ void QuickRing::paint(Painter& p, InventoryRenderer& ir, const Npc* pl,
     fnt.drawText(p, px-ts.w/2, py+hs+ts.h, label);
     }
 
-  std::string_view title = (kind==Weapons) ? "Weapons" : "Items";
+  std::string_view title = (kind==Magic) ? "Magic" : "Items";
   const auto tts = fnt.textSize(title);
   fnt.drawText(p, cx-tts.w/2, cy+tts.h/2, title);
   }

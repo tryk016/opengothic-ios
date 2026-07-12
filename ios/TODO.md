@@ -1,5 +1,33 @@
 # iOS port — status & backlog
 
+## ✅ Done — Remake-style D-pad, magic ring, shadows (2026-07-12, round 2)
+- [x] **D-pad, Gothic-Remake style** — ▲ draws melee (`WeaponMele`), ▼ bow/
+      crossbow (`WeaponBow`), ◀/▶ are **player-assignable quick slots**: hold
+      ◀/▶ ~0.6 s on a highlighted inventory item to bind (short press still
+      navigates); persisted as `[GAMEPAD] quickSlotL/R` (item cls id);
+      unassigned slots keep the classic best-heal / best-mana behavior.
+      Touch overlay mirrors all of it (binding is pad-only for now).
+- [x] **RB = magic quick-ring** (runes + scrolls, `ITM_CAT_RUNE`); the LT item
+      ring is back to potions/food only. The old weapon ring is gone — ▲/▼
+      cover weapon draw; picking a specific weapon happens in the inventory.
+- [x] **Target switch = right-stick flick** while locked (>0.75 deflection,
+      350 ms cooldown) — frees the D-pad for the slots.
+- [x] **shadowResolution** — no longer hard-coded 2048: `[ENGINE]
+      shadowResolution` in Gothic.ini, default **1024 on iOS** (quarter fill
+      cost, mildly softer edges). Rebuilds live via setupSettings.
+- [x] **Mobsi levitation — ROOT CAUSE FOUND & FIXED** (device log round 1:
+      every attach lands ~1 m up, `nodeDy≈97 fixMoved=0 groundIsMobsi=0`).
+      ZS_POS is a skeleton-root point but `Interactive::attach` fed it to
+      `Npc::setPosition`, which expects the FEET — upstream regression
+      `ac2316d4` ("remove Npc::translateY") dropped the `y-npc.translateY()`
+      conversion, and `a2318ba2` (fixNpcPosition early-out when no collision)
+      removed the down-ray that used to mask it — a character floating 1 m up
+      collides with nothing, so `fixMoved=0`. Not iOS-specific: the May-17
+      Windows release (v0.92) has ac2316d4 but predates a2318ba2, hence "works
+      on Windows". Fix: convert root→feet via `mv-(centerPosition()-position())`
+      before `setPos` (pure-Y, preserves beds/ladders). **Upstream PR-ready.**
+      Diagnostics kept for one confirmation round (`s0=`/`lay=` fields added).
+
 Tracked work beyond the core "build + run + control" milestone.
 Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 "ideal gamepad" control spec.

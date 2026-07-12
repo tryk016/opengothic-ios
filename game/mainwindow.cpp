@@ -612,11 +612,13 @@ PadCtx MainWindow::padContext() const {
 
 #if defined(__MOBILE_PLATFORM__)
 bool MainWindow::padRingOpen() const          { return gamepad.ringOpen(); }
-void MainWindow::padOpenWeaponRing()          { gamepad.openWeaponRing(); }
+void MainWindow::padOpenMagicRing()           { gamepad.openMagicRing(); }
 void MainWindow::padOpenItemRing()            { gamepad.openItemRing(); }
 void MainWindow::padRingAim(float nx,float ny){ gamepad.ringAim(nx,ny); }
 void MainWindow::padRingCommit()              { gamepad.ringCommit(); }
 void MainWindow::padQuickSave()               { gamepad.quickSave(); }
+void MainWindow::padUseQuickSlot(int idx)     { gamepad.useQuickSlot(idx); }
+size_t MainWindow::padInventorySelectedCls()  { return inventory.selectedItemCls(); }
 bool MainWindow::padVideoActive() const       { return video.isActive(); }
 void MainWindow::padSkipVideo()               { video.skip(); }
 #endif
@@ -800,7 +802,7 @@ void MainWindow::drawPadHints(Painter& p, float scale) {
   switch(padContext()) {
     case PadCtx::World:
       hints = {{ {PadGlyph::A,"Action"},{PadGlyph::Y,"Weapon"},{PadGlyph::B,"Jump"},
-                 {PadGlyph::RT,"Block"},{PadGlyph::R3,"Lock"},{PadGlyph::RB,"Weapons"} }};
+                 {PadGlyph::RT,"Block"},{PadGlyph::R3,"Lock"},{PadGlyph::RB,"Magic"} }};
       n = 6; break;
     case PadCtx::Dialog:
       hints = {{ {PadGlyph::A,"Select"},{PadGlyph::B,"Skip"},{PadGlyph::DPadUp,"Choose"} }};

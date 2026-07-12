@@ -36,13 +36,14 @@ class GamepadInput {
     const QuickRing* activeRing() const;
 
     // Touch-overlay hooks (used when no pad is connected): open/aim/commit the
-    // rings and quick-save from on-screen taps.
+    // rings, quick-save and the assignable quick slots from on-screen taps.
     bool  ringOpen() const;
-    void  openWeaponRing();
+    void  openMagicRing();
     void  openItemRing();
     void  ringAim(float nx, float ny);
     void  ringCommit();
     void  quickSave();
+    void  useQuickSlot(int idx);           // 0 = D-pad left, 1 = D-pad right
 
   private:
     MainWindow&    owner;
@@ -51,13 +52,14 @@ class GamepadInput {
     PadCtx         prevCtx = PadCtx::Loading;
     bool           prevRT  = false;
 
-    QuickRing      ringWeapons{QuickRing::Weapons};
-    QuickRing      ringItems  {QuickRing::Items};
+    QuickRing      ringMagic{QuickRing::Magic};
+    QuickRing      ringItems{QuickRing::Items};
 
     void tickWorld (uint64_t dt, const GamepadState& s);
     void tickDialog(const GamepadState& s);
     void tickMenu  (const GamepadState& s);
-    void tickInvent(const GamepadState& s);
+    void tickInvent(uint64_t dt, const GamepadState& s);
+    bool assignQuickSlot(int idx);         // bind the inventory selection
 
     void edge  (bool now, bool before, KeyCodec::Action a);       // -> PlayerControl
     void uiEdge(bool now, bool before, KeyCodec::Action a);       // -> MainWindow::uiAction
@@ -82,4 +84,11 @@ class GamepadInput {
     bool  stuckProtect = true;  // L3+R3 hold -> warp to nearest waypoint
 
     uint64_t stuckHoldMs = 0;   // how long both sticks have been held
+
+    // Assignable quick slots (D-pad left/right): item class ids, persisted in
+    // Gothic.ini [GAMEPAD] quickSlotL/R. 0 = unassigned -> classic quick potion.
+    size_t   slotCls[2]    = {0,0};
+    uint64_t slotHoldMs[2] = {0,0};   // inventory: D-pad hold time (assign)
+    bool     slotHoldDone[2] = {};    // assign fired for this hold
+    uint64_t focusFlickCd  = 0;       // right-stick flick cooldown (target switch)
   };

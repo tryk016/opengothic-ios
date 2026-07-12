@@ -1,5 +1,12 @@
 #include "touchinput.h"
 
+#include <Tempest/Platform>
+
+// The on-screen pad exists only on mobile: MainWindow instantiates it (and
+// defines the pad* bridges it calls) under __MOBILE_PLATFORM__ only, so
+// desktop builds compile this TU empty.
+#if defined(__MOBILE_PLATFORM__)
+
 #include <Tempest/Painter>
 #include <Tempest/Event>
 #include <algorithm>
@@ -49,18 +56,18 @@ std::array<TouchInput::Btn,16> TouchInput::layout() const {
     { bx-(s+m),  by,        s, G::X, K::Key, A::Sneak         },
     { bx-(s+m),  by-(s+m),  s, G::Y, K::Key, A::Weapon        },
     // shoulders / triggers
-    { tR,        row0,      s, G::RB, K::WeaponRing, A::ActionGeneric },
-    { tR,        row1,      s, G::RT, K::Key,        A::Parade        },
-    { tL,        row0,      s, G::LB, K::QSave,      A::ActionGeneric },
-    { tL,        row1,      s, G::LT, K::ItemRing,   A::ActionGeneric },
+    { tR,        row0,      s, G::RB, K::MagicRing, A::ActionGeneric },
+    { tR,        row1,      s, G::RT, K::Key,       A::Parade        },
+    { tL,        row0,      s, G::LB, K::QSave,     A::ActionGeneric },
+    { tL,        row1,      s, G::LT, K::ItemRing,  A::ActionGeneric },
     // stick clicks
     { m,         H-H/3-m-s-m, s, G::L3, K::Key,  A::Walk          },
     { bx,        by-2*(s+m),  s, G::R3, K::Lock, A::ActionGeneric },
-    // d-pad
-    { dcx,       dcy-s, s, G::DPadUp,    K::Key,    A::Heal          },
-    { dcx,       dcy+s, s, G::DPadDown,  K::Key,    A::Potion        },
-    { dcx-s,     dcy,   s, G::DPadLeft,  K::FocusL, A::ActionGeneric },
-    { dcx+s,     dcy,   s, G::DPadRight, K::FocusR, A::ActionGeneric },
+    // d-pad, Gothic-Remake style: melee / ranged / two assignable quick slots
+    { dcx,       dcy-s, s, G::DPadUp,    K::Key,   A::WeaponMele    },
+    { dcx,       dcy+s, s, G::DPadDown,  K::Key,   A::WeaponBow     },
+    { dcx-s,     dcy,   s, G::DPadLeft,  K::SlotL, A::ActionGeneric },
+    { dcx+s,     dcy,   s, G::DPadRight, K::SlotR, A::ActionGeneric },
     // system
     { W/2-(s+m), m, s, G::View, K::Key, A::Inventory },
     { W/2+m,     m, s, G::Menu, K::Key, A::Escape    },
@@ -165,11 +172,11 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
             ctrl.onKeyPressed(b.act, Event::K_NoKey, M::Primary);
             btnDown[id] = b.act;
             return;
-          case TAct::WeaponRing: owner.padOpenWeaponRing(); ringId = id; return;
+          case TAct::MagicRing:  owner.padOpenMagicRing();  ringId = id; return;
           case TAct::ItemRing:   owner.padOpenItemRing();   ringId = id; return;
           case TAct::Lock:       ctrl.toggleTargetLock();   return;
-          case TAct::FocusL:     ctrl.focusLeft();          return;
-          case TAct::FocusR:     ctrl.focusRight();         return;
+          case TAct::SlotL:      owner.padUseQuickSlot(0);  return;
+          case TAct::SlotR:      owner.padUseQuickSlot(1);  return;
           case TAct::QSave:      owner.padQuickSave();       return;
           }
         }
@@ -278,3 +285,5 @@ void TouchInput::mouseUpEvent(MouseEvent& e) {
 
   e.ignore();
   }
+
+#endif

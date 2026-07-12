@@ -116,13 +116,14 @@ FPS_Limit=60       ; 0 = uncapped (default). Don't set below ~45 or you undo Pro
 | Crouch / dive / sneak | X | □ |
 | Move (stick left/right = turn) | Left stick | Left stick |
 | Look | Right stick | Right stick |
-| Weapon quick-ring | RB | R1 |
-| Item quick-ring (potions, food, runes/scrolls) | LT | L2 |
+| Magic quick-ring (runes, scrolls) | RB | R1 |
+| Item quick-ring (potions, food) | LT | L2 |
 | Toggle sprint | L3 | L3 |
 | Lock-on target | R3 | R3 |
 | Block / parry | RT | R2 |
-| Quick heal / quick mana potion | D-pad ▲ / ▼ | D-pad ▲ / ▼ |
-| Switch locked target | D-pad ◀ / ▶ | D-pad ◀ / ▶ |
+| Draw melee weapon / bow | D-pad ▲ / ▼ | D-pad ▲ / ▼ |
+| Quick slots (player-assignable) | D-pad ◀ / ▶ | D-pad ◀ / ▶ |
+| Switch locked target | flick Right stick ◀/▶ | flick Right stick ◀/▶ |
 | Inventory | View | Touchpad |
 | Pause menu | Menu | Options |
 | Quick save | LB + Menu | L1 + Options |
@@ -134,8 +135,14 @@ Notes on feel and on-screen input:
   with the right stick, release to equip a weapon / use an item. Contents are
   pulled live from your inventory and shown as **real 3D item icons**.
 - **Target lock-on** (R3) pins the current focus via the engine's native focus
-  (not a camera hack); it auto-releases when the target dies or leaves, and
-  D-pad ◀ / ▶ switch between targets.
+  (not a camera hack); it auto-releases when the target dies or leaves. While
+  locked, a hard horizontal **flick of the right stick** steps to the next /
+  previous target.
+- **Quick slots** (D-pad ◀ / ▶) fire any item you bind to them — potion, food,
+  rune, scroll, torch. To bind: open the inventory, highlight the item and
+  **hold D-pad ◀ or ▶ for ~0.6 s** (a short press still navigates). Slots
+  persist in `Gothic.ini`; unassigned slots drink the best healing (◀) / mana
+  (▶) potion.
 - **On-screen virtual gamepad:** with no controller, a full pad is drawn during
   play (buttons, sticks, D-pad, move + camera area). Tap a ring button, drag to
   aim, release to activate. It **auto-hides the moment a controller connects**.
@@ -164,6 +171,8 @@ vidResIndex=2           ; 3D render scale: 0=full, 1=upscale(75%), 2=upscale(hal
 
 [ENGINE]
 zCloudShadowScale=0     ; 0 = SSAO off ("Cloud shadows" in the video menu)
+shadowResolution=1024   ; shadow-map size (iOS default 1024; PC default 2048;
+                        ; 512 = more fps, softer shadow edges)
 
 [GAMEPAD]
 deadZone=0.25           ; stick dead zone (0..1)
@@ -173,6 +182,8 @@ invertY=0               ; 1 = invert vertical look
 saveSlots=5             ; rotating quick-save slot count
 ;noStuckProtect=1       ; disable the L3+R3 unstuck warp
 ;padQuickSlot=<n>       ; managed automatically (rotating save index)
+;quickSlotL=<cls>       ; managed automatically (D-pad ◀ assignment)
+;quickSlotR=<cls>       ; managed automatically (D-pad ▶ assignment)
 ```
 
 A connected controller works out of the box — every `[GAMEPAD]` value above is

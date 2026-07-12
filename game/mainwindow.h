@@ -57,13 +57,15 @@ class MainWindow : public Tempest::Window {
     void   uiAction(KeyCodec::Action a);       // window-level Escape/Inventory/Log/Status
 
 #if defined(__MOBILE_PLATFORM__)
-    // Touch-overlay -> gamepad ring/quick-save bridges.
+    // Touch-overlay -> gamepad ring/quick-save/quick-slot bridges.
     bool padRingOpen() const;
-    void padOpenWeaponRing();
+    void padOpenMagicRing();
     void padOpenItemRing();
     void padRingAim(float nx, float ny);
     void padRingCommit();
     void padQuickSave();
+    void padUseQuickSlot(int idx);
+    size_t padInventorySelectedCls();  // highlighted inventory item, 0 if none
     bool padVideoActive() const;               // an intro/cutscene bink is playing
     void padSkipVideo();                        // skip it (mirrors desktop Esc)
 #endif

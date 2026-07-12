@@ -57,6 +57,9 @@ class InventoryMenu : public Tempest::Widget {
     // engine flushes whatever was collected into it each frame
     InventoryRenderer& itemRenderer() { return renderer; }
 
+    // class id of the currently highlighted item (quick-slot assignment)
+    size_t selectedItemCls();
+
     void  keyDownEvent  (Tempest::KeyEvent&   e) override;
     void  keyRepeatEvent(Tempest::KeyEvent&   e) override;
     void  keyUpEvent    (Tempest::KeyEvent&   e) override;

@@ -29,7 +29,7 @@ class TouchInput : public Tempest::Widget {
 
   private:
     // What a World button does when tapped.
-    enum class TAct : uint8_t { Key, WeaponRing, ItemRing, Lock, FocusL, FocusR, QSave };
+    enum class TAct : uint8_t { Key, MagicRing, ItemRing, Lock, SlotL, SlotR, QSave };
     struct Btn  { int x, y, s; PadGlyph::Btn glyph; TAct kind; KeyCodec::Action act; };
     struct MBtn { int x, y, s; Tempest::Event::KeyType key; };
 

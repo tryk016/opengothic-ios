@@ -442,6 +442,20 @@ size_t InventoryMenu::pagesCount() const {
   return 1;
   }
 
+size_t InventoryMenu::selectedItemCls() {
+  // quick-slot binding works only on the player's own equip page: in chest /
+  // trade view the highlighted item may belong to the other actor, and during
+  // lockpicking left/right are the pick combination
+  if(state!=State::Equip)
+    return 0;
+  auto& pg  = activePage();
+  auto& sel = activePageSel();
+  auto  it  = pg.get(sel.sel);
+  if(!it.isValid())
+    return 0;
+  return it->clsId();
+  }
+
 const InventoryMenu::Page &InventoryMenu::activePage() {
   if(pageOth!=nullptr)
     return *(page==0 ? pageOth : pagePl);

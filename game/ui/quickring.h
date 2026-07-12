@@ -16,7 +16,7 @@ class InventoryRenderer;
 // meshes collected into the shared InventoryRenderer (flushed by the engine).
 class QuickRing {
   public:
-    enum Kind : uint8_t { Weapons, Items };
+    enum Kind : uint8_t { Magic, Items };
     explicit QuickRing(Kind k) : kind(k) {}
 
     bool isOpen() const { return opened; }
