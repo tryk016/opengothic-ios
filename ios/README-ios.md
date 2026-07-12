@@ -73,6 +73,34 @@ on-screen alert instead of a crash.
 
 ---
 
+## Recommended settings (do this first)
+
+The engine defaults to full native resolution with SSAO on — on a phone that
+means ~17–25 fps, sluggish menus and slow saves. Set this once after the first
+launch; the change applies live, no restart needed:
+
+**Path A — in-game menu (no file editing):**
+1. Options → Video → *resolution*: **upscale(half)** (safe everywhere) or
+   **upscale(75%)** (newer devices, e.g. A17 Pro / A18).
+2. Options → Video → untick **Cloud shadows** — in OpenGothic this switch is
+   actually SSAO; disabling it is the single biggest fps win.
+
+Only the 3D scene is rendered at the reduced resolution and upscaled (Lanczos);
+HUD, menus and subtitles always stay sharp at native resolution.
+
+**Path B — the same via config files:** in `Documents/Gothic.ini` set
+`vidResIndex` and `zCloudShadowScale` as shown in the config reference below.
+
+**Optional frame cap** — steadier pacing and less thermal throttling on long
+sessions. Create `Documents/system/SystemPack.ini` (if it does not exist):
+
+```ini
+[PARAMETERS]
+FPS_Limit=30       ; 0 = uncapped
+```
+
+---
+
 ## Controls (Gothic Classic scheme)
 
 | Function | Xbox | PS5 |
@@ -95,20 +123,34 @@ on-screen alert instead of a crash.
 ---
 ## Config reference (Documents/Gothic.ini)
 
+`Documents/Gothic.ini` is created by the app on first run. Its values override
+the `system/Gothic.ini` you copied from the PC, so this is the right place for
+device-specific tweaks. Add only the entries you want to change:
+
+```ini
 [GAME]
 showFpsCounter=1        ; on-screen FPS counter (mobile)
 language=2              ; force Polish if you have Polish data
 useQuickSaveKeys=1      ; enable quick save/load (may default off)
 
-[GAMEPAD]
-deadZone=0.25
-triggerThreshold=0.50
-lookSensitivity=0.20
-invertY=0
-saveSlots=5             ; rotating quick-save slot count
-; noStuckProtect=1      ; disable the L3+R3 unstuck warp
-; padQuickSlot=<n>      ; managed automatically (rotating save index)
+[INTERNAL]
+vidResIndex=2           ; 3D render scale: 0=full, 1=upscale(75%), 2=upscale(half)
 
+[ENGINE]
+zCloudShadowScale=0     ; 0 = SSAO off ("Cloud shadows" in the video menu)
+
+[GAMEPAD]
+deadZone=0.25           ; stick dead zone (0..1)
+triggerThreshold=0.50   ; how far RT/R2 must be pressed to register (0..1)
+lookSensitivity=0.20    ; right-stick look speed
+invertY=0               ; 1 = invert vertical look
+saveSlots=5             ; rotating quick-save slot count
+;noStuckProtect=1       ; disable the L3+R3 unstuck warp
+;padQuickSlot=<n>       ; managed automatically (rotating save index)
+```
+
+A connected controller works out of the box — every `[GAMEPAD]` value above is
+the built-in default. Add a line only when you want a different value.
 
 ## Known limitations / follow-ups
 - **Quick save/load** combos are detected but not yet bound to an engine action
