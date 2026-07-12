@@ -31,4 +31,13 @@ namespace PadGlyph {
   // Bundled Xelu controller art for a button, or nullptr to use the drawn
   // fallback. Loaded lazily; iOS-only (padglyphtex.mm), nullptr elsewhere.
   const Tempest::Texture2d* texture(Btn b);
+
+  // Full-pad line-art (XboxSeriesX_Diagram) for the controls-help screen.
+  // nullptr when not bundled (desktop) - callers fall back to the key list.
+  const Tempest::Texture2d* diagram();
+
+  // Controller-style D-pad art for the diagram screen. texture() maps the
+  // D-pad to keyboard-arrow art for the compact hint bar; the diagram wants
+  // the real pad glyphs instead. nullptr when not bundled or not a D-pad btn.
+  const Tempest::Texture2d* dpadTexture(Btn b);
   }

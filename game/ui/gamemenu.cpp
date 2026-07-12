@@ -6,11 +6,13 @@
 #include <Tempest/Dialog>
 
 #include <algorithm>
+#include <cctype>
 
 #include "utils/string_frm.h"
 #include "world/objects/npc.h"
 #include "world/world.h"
 #include "ui/menuroot.h"
+#include "ui/paddiagram.h"
 #include "utils/gthfont.h"
 #include "utils/fileutil.h"
 #include "utils/keycodec.h"
@@ -282,6 +284,16 @@ GameMenu::GameMenu(MenuRoot &owner, KeyCodec& keyCodec, zenkit::DaedalusVm& vm, 
 
   back = Resources::loadTexture(menu->back_pic);
 
+  // Without a keyboard the bindings list is dead weight: when the bundled pad
+  // line-art is available (iOS) the controls page shows the gamepad layout
+  // instead (ui/paddiagram.cpp). Detected by name to keep MENU.DAT untouched.
+  {
+  std::string sec(menuSection);
+  for(auto& c:sec)
+    c = char(std::toupper(static_cast<unsigned char>(c)));
+  padDiagramPage = sec.find("CONTROLS")!=std::string::npos;
+  }
+
   initItems();
   float infoX = 1000.0f/scriptDiv;
   float infoY = 7500.0f/scriptDiv;
@@ -385,6 +397,14 @@ void GameMenu::paintEvent(PaintEvent &e) {
     p.setBrush(*back);
     p.drawRect(0,0,w(),h(),
                0,0,back->w(),back->h());
+    }
+
+  if(padDiagramPage && PadDiagram::available()) {
+    auto& fnt = Resources::font(scale);
+    PadDiagram::draw(p, fnt, w(), h(), scale);
+    if(owner.hasVersionLine())
+      fnt.drawText(p, w()-fnt.textSize(appBuild).w-int(25*scale), h()-int(25*scale), appBuild);
+    return;
     }
 
   for(auto& hItem:hItems)
@@ -589,6 +609,12 @@ void GameMenu::resizeEvent(SizeEvent &) {
   }
 
 void GameMenu::onKeyboard(KeyCodec::Action key) {
+  // The pad-layout page is a static picture: navigating the hidden item list
+  // under it would edit invisible bindings. Escape/B still closes the page
+  // through MenuRoot; the touch overlay has its own Back button.
+  if(padDiagramPage && PadDiagram::available())
+    return;
+
   auto sel = selectedItem();
   if(sel!=nullptr && isHorSelectable(sel->handle)) {
     if(key==KeyCodec::Left)

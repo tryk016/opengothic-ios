@@ -142,7 +142,9 @@ Notes on feel and on-screen input:
   rune, scroll, torch. To bind: open the inventory, highlight the item and
   **hold D-pad ◀ or ▶ for ~0.6 s** (a short press still navigates). Slots
   persist in `Gothic.ini`; unassigned slots drink the best healing (◀) / mana
-  (▶) potion.
+  (▶) potion. A slot bound to the torch toggles it: first press lights the
+  torch, second press stows it back into the inventory (bind the torch while
+  one is still in the inventory — a lit torch has no row to highlight).
 - **Left-stick response:** forward/back keeps Gothic's animation-driven motion
   but uses separate press/release thresholds; horizontal turning is scaled by
   the stick deflection. Rings, UI transitions, controller resets and app resume
@@ -152,6 +154,11 @@ Notes on feel and on-screen input:
   aim, release to activate. It **auto-hides the moment a controller connects**.
 - **Controls-help hint bar** flashes context-sensitive button prompts, and a
   **lock-on reticle** brackets the pinned target (gamepad only).
+- **Controller-layout screen:** Options → Controls shows a full pad diagram
+  (Xelu line-art) with leader lines, button glyphs and localized labels
+  (EN/DE/PL) for the whole mapping — instead of the keyboard bindings list,
+  which is dead weight without a keyboard. B/Escape (or the touch Back button)
+  returns to Options.
 - **Haptics** fire on taking damage, on lock-on / ring-commit, and on quick-save.
 - **HUD is safe-area aware** — HP/mana/swim bars, world clock, fps counter and
   the hint bar avoid the notch / Dynamic Island and the rounded corners; the 3D

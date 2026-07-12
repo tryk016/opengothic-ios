@@ -11,4 +11,12 @@ const Tempest::Texture2d* PadGlyph::texture(Btn) {
   return nullptr;
   }
 
+const Tempest::Texture2d* PadGlyph::dpadTexture(Btn) {
+  return nullptr;
+  }
+
+const Tempest::Texture2d* PadGlyph::diagram() {
+  return nullptr;
+  }
+
 #endif

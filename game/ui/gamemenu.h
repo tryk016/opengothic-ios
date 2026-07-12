@@ -78,6 +78,9 @@ class GameMenu : public Tempest::Widget {
     uint32_t                              curItem=0;
     bool                                  exitFlag=false;
     bool                                  closeFlag=false;
+    // Controls page shows the gamepad-layout picture instead of the keyboard
+    // bindings list when the bundled pad art is available (see paddiagram.h).
+    bool                                  padDiagramPage=false;
 
     KeyCodec::Action                      kClose = KeyCodec::Escape;
 

@@ -37,37 +37,66 @@ static const char* glyphFile(PadGlyph::Btn b) {
   return nullptr;
   }
 
-const Tempest::Texture2d* PadGlyph::texture(Btn b) {
-  static std::array<Texture2d,18> cache;
-  static std::array<uint8_t,18>   state{};   // 0=unloaded, 1=loaded, 2=missing
-  const size_t i = size_t(b);
-  if(i>=cache.size())
-    return nullptr;
+static const char* dpadFile(PadGlyph::Btn b) {
+  switch(b) {
+    case PadGlyph::DPadUp:    return "XboxSeriesX_Dpad_Up";
+    case PadGlyph::DPadDown:  return "XboxSeriesX_Dpad_Down";
+    case PadGlyph::DPadLeft:  return "XboxSeriesX_Dpad_Left";
+    case PadGlyph::DPadRight: return "XboxSeriesX_Dpad_Right";
+    default:                  return nullptr;
+    }
+  }
 
-  if(state[i]==0) {
-    state[i] = 2;
-    @autoreleasepool {
-      const char* nm = glyphFile(b);
-      if(nm!=nullptr) {
-        NSString* n   = [NSString stringWithUTF8String:nm];
-        NSString* pth = [[NSBundle mainBundle] pathForResource:n ofType:@"png"];
-        if(pth!=nil) {
-          try {
-            Pixmap pm(pth.UTF8String);
-            if(!pm.isEmpty()) {
-              cache[i] = Resources::loadTexturePm(pm);
-              state[i] = 1;
-              }
-            }
-          catch(...) {
-            state[i] = 2;
-            }
+// Load one bundled PNG into `tex`. `state`: 0=unloaded, 1=loaded, 2=missing.
+static void loadBundled(const char* nm, Texture2d& tex, uint8_t& state) {
+  if(state!=0)
+    return;
+  state = 2;
+  if(nm==nullptr)
+    return;
+  @autoreleasepool {
+    NSString* n   = [NSString stringWithUTF8String:nm];
+    NSString* pth = [[NSBundle mainBundle] pathForResource:n ofType:@"png"];
+    if(pth!=nil) {
+      try {
+        Pixmap pm(pth.UTF8String);
+        if(!pm.isEmpty()) {
+          tex   = Resources::loadTexturePm(pm);
+          state = 1;
           }
+        }
+      catch(...) {
+        state = 2;
         }
       }
     }
+  }
 
+const Tempest::Texture2d* PadGlyph::texture(Btn b) {
+  static std::array<Texture2d,18> cache;
+  static std::array<uint8_t,18>   state{};
+  const size_t i = size_t(b);
+  if(i>=cache.size())
+    return nullptr;
+  loadBundled(glyphFile(b), cache[i], state[i]);
   return state[i]==1 ? &cache[i] : nullptr;
+  }
+
+const Tempest::Texture2d* PadGlyph::dpadTexture(Btn b) {
+  static std::array<Texture2d,18> cache;
+  static std::array<uint8_t,18>   state{};
+  const size_t i = size_t(b);
+  if(i>=cache.size())
+    return nullptr;
+  loadBundled(dpadFile(b), cache[i], state[i]);
+  return state[i]==1 ? &cache[i] : nullptr;
+  }
+
+const Tempest::Texture2d* PadGlyph::diagram() {
+  static Texture2d cache;
+  static uint8_t   state = 0;
+  loadBundled("XboxSeriesX_Diagram", cache, state);
+  return state==1 ? &cache : nullptr;
   }
 
 #endif
