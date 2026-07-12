@@ -84,7 +84,7 @@ jobs:
                 "developerName": "Try (engine) · iOS port",
                 "subtitle": "Unofficial iOS port of OpenGothic",
                 "localizedDescription": "Unofficial iOS port of OpenGothic — an open-source re-implementation of Gothic II: Night of the Raven. Requires your own legally-owned Gothic II game data (no assets included). Work in progress.",
-                "iconURL": "$RAW/scr0.png",
+                "iconURL": "$RAW/ios/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
                 "tintColor": "8B0000",
                 "category": "games",
                 "version": "$VERSION",
