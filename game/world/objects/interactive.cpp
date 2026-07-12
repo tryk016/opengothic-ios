@@ -796,7 +796,13 @@ bool Interactive::attach(Npc& npc, Interactive::Pos& to) {
     npc.setCurrentItem(it);
     }
 
-  if(!setPos(npc,mv))
+  // ZS_POS is a skeleton-root point, while Npc::setPosition expects the feet:
+  // remove the npc's own root elevation (pose translateY, ~1 m for a human),
+  // else the user ends up floating that meter above the ground for the whole
+  // use animation. The distance check above correctly compares root-to-root.
+  const Tempest::Vec3 feet = mv - (npc.centerPosition() - npc.position());
+
+  if(!setPos(npc,feet))
     return false;
 
   setDir(npc,mat);
@@ -811,7 +817,9 @@ bool Interactive::attach(Npc& npc, Interactive::Pos& to) {
                     " dyGround=",      int(fin.y-gnd.v.y),
                     " groundIsMobsi=", gnd.vob!=nullptr ? 1 : 0,
                     " nodeDy=",        int(mv.y-position().y),
-                    " fixMoved=",      int((fin-mv).length()),
+                    " fixMoved=",      int((fin-feet).length()),
+                    " s0=",            visual.hasAnim("S_S0") ? 1 : 0,
+                    " lay=",           visual.isAnimActive() ? 1 : 0,
                     npc.isPlayer() ? " (player)" : "");
   }
 
