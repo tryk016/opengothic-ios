@@ -1,7 +1,9 @@
 name: iOS build
 
 # Production branches build an UNSIGNED .ipa and publish it to the "latest"
-# release. The codex/ios-performance branch and its experiment branches instead
+# release. Builds from master publish it as a stable release; other production
+# branches keep it marked as a prerelease. The codex/ios-performance branch and
+# its experiment branches instead
 # create an ad-hoc-signed, entitlement-carrying SideStore test artifact and
 # never update "latest".
 #
@@ -18,6 +20,7 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - 'scr0.png'
   workflow_dispatch:
     inputs:
       sidestore_memory_test:
@@ -175,8 +178,13 @@ jobs:
           \`${{ github.server_url }}/${{ github.repository }}/releases/download/latest/apps.json\`
 
           Requires your own legally-owned Gothic II data. No game assets are included."
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            RELEASE_STATUS=(--prerelease=false --latest)
+          else
+            RELEASE_STATUS=(--prerelease)
+          fi
           if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest --prerelease --notes "$NOTES"
+            gh release edit latest "${RELEASE_STATUS[@]}" --notes "$NOTES"
             # --clobber can hit "ReleaseAsset.name already exists" (HTTP 422)
             # when a previous upload left a stale/partial asset behind. Delete
             # explicitly first, then upload fresh; retry once for API races.
@@ -187,7 +195,7 @@ jobs:
               { sleep 10; gh release upload latest OpenGothic-unsigned.ipa apps.json --clobber; }
           else
             gh release create latest OpenGothic-unsigned.ipa apps.json \
-              --title "OpenGothic iOS — latest" --prerelease --notes "$NOTES"
+              --title "OpenGothic iOS — latest" "${RELEASE_STATUS[@]}" --notes "$NOTES"
           fi
 
       - name: Upload .ipa artifact (backup, for logged-in users)
