@@ -174,13 +174,15 @@ lookSensitivity=0.20
 invertY=0
 ```
 
-Optional diagnostics and recovery settings:
+Optional recovery setting:
 
 ```ini
 [GAMEPAD]
-debugInput=1
 noStuckProtect=1
 ```
+
+The temporary `debugInput` transition trace was retired after device validation;
+controller faults now use normal error reporting instead of per-input logging.
 
 Keep `releaseZone < deadZone`. `crossAxisGuard` raises the activation threshold of
 the perpendicular left-stick axis and prevents imperfect cardinal motion from

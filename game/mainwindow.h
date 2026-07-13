@@ -193,7 +193,6 @@ class MainWindow : public Tempest::Window {
       std::string         slot;
       std::string         name;
       Tempest::Attachment preview;
-      uint64_t            requestedAt = 0;
       uint8_t             frameId = 0;
 
       bool active() const { return stage!=Stage::None; }

@@ -481,8 +481,6 @@ void GameMenu::setupIosFpsLimitOption() {
     fpsLabel->handle->text[1] = help;
     }
 
-  Log::i("iOS menu: replaced GAME/useGothic1Controls with ENGINE/zMaxFpsMode, label=",
-         fpsLabel!=nullptr ? fpsLabel->name : "embedded-only");
 #endif
   }
 

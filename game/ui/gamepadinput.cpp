@@ -10,7 +10,6 @@
 #include <Tempest/Application>
 #include <Tempest/Event>
 #include <cmath>
-#include <cstdio>
 #include <algorithm>
 #include <initializer_list>
 #include <string>
@@ -31,57 +30,6 @@ using M = KeyCodec::Mapping;
 using Tempest::Event;
 
 namespace {
-const char* actionName(A a) {
-  switch(a) {
-    case A::Forward:       return "Forward";
-    case A::Back:          return "Back";
-    case A::RotateL:       return "RotateL";
-    case A::RotateR:       return "RotateR";
-    case A::ActionGeneric: return "Action";
-    case A::Jump:          return "Jump";
-    case A::Parade:        return "Parade";
-    case A::PadAttack:     return "PadAttack";
-    case A::PadAim:        return "PadAim";
-    case A::PadAttackLeft: return "PadAttackLeft";
-    case A::PadAttackRight:return "PadAttackRight";
-    case A::PadSpecial:    return "PadSpecial";
-    default:                return "Other";
-    }
-  }
-
-const char* buttonName(GamepadButton b) {
-  switch(b) {
-    case GamepadButton::A:         return "A";
-    case GamepadButton::B:         return "B";
-    case GamepadButton::X:         return "X";
-    case GamepadButton::Y:         return "Y";
-    case GamepadButton::LB:        return "LB";
-    case GamepadButton::RB:        return "RB";
-    case GamepadButton::LT:        return "LT";
-    case GamepadButton::RT:        return "RT";
-    case GamepadButton::L3:        return "L3";
-    case GamepadButton::R3:        return "R3";
-    case GamepadButton::DpadUp:    return "DpadUp";
-    case GamepadButton::DpadDown:  return "DpadDown";
-    case GamepadButton::DpadLeft:  return "DpadLeft";
-    case GamepadButton::DpadRight: return "DpadRight";
-    case GamepadButton::Menu:      return "Menu";
-    case GamepadButton::Options:   return "Options";
-    }
-  return "Unknown";
-  }
-
-const char* contextName(PadCtx ctx) {
-  switch(ctx) {
-    case PadCtx::World:     return "World";
-    case PadCtx::Dialog:    return "Dialog";
-    case PadCtx::Menu:      return "Menu";
-    case PadCtx::Inventory: return "Inventory";
-    case PadCtx::Loading:   return "Loading";
-    }
-  return "Unknown";
-  }
-
 // Sloped axial dead-zone: a dominant component raises the activation threshold
 // of the perpendicular component. This keeps imperfect cardinal stick motion
 // from becoming a full second digital action while preserving true diagonals.
@@ -96,28 +44,6 @@ constexpr float slopedAxisThreshold(float deadZone, float crossAxis,
 static_assert(slopedAxisThreshold(0.25f, 0.960f, 0.12f)>0.269f);
 static_assert(slopedAxisThreshold(0.25f,-0.948f, 0.12f)>0.304f);
 static_assert(slopedAxisThreshold(0.25f, 0.269f, 0.12f)<0.960f);
-
-bool buttonDown(const GamepadState& s, GamepadButton b) {
-  switch(b) {
-    case GamepadButton::A:         return s.a;
-    case GamepadButton::B:         return s.b;
-    case GamepadButton::X:         return s.x;
-    case GamepadButton::Y:         return s.y;
-    case GamepadButton::LB:        return s.lb;
-    case GamepadButton::RB:        return s.rb;
-    case GamepadButton::LT:        return s.ltPressed;
-    case GamepadButton::RT:        return s.rtPressed;
-    case GamepadButton::L3:        return s.l3;
-    case GamepadButton::R3:        return s.r3;
-    case GamepadButton::DpadUp:    return s.dup;
-    case GamepadButton::DpadDown:  return s.ddown;
-    case GamepadButton::DpadLeft:  return s.dleft;
-    case GamepadButton::DpadRight: return s.dright;
-    case GamepadButton::Menu:      return s.menu;
-    case GamepadButton::Options:   return s.options;
-    }
-  return false;
-  }
 }
 
 GamepadInput::GamepadInput(MainWindow& owner, PlayerControl& ctrl)
@@ -140,7 +66,6 @@ void GamepadInput::loadConfig() {
   lookSens   = f("lookSensitivity",  0.20f);
   invertY    = Gothic::settingsGetI("GAMEPAD","invertY")!=0;
   stuckProtect = (Gothic::settingsGetI("GAMEPAD","noStuckProtect")==0); // opt-out
-  debugInput = Gothic::settingsGetI("GAMEPAD","debugInput")!=0;
   }
 
 void GamepadInput::openMap() {
@@ -309,12 +234,6 @@ void GamepadInput::setWorldHeld(A a, bool held) {
   if(current==held)
     return;
   current = held;
-  if(debugInput) {
-    std::fprintf(stderr, "[pad] t=%llu ctx=World lx=%.3f ly=%.3f action=%s event=%s\n",
-                 static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                 double(debugLx), double(debugLy), actionName(a), held ? "press" : "release");
-    std::fflush(stderr);
-    }
   if(held)
     ctrl.onKeyPressed(a, Event::K_NoKey, M::Primary);
   else
@@ -396,20 +315,11 @@ void GamepadInput::key(bool now, bool before, Event::KeyType k) {
     }
   }
 
-void GamepadInput::keyTap(Event::KeyType k, PadCtx ctx,
-                          const GamepadButtonEvent& source,
-                          const GamepadState& state) {
+void GamepadInput::keyTap(Event::KeyType k, PadCtx,
+                          const GamepadButtonEvent&,
+                          const GamepadState&) {
   Tempest::KeyEvent ev(k);
   owner.dispatchKey(ev);
-  if(debugInput) {
-    std::fprintf(stderr,
-                 "[pad] t=%llu ctx=%s button=%s event=tap seq=%llu sample=%llu latched=%d\n",
-                 static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                 contextName(ctx), buttonName(source.button),
-                 static_cast<unsigned long long>(source.sequence),
-                 static_cast<unsigned long long>(state.sampleSequence),
-                 buttonDown(state, source.button) ? 0 : 1);
-    }
   }
 
 void GamepadInput::tickWorldSystemButtons(
@@ -491,19 +401,6 @@ void GamepadInput::releaseAllWorld() {
 void GamepadInput::tick(uint64_t dt) {
   GamepadInputFrame input = Gamepad::consume();
   const GamepadState& s = input.state;
-  debugLx = s.lx;
-  debugLy = s.ly;
-
-  if(debugInput && (dt>=100 || input.droppedEvents!=0)) {
-    std::fprintf(stderr,
-                 "[pad] t=%llu frame-gap dt=%llu sample=%llu events=%zu dropped=%llu lx=%.3f ly=%.3f\n",
-                 static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                 static_cast<unsigned long long>(dt),
-                 static_cast<unsigned long long>(s.sampleSequence),
-                 input.events.size(),
-                 static_cast<unsigned long long>(input.droppedEvents),
-                 double(s.lx), double(s.ly));
-    }
   // Once the bounded queue overflows its remaining prefix may begin with a
   // release whose matching press was discarded. Drop that batch and reconcile
   // held world controls from the fresh final snapshot instead.
@@ -519,12 +416,6 @@ void GamepadInput::tick(uint64_t dt) {
     releaseAllWorld();
     ringCancel();
     observedControllerGen = s.generation;
-    if(debugInput) {
-      std::fprintf(stderr, "[pad] t=%llu controller-reset generation=%llu\n",
-                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                   static_cast<unsigned long long>(s.generation));
-      std::fflush(stderr);
-      }
     }
 
   const uint64_t inputGen = ctrl.inputGeneration();
@@ -541,12 +432,6 @@ void GamepadInput::tick(uint64_t dt) {
     ctrl.setGamepadTurn(0.f);
     suppressCarriedWorldInput();
     observedInputGen = inputGen;
-    if(debugInput) {
-      std::fprintf(stderr, "[pad] t=%llu input-reset generation=%llu\n",
-                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                   static_cast<unsigned long long>(inputGen));
-      std::fflush(stderr);
-      }
     }
   if(!s.connected) {                 // pad vanished mid-hold -> release everything (B5)
     if(prev.connected) {
@@ -708,8 +593,6 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
   if(!suppressTurnUntilNeutral) {
     // X is genuinely analog: guard only activation, then remove the fixed
     // inner dead-zone and scale the classic turn rate by the remaining -1..1.
-    const bool wasLeft  = turnAxis.negative();
-    const bool wasRight = turnAxis.positive();
     turnAxis.update(s.lx, turnThreshold, deadZone, releaseZone);
     const float turn = turnAxis.scaled(s.lx, deadZone);
     ctrl.setGamepadTurn(turn);
@@ -717,12 +600,6 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
     // rotate+jump side-steps. PlayerControl prefers gamepadTurn for speed.
     setWorldAxis(A::RotateL, turnAxis.negative(),
                  A::RotateR, turnAxis.positive());
-    if(debugInput && (wasLeft!=turnAxis.negative() || wasRight!=turnAxis.positive())) {
-      std::fprintf(stderr, "[pad] t=%llu ctx=World lx=%.3f turn=%.3f event=%s\n",
-                   static_cast<unsigned long long>(Tempest::Application::tickCount()),
-                   double(s.lx), double(turn), turn==0.f ? "release" : "press");
-      std::fflush(stderr);
-      }
     }
   else {
     ctrl.setGamepadTurn(0.f);

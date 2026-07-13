@@ -217,7 +217,6 @@ language=2              ; force Polish when Polish data is installed
 
 [GAMEPAD]
 noStuckProtect=1        ; disable the L3+R3 unstuck warp
-debugInput=1            ; transition-only controller trace in stderr.log
 ```
 
 The controller does not reserve any shortcut for quick save/load. The

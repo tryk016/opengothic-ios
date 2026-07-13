@@ -272,9 +272,10 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 
 ## ✅ Done — ideal controls, batch 1 (2026-07-10)
 - [x] **[GAMEPAD] config** (spec §8) — `deadZone`, `releaseZone`,
-      `crossAxisGuard`, `triggerThreshold`, `lookSensitivity`, `invertY` and
-      optional transition-only `debugInput` diagnostics are read from
-      `Gothic.ini [GAMEPAD]` in `GamepadInput::loadConfig`.
+      `crossAxisGuard`, `triggerThreshold`, `lookSensitivity` and `invertY` are
+      read from `Gothic.ini [GAMEPAD]` in `GamepadInput::loadConfig`. The
+      temporary transition-only `debugInput` trace was retired after device
+      validation.
 - [x] **First-run iOS profile** — on the first successful launch with valid
       game data, when `Documents/Gothic.ini` is absent, create and flush a
       focused override with performance, shadow, keyboard quick-save and stable

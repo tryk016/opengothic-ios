@@ -118,10 +118,6 @@ class GamepadInput {
     float lookSens   = 0.20f;   // camera speed per ms
     bool  invertY    = false;   // camera Y invert (review B6)
     bool  stuckProtect = true;  // L3+R3 hold -> warp to nearest waypoint
-    bool  debugInput = false;   // transition-only stderr diagnostics
-
-    float debugLx = 0.f;
-    float debugLy = 0.f;
     std::array<bool,KeyCodec::Last> worldPulseRelease{};
 
     uint64_t stuckHoldMs = 0;   // how long both sticks have been held

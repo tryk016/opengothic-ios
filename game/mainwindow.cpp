@@ -496,10 +496,8 @@ void MainWindow::onSettings() {
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
   // settingsSetI() emits onSettingsChanged immediately, so rebuilding the
   // projection here makes the stock Draw distance choice live in-game.
-  const uint32_t farPlane = Camera::configuredFarPlane();
   if(auto* camera = Gothic::inst().camera())
     camera->setViewport(swapchain.w(),swapchain.h());
-  Log::i("iOS draw distance: percent=",farPlane/1000u," world_far_plane=",farPlane);
 #endif
   }
 
@@ -1539,10 +1537,8 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
   // before screenshot preparation or save serialization can do any work.
   pendingSave.slot        = std::string(slot);
   pendingSave.name        = std::string(name);
-  pendingSave.requestedAt = Application::tickCount();
   pendingSave.stage       = PendingSave::Stage::CaptureRequested;
   Gothic::inst().setLoadingProgress(0);
-  Log::i("[save] requested; preview capture queued");
   update();
   return;
 #endif
@@ -1598,7 +1594,6 @@ void MainWindow::startPendingSave(Pixmap&& preview) {
   auto name   = std::move(pendingSave.name);
 
   pendingSave.preview     = Attachment();
-  pendingSave.requestedAt = 0;
   pendingSave.frameId     = 0;
   pendingSave.stage       = PendingSave::Stage::None;
 
@@ -1622,8 +1617,6 @@ void MainWindow::processPendingSave() {
 
   try {
     auto preview = device.readPixels(textureCast<const Texture2d&>(pendingSave.preview));
-    const uint64_t elapsed = Application::tickCount()-pendingSave.requestedAt;
-    Log::i("[save] preview readback complete after ",elapsed," ms");
     startPendingSave(std::move(preview));
     }
   catch(const std::exception& e) {
@@ -1882,7 +1875,6 @@ void MainWindow::render(){
     if(captureSavePreview) {
       pendingSave.frameId = cmdId;
       pendingSave.stage   = PendingSave::Stage::AwaitingGpu;
-      Log::i("[save] preview submitted with regular frame");
       }
 #endif
     device.present(swapchain);
