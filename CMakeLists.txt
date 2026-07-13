@@ -57,6 +57,8 @@ elseif(IOS)
          "Enable low-frequency performance and memory telemetry" OFF)
   option(OPENGOTHIC_NPC_ANIMATION_CULLING
          "Skip full skeletal pose updates for distant offscreen NPCs" OFF)
+  option(OPENGOTHIC_NPC_DIALOG_CULLING
+         "Keep distant NPC pose culling active during dialogs and cutscenes" OFF)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
@@ -85,6 +87,13 @@ elseif(IOS)
   if(OPENGOTHIC_NPC_ANIMATION_CULLING)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_NPC_ANIMATION_CULLING=1)
+  endif()
+  if(OPENGOTHIC_NPC_DIALOG_CULLING)
+    if(NOT OPENGOTHIC_NPC_ANIMATION_CULLING)
+      message(FATAL_ERROR "OPENGOTHIC_NPC_DIALOG_CULLING requires OPENGOTHIC_NPC_ANIMATION_CULLING")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_NPC_DIALOG_CULLING=1)
   endif()
   # App icon: Xcode's actool compiles this asset catalog on the CI runner and
   # injects the CFBundleIcons keys, so the icon shows on the home screen.

@@ -1,8 +1,9 @@
 name: iOS build
 
 # Production branches build an UNSIGNED .ipa and publish it to the "latest"
-# release. The codex/ios-performance branch instead creates an ad-hoc-signed,
-# entitlement-carrying SideStore test artifact and never updates "latest".
+# release. The codex/ios-performance branch and its experiment branches instead
+# create an ad-hoc-signed, entitlement-carrying SideStore test artifact and
+# never update "latest".
 #
 # Two stable URLs are produced (replace OWNER/REPO with your repo):
 #   .ipa    https://github.com/OWNER/REPO/releases/download/latest/OpenGothic-unsigned.ipa
@@ -13,7 +14,7 @@ name: iOS build
 
 on:
   push:
-    branches: [ master, main, ios, 'codex/ios-performance' ]
+    branches: [ master, main, ios, 'codex/ios-performance*' ]
     paths-ignore:
       - '**.md'
       - 'docs/**'
@@ -40,7 +41,8 @@ jobs:
   build:
     runs-on: macos-latest
     env:
-      SIDESTORE_MEMORY_TEST: ${{ github.ref == 'refs/heads/codex/ios-performance' || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test) }}
+      SIDESTORE_MEMORY_TEST: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test) }}
+      NPC_DIALOG_CULLING_TEST: ${{ github.ref == 'refs/heads/codex/ios-performance-npc-dialog-culling' }}
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -62,7 +64,8 @@ jobs:
             -DOPENGOTHIC_IOS_VERSION="1.0.${{ github.run_number }}" \
             -DOPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED="$SIDESTORE_MEMORY_TEST" \
             -DOPENGOTHIC_PERF_DIAGNOSTICS="$SIDESTORE_MEMORY_TEST" \
-            -DOPENGOTHIC_NPC_ANIMATION_CULLING="$SIDESTORE_MEMORY_TEST"
+            -DOPENGOTHIC_NPC_ANIMATION_CULLING="$SIDESTORE_MEMORY_TEST" \
+            -DOPENGOTHIC_NPC_DIALOG_CULLING="$NPC_DIALOG_CULLING_TEST"
 
       - name: Build (code signing disabled)
         run: |
