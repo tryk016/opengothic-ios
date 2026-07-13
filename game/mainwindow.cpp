@@ -1112,8 +1112,14 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
   const size_t npcCount = world!=nullptr ? size_t(world->npcCount()) : 0u;
   const auto npcAnimation = world!=nullptr ? world->animationStats() : WorldObjects::AnimationStats{};
   const double measuredFps = double(perfWindow.framesSubmitted)*1000000.0/double(elapsedUs);
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_METAL_DIRECT_DRAWABLE)
+  constexpr const char* gpuExperiment = "metal_direct_drawable";
+#else
+  constexpr const char* gpuExperiment = "control";
+#endif
 
   string_frm<1024> line("PERF v=1 scene=",perfWindow.scene,
+                        " gpu_exp=",gpuExperiment,
                         " window_ms=",size_t(elapsedUs/1000u),
                         " fps=",measuredFps,
                         " frame_p50_ms=",percentileMs(perfWindow.frameUs,50u),

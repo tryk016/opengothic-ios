@@ -1,0 +1,78 @@
+diff --git a/Engine/gapi/metal/mtswapchain.mm b/Engine/gapi/metal/mtswapchain.mm
+index e0eaf26c..e939d890 100644
+--- a/Engine/gapi/metal/mtswapchain.mm
++++ b/Engine/gapi/metal/mtswapchain.mm
+@@ -55,0 +56,3 @@ struct MtSwapchain::Impl {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  CA::MetalDrawable* drawable = nullptr;
++#endif
+@@ -123,0 +127,3 @@ MtSwapchain::MtSwapchain(MtDevice& dev, SystemApi::Window *w)
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  lay.framebufferOnly           = YES;
++#else
+@@ -124,0 +131 @@ MtSwapchain::MtSwapchain(MtDevice& dev, SystemApi::Window *w)
++#endif
+@@ -129,0 +137,4 @@ MtSwapchain::~MtSwapchain() {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  if(pimpl->drawable!=nullptr)
++    pimpl->drawable->release();
++#endif
+@@ -137,0 +149,7 @@ void MtSwapchain::reset() {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  if(pimpl->drawable!=nullptr) {
++    pimpl->drawable->release();
++    pimpl->drawable = nullptr;
++    }
++#endif
++
+@@ -148,0 +167 @@ void MtSwapchain::reset() {
++#if !defined(TEMPEST_METAL_DIRECT_DRAWABLE)
+@@ -150,0 +170 @@ void MtSwapchain::reset() {
++#endif
+@@ -155,0 +176,22 @@ uint32_t MtSwapchain::currentBackBufferIndex() {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  auto pool = NsPtr<NS::AutoreleasePool>::init();
++  std::lock_guard<SpinLock> guard(sync);
++
++  // Direct-drawable experiment: acquire before encoding so the main render
++  // pass targets CAMetalLayer storage instead of a private copy texture.
++  if(pimpl->drawable==nullptr) {
++    auto* lay = reinterpret_cast<CA::MetalLayer*>(pimpl->metalLayer());
++    auto* drawable = lay->nextDrawable();
++    if(drawable==nullptr)
++      throw SwapchainSuboptimal();
++
++    auto* texture = drawable->texture();
++    if(texture->width()!=size_t(sz.w) || texture->height()!=size_t(sz.h))
++      throw SwapchainSuboptimal();
++
++    drawable->retain();
++    texture->retain();
++    pimpl->drawable = drawable;
++    img[currentImg].tex = NsPtr<MTL::Texture>(texture);
++    }
++#endif
+@@ -162 +203,0 @@ void MtSwapchain::present() {
+-  CA::MetalLayer* lay      = reinterpret_cast<CA::MetalLayer*>(pimpl->metalLayer());
+@@ -163,0 +205,6 @@ void MtSwapchain::present() {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  auto            drawable = pimpl->drawable;
++  if(drawable==nullptr || img[i].tex==nullptr)
++    throw SwapchainSuboptimal();
++#else
++  CA::MetalLayer* lay      = reinterpret_cast<CA::MetalLayer*>(pimpl->metalLayer());
+@@ -166,0 +214 @@ void MtSwapchain::present() {
++#endif
+@@ -178,0 +227 @@ void MtSwapchain::present() {
++#if !defined(TEMPEST_METAL_DIRECT_DRAWABLE)
+@@ -184,0 +234 @@ void MtSwapchain::present() {
++#endif
+@@ -206,0 +257,8 @@ void MtSwapchain::present() {
++#if defined(TEMPEST_METAL_DIRECT_DRAWABLE)
++  // presentDrawable retains the drawable until presentation completes. Drop
++  // the temporary CPU-side references now so CAMetalLayer can recycle it.
++  img[i].tex = nullptr;
++  pimpl->drawable = nullptr;
++  drawable->release();
++#endif
++

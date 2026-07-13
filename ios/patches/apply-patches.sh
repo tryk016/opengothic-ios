@@ -215,3 +215,36 @@ else
     exit 1
   fi
 fi
+
+# Experiment support: allow an iOS test build to render the final pass directly
+# into CAMetalDrawable. The code remains dormant unless CMake defines
+# TEMPEST_METAL_DIRECT_DRAWABLE; production and the performance baseline keep
+# Tempest's original private-texture + blit path. Keeping this as an idempotent
+# submodule patch avoids carrying an uncommittable dirty Tempest checkout.
+DIRECT_DRAWABLE_PATCH="$ROOT/ios/patches/tempest-metal-direct-drawable.patch"
+if grep -q 'Direct-drawable experiment' "$MTS"; then
+  echo "skip: mtswapchain.mm direct drawable support (already patched)"
+else
+  if [ ! -f "$DIRECT_DRAWABLE_PATCH" ]; then
+    echo "ERROR: not found: $DIRECT_DRAWABLE_PATCH" >&2
+    exit 1
+  fi
+  EXPECTED_TEMPEST_COMMIT="61b58f710b00f64d190fed2661f5762909397d1a"
+  ACTUAL_TEMPEST_COMMIT="$(git -C "$ROOT/lib/Tempest" rev-parse HEAD)"
+  if [ "$ACTUAL_TEMPEST_COMMIT" != "$EXPECTED_TEMPEST_COMMIT" ]; then
+    echo "ERROR: Tempest changed ($ACTUAL_TEMPEST_COMMIT); refresh direct drawable patch" >&2
+    exit 1
+  fi
+  if git -C "$ROOT/lib/Tempest" apply --unidiff-zero --check "$DIRECT_DRAWABLE_PATCH"; then
+    git -C "$ROOT/lib/Tempest" apply --unidiff-zero "$DIRECT_DRAWABLE_PATCH"
+  else
+    echo "ERROR: failed to apply Tempest direct drawable support patch" >&2
+    exit 1
+  fi
+  if grep -q 'Direct-drawable experiment' "$MTS"; then
+    echo "patched: mtswapchain.mm direct drawable support"
+  else
+    echo "ERROR: direct drawable marker missing after patch" >&2
+    exit 1
+  fi
+fi
