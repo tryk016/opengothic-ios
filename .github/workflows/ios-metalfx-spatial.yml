@@ -28,6 +28,8 @@ jobs:
       METALFX_SPATIAL_BUILD: 'true'
       # The arm64 control build passed with the full MetalFX renderer path.
       METALFX_SPATIAL_READY: 'true'
+      # Same bundle ID as stable, so this channel uses a higher version line.
+      # SideStore then offers it as an update instead of treating it as 1.0.x.
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -50,7 +52,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
-            -DOPENGOTHIC_IOS_VERSION="1.0.${{ github.run_number }}" \
+            -DOPENGOTHIC_IOS_VERSION="1.1.${{ github.run_number }}" \
             -DOPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED=OFF \
             -DOPENGOTHIC_PERF_DIAGNOSTICS=OFF \
             -DOPENGOTHIC_NPC_ANIMATION_CULLING=ON \
@@ -88,7 +90,7 @@ jobs:
       - name: Generate MetalFX SideStore/AltStore source
         if: env.METALFX_SPATIAL_READY == 'true'
         run: |
-          VERSION="1.0.${{ github.run_number }}"
+          VERSION="1.1.${{ github.run_number }}"
           DATE="$(date -u +%Y-%m-%d)"
           SIZE="$(stat -f%z OpenGothic-MetalFX-Spatial.ipa)"
           BASE="${{ github.server_url }}/${{ github.repository }}"
@@ -137,7 +139,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Unsigned MetalFX Spatial iOS build \`1.0.${{ github.run_number }}\` (commit ${{ github.sha }}).
+          NOTES="Unsigned MetalFX Spatial iOS build \`1.1.${{ github.run_number }}\` (commit ${{ github.sha }}).
 
           This is an experimental channel with an automatic Lanczos fallback when MetalFX is unavailable.
 
