@@ -33,9 +33,9 @@
 
 #include <algorithm>
 #include <array>
-#include <chrono>
 #include <memory>
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+#include <chrono>
 #include <limits>
 #endif
 
@@ -491,8 +491,8 @@ void MainWindow::onSettings() {
 #endif
   maxFpsTarget = uint32_t(std::max(zMaxFps,0));
   if(zMaxFps>0)
-    maxFpsPeriodUs = (1000000u+uint64_t(zMaxFps)-1u)/uint64_t(zMaxFps); else
-    maxFpsPeriodUs = 0;
+    maxFpsInv = 1000u/uint64_t(zMaxFps); else
+    maxFpsInv = 0;
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
   // settingsSetI() emits onSettingsChanged immediately, so rebuilding the
   // projection here makes the stock Draw distance choice live in-game.
@@ -1753,7 +1753,6 @@ void MainWindow::setFullscreen(bool fs) {
 void MainWindow::render(){
   try {
     static uint64_t time=Application::tickCount();
-    const auto frameStart = std::chrono::steady_clock::now();
 
 #if defined(__IOS__)
     // No render encoder exists at this point. A preview submitted by an older
@@ -1892,21 +1891,24 @@ void MainWindow::render(){
 #endif
     cmdId = (cmdId+1u)%Resources::MaxFramesInFlight;
 
-    // Keep the legacy 16 ms menu cadence when uncapped, but never let it take
-    // precedence over an explicit 30 FPS target. Microsecond timing also avoids
-    // mapping 60 FPS to 16 ms (62.5 FPS) through integer truncation.
-    uint64_t targetPeriodUs = 0;
+    // iOS presentation is synchronized to the display cadence. Integer
+    // millisecond periods (33/16 ms) wake before the 30/60 Hz display boundary;
+    // sleeping for the mathematically rounded-up 33334/16667 us can cross that
+    // boundary and defer presentation by another display interval. Preserve the
+    // legacy pacing measured in build -63, while still letting an explicit
+    // 30 FPS choice override the otherwise fixed 16 ms menu cadence.
+    uint64_t targetPeriodMs = 0;
     if(!Gothic::inst().isInGame() && !video.isActive())
-      targetPeriodUs = 16000u;
-    targetPeriodUs = std::max(targetPeriodUs,maxFpsPeriodUs);
-    if(targetPeriodUs>0) {
-      const auto now = std::chrono::steady_clock::now();
-      const auto elapsedUs = uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(now-frameStart).count());
-      if(elapsedUs<targetPeriodUs)
-        std::this_thread::sleep_for(std::chrono::microseconds(targetPeriodUs-elapsedUs));
+      targetPeriodMs = 16u;
+    targetPeriodMs = std::max(targetPeriodMs,maxFpsInv);
+
+    auto t = Application::tickCount();
+    if(targetPeriodMs>0 && t-time<targetPeriodMs) {
+      const uint32_t delay = uint32_t(targetPeriodMs-(t-time));
+      Application::sleep(delay);
+      t += delay;
       }
 
-    const auto t = Application::tickCount();
     fps.push(t-time);
     if(Gothic::inst().isBenchmarkMode() && Gothic::inst().world()!=nullptr && Gothic::inst().world()->currentCs()!=nullptr)
       benchmark.push(t-time);
