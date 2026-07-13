@@ -486,6 +486,18 @@ void InventoryMenu::moveCategory(int direction) {
   Gothic::inst().emitGlobalSound("INV_CHANGE");
   }
 
+std::optional<size_t> InventoryMenu::selectedPlayerItemClass() {
+  if(state!=State::Equip || player==nullptr)
+    return std::nullopt;
+  auto& pg = activePage();
+  if(!pg.is(&player->inventory()))
+    return std::nullopt;
+  auto it = pg.get(activePageSel().sel);
+  if(!it.isValid() || it->isGold())
+    return std::nullopt;
+  return it->clsId();
+  }
+
 const InventoryMenu::Page &InventoryMenu::activePage() {
   if(pageOth!=nullptr)
     return *(page==0 ? pageOth : pagePl);

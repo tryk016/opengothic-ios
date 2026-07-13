@@ -72,6 +72,7 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 | Look back; melee right attack | RB | R1 |
 | Sneak | L3 | L3 |
 | Target lock | R3 | R3 |
+| Edit Items ring (inventory) | R3 | R3 |
 | Items ring | D-pad ↑ | D-pad ↑ |
 | Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
 | Status / previous combat target | D-pad ← | D-pad ← |
@@ -87,14 +88,18 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
   slots outside). These are two panels, not one combined wheel; D-pad ↑/↓ also switches between them
   while open. Aim by the right-stick angle and distance, press A or RT to use the selected slot, or B
   to cancel. Tiles show real 3D item icons.
-- **Automatic contents:** the Items ring fills its 9 outer slots first, then its 4 inner slots, using
-  potions, food and torches from the live inventory. A lit torch is included synthetically so it can be
-  stowed again. The Weapons / Magic ring is populated from equipped gear and all active spell-book slots 3–10.
+- **Automatic or assigned Items ring:** until its first edit, the Items ring fills its 9 outer slots first,
+  then its 4 inner slots, using potions, food and torches from the live inventory. To customize it, highlight
+  any non-gold item in the normal player inventory, press R3, point at a sector with the right stick, then
+  press RT to assign it or LT to clear that sector; B closes the editor without another change. The manual layout is stored per save. A consumed
+  or missing item leaves its binding empty and reappears there when acquired again. A lit torch is included
+  synthetically so it can still be stowed. The Weapons / Magic ring remains automatic and uses equipped gear
+  plus all active spell-book slots 3–10.
 - **Contextual combat:** LT blocks in melee and aims a bow; RT attacks, shoots or casts. LB/RB become
   left/right melee attacks and otherwise provide walk/look-back. Outside combat, D-pad ←/→ opens
   character status/the quest log; while target lock is active it selects the previous/next target.
-- **Inventory:** LB/RB jumps to the previous/next sorted item category; the sticks and D-pad retain
-  normal grid navigation.
+- **Inventory:** LB/RB jumps to the previous/next sorted item category; R3 opens Items-ring assignment
+  for the highlighted player item; the sticks and D-pad retain normal grid navigation.
 - **System buttons:** tap View for the inventory or hold it for ~0.6 s for the map. Menu opens the game
   menu. Quick save/load remains available to the engine through its keyboard commands, but is not
   assigned to the controller.

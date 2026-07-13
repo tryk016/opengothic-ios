@@ -176,8 +176,10 @@ void GamepadInput::openItemRing()    { openRing(ringItems); }
 
 void GamepadInput::ringAim(float nx, float ny) {
   QuickRing* r = ringWeapons.isOpen() ? &ringWeapons : (ringItems.isOpen() ? &ringItems : nullptr);
-  if(r!=nullptr)
+  if(r!=nullptr) {
     r->updateSelection(nx, ny);
+    owner.update();
+    }
   }
 
 void GamepadInput::pulseWorldAction(A action) {
@@ -193,6 +195,7 @@ void GamepadInput::activateRingSelection(QuickRing& r) {
     }
   else
     r.close();
+  owner.update();
   }
 
 void GamepadInput::ringCommit() {
@@ -207,6 +210,7 @@ void GamepadInput::ringCancel() {
     ringWeapons.close();
   if(ringItems.isOpen())
     ringItems.close();
+  owner.update();
   }
 
 void GamepadInput::openRing(QuickRing& r) {
@@ -220,6 +224,26 @@ void GamepadInput::openRing(QuickRing& r) {
     ringWeapons.close();
     ringItems.close();
     r.open(*pl);
+    owner.update();
+    }
+  }
+
+void GamepadInput::openItemAssignmentRing() {
+  auto& g = Gothic::inst();
+  auto* w = g.world();
+  if(owner.padContext()!=PadCtx::Inventory || w==nullptr ||
+     !g.isInGameAndAlive() || g.checkLoading()!=Gothic::LoadState::Idle)
+    return;
+  const auto selected = owner.padInventorySelectedItem();
+  auto* pl = w->player();
+  if(!selected || pl==nullptr)
+    return;
+
+  ringWeapons.close();
+  ringItems.close();
+  if(ringItems.openEdit(*pl,*selected)) {
+    Haptics::impact(Haptics::Light);
+    owner.update();
     }
   }
 
@@ -227,6 +251,7 @@ void GamepadInput::tickRing(
     const GamepadState& s, const std::vector<GamepadButtonEvent>& events) {
   QuickRing& r = ringWeapons.isOpen() ? ringWeapons : ringItems;
   r.updateSelection(s.rx, s.ry);
+  owner.update();
 
   auto pressed = [&](GamepadButton button) {
     return std::any_of(events.begin(),events.end(),[&](const auto& event) {
@@ -235,6 +260,22 @@ void GamepadInput::tickRing(
     };
   if(pressed(GamepadButton::B) || (s.b && !prev.b)) {
     ringCancel();
+    return;
+    }
+  if(r.isEditing()) {
+    const bool assign = s.rt>trigThresh && prev.rt<=trigThresh;
+    const bool clear  = s.lt>trigThresh && prev.lt<=trigThresh;
+    // Simultaneous trigger crossings are ambiguous: wait for a deliberate
+    // single-trigger press instead of assigning and immediately deleting.
+    if(assign==clear)
+      return;
+    if(auto* pl=worldPlayer()) {
+      const bool changed = assign ? r.assignSelection(*pl)
+                                  : r.clearSelection(*pl);
+      if(changed)
+        Haptics::impact(Haptics::Light);
+      owner.update();
+      }
     return;
     }
   if(pressed(GamepadButton::DpadUp) || (s.dup && !prev.dup)) {
@@ -523,9 +564,16 @@ void GamepadInput::tick(uint64_t dt) {
     return;
     }
 
-  // An open radial panel captures all input until confirm or cancel.
+  // An open radial panel captures all input until confirm or cancel. The
+  // normal panels own World; the assignment editor deliberately owns the
+  // still-open Inventory behind it.
   if(ringWeapons.isOpen() || ringItems.isOpen()) {
-    if(owner.padContext()==PadCtx::World) {
+    QuickRing& ring = ringWeapons.isOpen() ? ringWeapons : ringItems;
+    const PadCtx ringCtx = owner.padContext();
+    const bool ownsContext = ring.isEditing()
+                           ? ringCtx==PadCtx::Inventory
+                           : ringCtx==PadCtx::World;
+    if(ownsContext) {
       tickRing(s,input.events);
       prev = s;
       return;
@@ -941,6 +989,15 @@ void GamepadInput::tickMenu(const GamepadState& s,
 void GamepadInput::tickInvent(uint64_t dt, const GamepadState& s,
                               const std::vector<GamepadButtonEvent>& events) {
   (void)dt;
+  const bool openAssignment = (s.r3 && !prev.r3) ||
+    std::any_of(events.begin(),events.end(),[](const auto& event) {
+      return event.button==GamepadButton::R3 && event.pressed;
+      });
+  if(openAssignment) {
+    openItemAssignmentRing();
+    return;
+    }
+
   // Grid navigation like a menu; LB/RB jump between sorted item categories.
   for(const auto& event : events) {
     if(!event.pressed)

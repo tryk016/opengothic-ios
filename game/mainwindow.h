@@ -20,6 +20,7 @@
 #include <Tempest/Swapchain>
 
 #include <vector>
+#include <optional>
 #include <thread>
 
 #include "world/world.h"
@@ -64,8 +65,10 @@ class MainWindow : public Tempest::Window {
     void padRingAim(float nx, float ny);
     void padRingCommit();
     void padRingCancel();
+    void padPaintRing(Tempest::PaintEvent& e);
     void padOpenMap();
     void padInventoryCategory(int direction);
+    std::optional<size_t> padInventorySelectedItem();
     bool padVideoActive() const;               // an intro/cutscene bink is playing
     void padSkipVideo();                        // skip it (mirrors desktop Esc)
 #endif

@@ -12,6 +12,7 @@
 
 #include "game/constants.h"
 #include "game/gamescript.h"
+#include "game/gamesession.h"
 #include "game/inventory.h"
 #include "graphics/inventoryrenderer.h"
 #include "resources.h"
@@ -75,6 +76,10 @@ QuickRing::QuickRing(Kind k) : kind(k) {
 
 QuickRing::~QuickRing() = default;
 
+bool QuickRing::isEditing() const {
+  return mode==Mode::Edit;
+  }
+
 int QuickRing::innerCells() const {
   return kind==Items ? ITEM_INNER_CELLS : WEAPON_INNER_CELLS;
   }
@@ -91,12 +96,18 @@ void QuickRing::open(Npc& pl) {
   static_assert(WEAPON_OUTER_CELLS==
                 int(KeyCodec::WeaponMage10)-int(KeyCodec::WeaponMage3)+1,
                 "the weapons ring must expose every native spell slot");
+  static_assert(MAX_CELLS==int(GameSession::QuickItemSlotCount),
+                "the saved quick-item layout must match the item ring");
 
   cells = {};
   syntheticTorch.reset();
+  editSlots.fill(GameSession::NoQuickItem);
+  editCls = GameSession::NoQuickItem;
+  editName.clear();
   sel    = -1;
   band   = Band::None;
   opened = true;
+  mode   = Mode::Use;
 
   if(kind==Weapons) {
     auto setAction = [&](int slot, const Item* item, KeyCodec::Action action) {
@@ -126,8 +137,18 @@ void QuickRing::open(Npc& pl) {
     return;
     }
 
-  std::vector<Cell> items;
+  auto& game = pl.world().gameSession();
+  if(game.hasCustomQuickItems())
+    fillAssignedItems(pl,game.quickItemLayout());
+  else
+    fillAutomaticItems(pl);
+  }
+
+void QuickRing::collectItems(Npc& pl, std::vector<Cell>& items,
+                             bool automaticOnly) {
+  items.clear();
   items.reserve(MAX_CELLS);
+  syntheticTorch.reset();
 
   const size_t torchCls = pl.world().script().findSymbolIndex("ItLsTorch");
   const bool hasLitTorch = pl.isUsingTorch() && torchCls!=size_t(-1);
@@ -151,7 +172,10 @@ void QuickRing::open(Npc& pl) {
     const Item& item = *it;
     const auto main  = item.mainFlag();
     const bool torch = (uint32_t(item.itemFlag())&ITM_TORCH)!=0;
-    if((main&(ITM_CAT_POTION|ITM_CAT_FOOD))==0 && !torch)
+    if(item.isGold())
+      continue;
+    if(automaticOnly &&
+       (main&(ITM_CAT_POTION|ITM_CAT_FOOD))==0 && !torch)
       continue;
 
     const size_t cls = item.clsId();
@@ -168,7 +192,7 @@ void QuickRing::open(Npc& pl) {
         at->name = std::string(item.displayName());
       continue;
       }
-    if(int(items.size())>=MAX_CELLS)
+    if(automaticOnly && int(items.size())>=MAX_CELLS)
       continue;
 
     Cell c;
@@ -179,6 +203,11 @@ void QuickRing::open(Npc& pl) {
     c.name     = std::string(item.displayName());
     items.push_back(std::move(c));
     }
+  }
+
+void QuickRing::fillAutomaticItems(Npc& pl) {
+  std::vector<Cell> items;
+  collectItems(pl,items,true);
 
   // Items use the large outer row first; the four inner cells are overflow.
   size_t src = 0;
@@ -186,6 +215,65 @@ void QuickRing::open(Npc& pl) {
     cells[size_t(ITEM_INNER_CELLS+i)] = std::move(items[src]);
   for(int i=0;i<ITEM_INNER_CELLS && src<items.size();++i,++src)
     cells[size_t(i)] = std::move(items[src]);
+  }
+
+void QuickRing::fillAssignedItems(
+    Npc& pl, const std::array<uint32_t,MAX_CELLS>& layout) {
+  std::vector<Cell> items;
+  collectItems(pl,items,false);
+  for(size_t slot=0;slot<layout.size();++slot) {
+    const uint32_t cls = layout[slot];
+    if(cls==GameSession::NoQuickItem)
+      continue;
+    auto at = std::find_if(items.begin(),items.end(),[cls](const Cell& cell) {
+      return cell.cls==size_t(cls);
+      });
+    if(at!=items.end())
+      cells[slot] = *at;
+    }
+  }
+
+bool QuickRing::openEdit(Npc& pl, size_t itemCls) {
+  if(kind!=Items || itemCls>=size_t(GameSession::NoQuickItem))
+    return false;
+
+  cells = {};
+  syntheticTorch.reset();
+  editSlots.fill(GameSession::NoQuickItem);
+  editCls = uint32_t(itemCls);
+  editName.clear();
+  sel    = -1;
+  band   = Band::None;
+  opened = true;
+  mode   = Mode::Edit;
+
+  bool found = false;
+  for(auto it=pl.inventory().iterator(Inventory::T_Inventory); it.isValid(); ++it) {
+    if(it->clsId()==itemCls) {
+      found = true;
+      editName = std::string(it->displayName());
+      break;
+      }
+    }
+  if(!found || pl.inventory().itemCount(itemCls)==0) {
+    close();
+    return false;
+    }
+
+  auto& game = pl.world().gameSession();
+  if(game.hasCustomQuickItems()) {
+    editSlots = game.quickItemLayout();
+    fillAssignedItems(pl,editSlots);
+    }
+  else {
+    // The first edit freezes the currently visible automatic arrangement as
+    // the working layout. Cancelling leaves automatic mode untouched.
+    fillAutomaticItems(pl);
+    for(size_t i=0;i<cells.size();++i)
+      if(cells[i].valid())
+        editSlots[i] = uint32_t(cells[i].cls);
+    }
+  return true;
   }
 
 void QuickRing::updateSelection(float sx, float sy) {
@@ -227,23 +315,68 @@ void QuickRing::updateSelection(float sx, float sy) {
 
 void QuickRing::close() {
   opened = false;
+  mode   = Mode::Use;
   cells  = {};
   sel    = -1;
   band   = Band::None;
+  editSlots.fill(GameSession::NoQuickItem);
+  editCls = GameSession::NoQuickItem;
+  editName.clear();
   syntheticTorch.reset();
   }
 
 std::optional<KeyCodec::Action> QuickRing::commit(Npc& pl) {
   std::optional<KeyCodec::Action> result;
+  if(mode!=Mode::Use)
+    return result;
   if(sel>=0 && sel<cellsCount()) {
     const Cell& c = cells[size_t(sel)];
-    if(c.type==CellType::Item)
-      pl.useItem(c.cls,Item::NSLOT,false);
+    if(c.type==CellType::Item) {
+      // Match a normal inventory click for manually assigned equipment: an
+      // equipped weapon, rune, armour or accessory is toggled off instead of
+      // running an unnecessary unequip/equip hook cycle. A burning torch is
+      // the exception because it no longer exists in Inventory; useItem()
+      // owns its explicit stow-and-return path.
+      const size_t torchCls =
+          pl.world().script().findSymbolIndex("ItLsTorch");
+      const bool burningTorch = pl.isUsingTorch() && c.cls==torchCls;
+      if(c.equipped && !burningTorch)
+        pl.unequipItem(c.cls);
+      else
+        pl.useItem(c.cls,Item::NSLOT,false);
+      }
     else if(c.type==CellType::Action)
       result = c.action;
     }
   close();
   return result;
+  }
+
+bool QuickRing::assignSelection(Npc& pl) {
+  if(mode!=Mode::Edit || sel<0 || sel>=cellsCount() ||
+     editCls==GameSession::NoQuickItem ||
+     pl.inventory().itemCount(editCls)==0)
+    return false;
+
+  // One item has one stable home. Reassigning it moves the existing binding
+  // instead of creating duplicate sectors which would vanish together.
+  for(uint32_t& cls:editSlots)
+    if(cls==editCls)
+      cls=GameSession::NoQuickItem;
+  editSlots[size_t(sel)] = editCls;
+  pl.world().gameSession().setQuickItemLayout(editSlots);
+  close();
+  return true;
+  }
+
+bool QuickRing::clearSelection(Npc& pl) {
+  if(mode!=Mode::Edit || sel<0 || sel>=cellsCount() ||
+     editSlots[size_t(sel)]==GameSession::NoQuickItem)
+    return false;
+  editSlots[size_t(sel)] = GameSession::NoQuickItem;
+  pl.world().gameSession().setQuickItemLayout(editSlots);
+  cells[size_t(sel)] = Cell{};
+  return true;
   }
 
 void QuickRing::paint(Painter& p, InventoryRenderer& ir, const Npc* pl,
@@ -343,7 +476,25 @@ void QuickRing::paint(Painter& p, InventoryRenderer& ir, const Npc* pl,
   paintCells(0,innerCells(),(innerR0+innerR1)*0.5f);
   paintCells(innerCells(),outerCells(),(outerR0+outerR1)*0.5f);
 
-  if(sel>=0 && sel<cellsCount()) {
+  if(mode==Mode::Edit) {
+    std::string label = editName;
+    if(sel>=0 && sel<cellsCount()) {
+      const Cell& target = cells[size_t(sel)];
+      label += " -> ";
+      label += (target.valid() ? target.name : "[ ]");
+      }
+    label = fitLabel(fnt,std::move(label),std::max(1,screenW-16));
+    const std::string commands = "RT: +    LT: -    B: ESC";
+    const auto ls = fnt.textSize(label);
+    const auto cs = fnt.textSize(commands);
+    const int requested = int(cy+outerR1)+ls.h+std::max(3,int(4*scale));
+    const int firstBaseline = std::max(ls.h+2,
+                              std::min(screenH-cs.h-6,requested));
+    fnt.drawText(p,int(cx)-ls.w/2,firstBaseline,label);
+    fnt.drawText(p,int(cx)-cs.w/2,
+                 std::min(screenH-4,firstBaseline+cs.h+2),commands);
+    }
+  else if(sel>=0 && sel<cellsCount()) {
     const Cell& cell = cells[size_t(sel)];
     std::string label = cell.name;
     if(cell.count>1)

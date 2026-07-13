@@ -18,8 +18,11 @@ Controller architecture and its device verification matrix are maintained in
       D-pad ↓ opens the separate Weapons / Magic panel (2 equipped weapons + 8
       spell-book slots); both use concentric radial selection. D-pad ←/→ opens
       status/log or switches combat focus. View tap/hold opens inventory/map;
-      Menu opens the game menu. Controller quick save/load and FPP are not
-      assigned. Verify every context, both rings, automatic contents and touch.
+      Menu opens the game menu. In normal inventory, R3 opens Items assignment,
+      the right stick picks a sector, RT assigns, LT clears and B closes; the
+      unique 13-slot layout is stored per save and old saves retain automatic
+      mode. Controller quick save/load and FPP are not assigned. Verify every
+      context, both rings, assignment save/load, automatic fallback and touch.
 
 ## ✅ Done — controller, landing, inventory and shadows (2026-07-12, rounds 2–5)
 > **DEVICE-CONFIRMED (round 3):** mobsi levitation gone (player + NPCs), and the
@@ -95,6 +98,13 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       spell-book slots expose the magic assigned to keys 3–10. Slot 3 is
       included because automatic inventory assignment puts the first rune
       there; omitting it made the first equipped rune invisible on the ring.
+- [x] **Persistent Items-ring assignment mode** — R3 on a highlighted item in
+      the normal player inventory opens the ring above the inventory; RT moves
+      the class to the selected sector, LT clears, and B closes. The first
+      mutation freezes the automatic layout, unique class bindings persist in
+      optional per-save `game/quickitems`, and missing items return to their
+      sector when reacquired. Device confirmation remains in the next-round
+      checklist above.
 - [x] **Mobsi levitation — round-2 diagnostics closed/superseded.** The added
       `[mobsi] attach:`/`[mobsi] quit:` data (`nodeDy≈97`, `fixMoved=0`) led to
       the root-vs-feet `Interactive::attach` fix documented above; the logs
@@ -276,7 +286,8 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
 
 ## ✅ Done — ideal controls, batch 2 (2026-07-10)
 - [x] **Two radial panels** (spec §4) — D-pad ↑ opens Items with 4 inner + 9
-      outer slots filled automatically from potions, food and torches; D-pad ↓
+      outer slots, initially filled automatically from potions, food and
+      torches and later held as a manually assignable per-save layout; D-pad ↓
       opens Weapons / Magic with equipped melee
       and ranged weapons inside + 8 spell-book slots outside. Right-stick
       angle selects a segment and distance selects a row; A/RT activates and B

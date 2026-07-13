@@ -285,9 +285,10 @@ void MainWindow::paintEvent(PaintEvent& event) {
   // Context hints are intentionally disabled: Options -> Controls contains
   // the complete controller layout and the transient bar obscured gameplay.
   // drawPadHints(p, scale);
-  if(auto* ring = gamepad.activeRing())
-    ring->paint(p, inventory.itemRenderer(), Gothic::inst().player(), w(), h(), scale);
-  else if(!inventory.isActive())
+  // The ring is painted by the last overlay widget (TouchInput), after menus
+  // and inventory. Painting it here would put assignment mode underneath the
+  // inventory widget because parent widgets are dispatched first.
+  if(!gamepad.ringOpen() && !inventory.isActive())
     inventory.itemRenderer().reset();   // drop leftover ring icons after close
 #endif
   if(Gothic::inst().doFrate() && !Gothic::inst().isDesktop()) {
@@ -623,8 +624,18 @@ void MainWindow::padOpenItemRing()            { gamepad.openItemRing(); }
 void MainWindow::padRingAim(float nx,float ny){ gamepad.ringAim(nx,ny); }
 void MainWindow::padRingCommit()              { gamepad.ringCommit(); }
 void MainWindow::padRingCancel()              { gamepad.ringCancel(); }
+void MainWindow::padPaintRing(PaintEvent& e)  {
+  if(auto* ring=gamepad.activeRing()) {
+    Painter p(e);
+    ring->paint(p,inventory.itemRenderer(),Gothic::inst().player(),
+                w(),h(),Gothic::interfaceScale(this));
+    }
+  }
 void MainWindow::padOpenMap()                 { gamepad.openMap(); }
 void MainWindow::padInventoryCategory(int d)  { inventory.moveCategory(d); }
+std::optional<size_t> MainWindow::padInventorySelectedItem() {
+  return inventory.selectedPlayerItemClass();
+  }
 bool MainWindow::padVideoActive() const       { return video.isActive(); }
 void MainWindow::padSkipVideo()               { video.skip(); }
 #endif
@@ -1338,6 +1349,11 @@ void MainWindow::onVideo(std::string_view fname) {
 
 void MainWindow::onStartLoading() {
   player   .clearInput();
+#if defined(__MOBILE_PLATFORM__)
+  // A ring can own a display-only Item tied to the outgoing World. Destroy it
+  // synchronously before the loader thread takes the GameSession away.
+  gamepad.ringCancel();
+#endif
   inventory.onWorldChanged();
   dialogs  .onWorldChanged();
   }
@@ -1469,6 +1485,9 @@ void MainWindow::render(){
 
       numOverlay.clear();
       PaintEvent p(numOverlay,atlas,this->w(),this->h());
+#if defined(__MOBILE_PLATFORM__)
+      if(!gamepad.ringOpen())
+#endif
       inventory.paintNumOverlay(p);
       }
     uiMesh [cmdId].update(device,uiLayer);

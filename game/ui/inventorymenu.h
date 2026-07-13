@@ -3,6 +3,7 @@
 #include <Tempest/Widget>
 #include <Tempest/Texture2d>
 #include <Tempest/Timer>
+#include <optional>
 
 #include "graphics/inventoryrenderer.h"
 #include "game/inventory.h"
@@ -59,6 +60,11 @@ class InventoryMenu : public Tempest::Widget {
 
     // Jump to the first item in the previous/next sorted category.
     void   moveCategory(int direction);
+
+    // Stable identity of the highlighted item in the player's normal
+    // inventory. Containers/trade/ransack and gold cannot enter quick-ring
+    // assignment mode.
+    std::optional<size_t> selectedPlayerItemClass();
 
     void  keyDownEvent  (Tempest::KeyEvent&   e) override;
     void  keyRepeatEvent(Tempest::KeyEvent&   e) override;

@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "utils/keycodec.h"
 
@@ -29,13 +30,17 @@ class QuickRing {
     ~QuickRing();
 
     bool isOpen() const { return opened; }
+    bool isEditing() const;
     void open (Npc& pl);                        // rebuild fixed slots
+    bool openEdit(Npc& pl, size_t itemCls);     // inventory item -> slot editor
     void updateSelection(float sx, float sy);   // right-stick/touch aim
     void close();                               // dismiss without acting
 
     // Item cells are used immediately and return nullopt. Weapon/magic cells
     // return the action that the caller must pulse through PlayerControl.
     std::optional<KeyCodec::Action> commit(Npc& pl);
+    bool assignSelection(Npc& pl);              // RT in edit mode
+    bool clearSelection (Npc& pl);              // LT in edit mode
 
     void paint(Tempest::Painter& p, InventoryRenderer& ir, const Npc* pl,
                int screenW, int screenH, float scale) const;
@@ -43,6 +48,7 @@ class QuickRing {
   private:
     enum class Band : uint8_t { None, Inner, Outer };
     enum class CellType : uint8_t { Empty, Item, Action };
+    enum class Mode : uint8_t { Use, Edit };
 
     struct Cell {
       size_t           cls      = 0;
@@ -72,12 +78,22 @@ class QuickRing {
     int innerCells() const;
     int outerCells() const;
     int cellsCount () const;
+    void collectItems       (Npc& pl, std::vector<Cell>& out,
+                             bool automaticOnly);
+    void fillAutomaticItems (Npc& pl);
+    void fillAssignedItems  (Npc& pl,
+                             const std::array<uint32_t,MAX_CELLS>& layout);
 
     Kind                   kind;
     bool                   opened = false;
+    Mode                   mode   = Mode::Use;
     std::array<Cell,MAX_CELLS> cells{};
     int                    sel  = -1;
     Band                   band = Band::None;
+
+    std::array<uint32_t,MAX_CELLS> editSlots{};
+    uint32_t               editCls = uint32_t(-1);
+    std::string            editName;
 
     // A burning torch is removed from Inventory. Keep a display-only item so
     // its assigned synthetic cell still has the regular 3D inventory icon.

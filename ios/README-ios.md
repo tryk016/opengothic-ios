@@ -97,6 +97,7 @@ are documented in [`CONTROLLER-TECHNICAL.md`](CONTROLLER-TECHNICAL.md).
 | Look back; melee right attack | RB | R1 |
 | Sneak | L3 | L3 |
 | Target lock | R3 | R3 |
+| Edit Items ring (inventory) | R3 | R3 |
 | Items ring | D-pad ↑ | D-pad ↑ |
 | Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
 | Status / previous combat target | D-pad ← | D-pad ← |
@@ -114,10 +115,16 @@ Notes on feel and on-screen input:
   slots outside). D-pad ↑/↓ also switches between the panels while one is open.
   Aim by right-stick angle and distance, press A or RT to use the selected slot,
   or B to cancel. Slots show **real 3D item icons**.
-- **Both panels fill automatically.** Items takes potions, food and torches
-  from the live inventory (9 outer slots first, then 4 inner); a lit torch is
-  added synthetically so it can be stowed again. Weapons / Magic uses the
-  equipped melee/ranged weapons and all active spell-book slots 3–10.
+- **Items starts automatic and can be assigned manually.** Before its first
+  edit it takes potions, food and torches from the live inventory (9 outer
+  slots first, then 4 inner). In the normal player inventory, highlight any
+  non-gold item and press R3; aim at a sector with the right stick, press RT to
+  assign, LT to clear, or B to close without another change. The stable layout
+  is stored per save.
+  Missing/consumed items leave empty bindings and return to the same sector
+  when acquired again. A lit torch is added synthetically so it can be stowed.
+  Weapons / Magic remains automatic and uses equipped melee/ranged weapons and
+  all active spell-book slots 3–10.
 - **Target lock-on** (R3) pins the current focus via the engine's native focus
   (not a camera hack); it auto-releases when the target dies or leaves. While
   locked, **D-pad ◀ / ▶** steps to the previous / next target.
@@ -125,8 +132,9 @@ Notes on feel and on-screen input:
   or casts. LB/RB become left/right melee attacks and otherwise provide
   walk/look-back. Outside target lock, D-pad ◀/▶ opens status/the quest log;
   while target lock is active it selects the previous/next target.
-- **Inventory:** LB/RB jumps to the previous/next sorted item category; the
-  sticks and D-pad retain normal grid navigation.
+- **Inventory:** LB/RB jumps to the previous/next sorted item category; R3
+  opens Items-ring assignment for the highlighted player item; the sticks and
+  D-pad retain normal grid navigation.
 - **System buttons:** tap View for inventory or hold it for ~0.6 s for the map.
   Menu opens the game menu. Quick save/load remains available through the
   engine's keyboard commands, but is not assigned to the controller.

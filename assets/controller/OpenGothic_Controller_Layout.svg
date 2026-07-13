@@ -151,14 +151,14 @@
     <rect x="1130" y="533" width="430" height="48" rx="11" class="card"/><rect x="1144" y="540" width="145" height="34" rx="17" class="badge"/>
     <text x="1216" y="563" class="key">Right stick</text><text x="1305" y="552" class="action">Camera</text><text x="1305" y="571" class="small">Ring: aim at a slot</text>
     <rect x="1130" y="592" width="430" height="48" rx="11" class="card"/><rect x="1144" y="599" width="145" height="34" rx="17" class="badge"/>
-    <text x="1216" y="622" class="key">R3</text><text x="1305" y="623" class="action">Target lock</text>
+    <text x="1216" y="622" class="key">R3</text><text x="1305" y="611" class="action">Target lock</text><text x="1305" y="630" class="small">Inventory: edit Items ring</text>
   </g>
 
   <!-- The two rings are separate panels; each panel contains two concentric rows. -->
   <g>
     <rect x="70" y="700" width="705" height="72" rx="14" class="card"/>
     <text x="96" y="728" class="footerTitle">D-pad ↑ · Items ring</text>
-    <text x="96" y="751" class="footerText">4 inner + 9 outer slots · potions, food and torches</text>
+    <text x="96" y="751" class="footerText">13 slots · Inventory: R3 edit · RT assign · LT clear</text>
     <rect x="825" y="700" width="705" height="72" rx="14" class="card"/>
     <text x="851" y="728" class="footerTitle">D-pad ↓ · Weapons / Magic ring</text>
     <text x="851" y="751" class="footerText">melee + ranged inside · 8 spell-book slots outside</text>

@@ -163,9 +163,12 @@ void TouchInput::tick() {
   }
 
 void TouchInput::paintEvent(PaintEvent& e) {
-  if(Gamepad::poll().connected)
-    return;                          // a gamepad drives the UI -> hide the touch overlay
   if(owner.padRingOpen()) {
+    // TouchInput is the last widget in MainWindow's stack, so this keeps the
+    // radial above inventory/menu widgets for both touch and physical pads.
+    owner.padPaintRing(e);
+    if(Gamepad::poll().connected)
+      return;
     // Keep the full overlay off the radial sectors, but retain the three
     // modal controls in the empty corners: panel switch and explicit cancel.
     Painter p(e);
@@ -176,6 +179,8 @@ void TouchInput::paintEvent(PaintEvent& e) {
     PadGlyph::draw(p,fnt,PadGlyph::B,w()-s-m,h()-s-m,    s);
     return;
     }
+  if(Gamepad::poll().connected)
+    return;                          // a gamepad drives the UI -> hide the touch overlay
 
   Painter p(e);
   auto&   fnt = Resources::font(Gothic::interfaceScale(this));
@@ -221,6 +226,11 @@ void TouchInput::paintEvent(PaintEvent& e) {
 void TouchInput::mouseDownEvent(MouseEvent& e) {
   if(Gamepad::poll().connected) {
     releaseWorldTouches();
+    // A controller-driven ring is modal above InventoryMenu. Keep the event
+    // accepted here; ignore() would forward the tap to the highlighted item
+    // underneath the assignment editor and use/equip it accidentally.
+    if(owner.padRingOpen())
+      return;
     e.ignore();
     return;
     }   // gamepad active -> ignore taps
@@ -381,7 +391,12 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
   }
 
 void TouchInput::mouseDragEvent(MouseEvent& e) {
-  if(Gamepad::poll().connected)         { e.ignore(); return; }
+  if(Gamepad::poll().connected) {
+    if(owner.padRingOpen())
+      return;
+    e.ignore();
+    return;
+    }
   if(owner.padContext()!=PadCtx::World) { e.ignore(); return; }
 
   const Point pos = e.pos();
@@ -419,6 +434,9 @@ void TouchInput::mouseDragEvent(MouseEvent& e) {
   }
 
 void TouchInput::mouseUpEvent(MouseEvent& e) {
+  if(Gamepad::poll().connected && owner.padRingOpen())
+    return;
+
   const int id = e.mouseID;
 
   if(id==ringId) {

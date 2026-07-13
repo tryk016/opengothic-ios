@@ -15,6 +15,8 @@ packaged and published successfully by GitHub Actions run `29211433774`.
    digital transitions, controller generation and overflow count.
 3. `game/ui/gamepadinput.cpp` selects exactly one `PadCtx` (`World`, `Dialog`,
    `Menu`, `Inventory` or `Loading`) and routes the frame only to that context.
+   A normal ring captures `World`; an assignment ring captures the still-open
+   `Inventory` until RT assigns or B closes the editor.
 4. World actions enter `PlayerControl`; UI contexts receive complete synthetic key
    taps through `MainWindow::dispatchKey`.
 
@@ -43,7 +45,7 @@ before app resume from leaking into gameplay.
 | LB / L1 | Melee: left attack; otherwise temporary walk |
 | RB / R1 | Melee: right attack; otherwise look back |
 | L3 | Toggle sneak |
-| R3 | Toggle native target lock |
+| R3 | World: toggle native target lock; Inventory: edit the highlighted item binding |
 | D-pad Up | Open/switch to the Items ring |
 | D-pad Down | Open/switch to the Weapons/Magic ring |
 | D-pad Left | Status, or previous target while locked |
@@ -87,7 +89,24 @@ The rings are separate modal `QuickRing` instances, never one combined wheel.
 ### Items
 
 - 13 fixed sectors: 9 outer, then 4 inner overflow sectors.
-- Filled automatically from potions, food and torches in the live inventory.
+- With no custom layout, filled automatically from potions, food and torches in
+  the live inventory.
+- In the normal player inventory (never chest/trade/ransack), R3 copies the
+  current automatic arrangement into a working layout and opens the ring.
+  The right stick selects any occupied or empty sector; RT assigns the
+  highlighted non-gold item, LT clears the selected binding, and B closes the
+  editor without another operation. Successful LT clears are immediate and
+  are not rolled back by a later B press.
+- A class can occupy only one sector. Reassigning moves it. Consuming or losing
+  the last instance leaves a persistent empty binding; reacquiring it restores
+  the icon in the same sector.
+- Activating a manually assigned class follows the normal inventory toggle:
+  equipped weapons, runes, armour and accessories are unequipped, while other
+  classes use the regular `Inventory::use` path. The burning hand torch keeps
+  its dedicated stow-and-return behavior.
+- The first successful RT/LT operation switches the save to a stable manual
+  layout. Cancelling the first editor without changing anything preserves
+  automatic mode, while intentionally clearing every sector remains manual.
 - A burning hand torch is absent from the inventory iterator, so a display-only
   synthetic `ItLsTorch` cell is added. Committing it calls the normal inventory-use
   path and stows the real torch without losing an item.
@@ -114,7 +133,18 @@ cannot retain a synthetic item from an unloaded world.
 
 Rendering is procedural in `game/ui/quickring.cpp`: subdivided triangle sectors,
 dark translucent fill, amber border and gold selection. Live 3D icons are collected in
-the inventory renderer and flushed after the Painter layer.
+the inventory renderer and flushed after the Painter layer. The ring is painted by the
+last `TouchInput` overlay widget so assignment mode remains above `InventoryMenu`; the
+separate inventory number overlay is suppressed while any ring is open.
+
+### Assignment persistence
+
+`GameSession` owns a 13-entry `uint32_t` layout (`UINT32_MAX` means empty) and a
+customized flag. It is stored per save in the optional, self-versioned ZIP entry
+`game/quickitems`. Old saves have no entry and remain automatic. Class IDs match the
+symbol indices already serialized for normal items. Unknown or damaged optional data
+is ignored without invalidating the rest of the save, and no global save-version bump
+is required because older builds ignore additional ZIP entries.
 
 ## Inventory category navigation
 
@@ -175,6 +205,12 @@ starting an unintended turn or step.
 - Hold each contextual shoulder/trigger while drawing and sheathing weapons; no held
   input may silently become a different action.
 - Confirm short A/B presses in dialogue, pause menu and inventory.
+- In normal inventory, assign an automatic and a non-consumable item with R3 →
+  right stick → RT; move an existing binding, clear several sectors with LT,
+  cancel with B, save/load, consume/reacquire the last instance, and confirm
+  chest/trade/ransack cannot enter assignment mode.
+- Open assignment while LT/RT is already held, cross both triggers together,
+  disconnect the pad, and start loading; no carried trigger may mutate a slot.
 - Verify both ring sizes, inner/outer hysteresis, empty sectors, spells 3-10 and the
   last burning-torch stow case.
 - Verify touch panel switching/cancel, and opening a menu/loading transition with a
