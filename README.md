@@ -1,4 +1,4 @@
-## OpenGothic for iOS
+# OpenGothic for iOS
 
 An **unofficial iOS port** of [OpenGothic](https://github.com/Try/OpenGothic) — the open-source
 re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbing to build, sideload,
@@ -21,7 +21,7 @@ and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-
 > Controller glyphs are **[Xelu's Free Controller & Keyboard Prompts](https://thoseawesomeguys.com/prompts)**
 > by Nicolae "Xelu" Berbece (CC0).
 
-![Screenshot](scr0.png)
+![OpenGothic running on iPhone with the on-screen virtual controller](scr0.png)
 
 ---
 
