@@ -21,6 +21,7 @@
 
 #include <vector>
 #include <optional>
+#include <string>
 #include <thread>
 
 #include "world/world.h"
@@ -105,6 +106,10 @@ class MainWindow : public Tempest::Window {
     void startGame(std::string_view slot);
     void loadGame (std::string_view slot);
     void saveGame (std::string_view slot, std::string_view name);
+#if defined(__IOS__)
+    void processPendingSave();
+    void startPendingSave(Tempest::Pixmap&& preview);
+#endif
 
     void onVideo(std::string_view fname);
     void onStartLoading();
@@ -175,6 +180,25 @@ class MainWindow : public Tempest::Window {
     const Tempest::Texture2d* focusImg=nullptr;
 
     const Tempest::Texture2d* saveback=nullptr;
+
+#if defined(__IOS__)
+    struct PendingSave final {
+      enum class Stage : uint8_t {
+        None,
+        CaptureRequested,
+        AwaitingGpu,
+        };
+
+      Stage               stage = Stage::None;
+      std::string         slot;
+      std::string         name;
+      Tempest::Attachment preview;
+      uint64_t            requestedAt = 0;
+      uint8_t             frameId = 0;
+
+      bool active() const { return stage!=Stage::None; }
+      } pendingSave;
+#endif
 
     bool                      mouseP[Tempest::MouseEvent::ButtonBack]={};
 

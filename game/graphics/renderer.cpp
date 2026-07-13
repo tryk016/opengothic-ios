@@ -608,6 +608,21 @@ void Renderer::draw(Encoder<CommandBuffer>& cmd, uint8_t cmdId, size_t imgId,
     }
   }
 
+void Renderer::drawSavePreview(Encoder<CommandBuffer>& cmd, Attachment& result) {
+  auto* wview = Gothic::inst().worldView();
+  if(wview==nullptr) {
+    cmd.setFramebuffer({{result, Vec4(), Tempest::Preserve}});
+    return;
+    }
+
+  // Reuse the already rendered HDR scene and only run the inexpensive
+  // tonemapping pass into the small save thumbnail. In particular, do not
+  // sample the CAMetalDrawable (framebufferOnly on the direct-drawable path)
+  // and do not start a second command buffer while this encoder is active.
+  cmd.setDebugMarker("Save preview");
+  drawTonemapping(result,cmd,*wview);
+  }
+
 void Renderer::dbgDraw(Tempest::Painter& p) {
   static bool dbg = false;
   if(!dbg)

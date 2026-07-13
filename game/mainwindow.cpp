@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <memory>
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
 #include <limits>
 #endif
@@ -112,6 +113,7 @@ MainWindow::MainWindow(Device& device)
 
   loadBox    = Resources::loadTexture("PROGRESS.TGA");
   loadVal    = Resources::loadTexture("PROGRESS_BAR.TGA");
+  saveback   = Resources::loadTexture("SAVING.TGA");
 
   Gothic::inst().onStartGame   .bind(this,&MainWindow::startGame);
   Gothic::inst().onLoadGame    .bind(this,&MainWindow::loadGame);
@@ -240,6 +242,11 @@ void MainWindow::paintEvent(PaintEvent& event) {
   Painter p(event);
   auto world = Gothic::inst().world();
   auto st    = Gothic::inst().checkLoading();
+#if defined(__IOS__)
+  const bool preparingSave = pendingSave.active();
+#else
+  constexpr bool preparingSave = false;
+#endif
 
   if(!Gothic::inst().isInGame() && st==Gothic::LoadState::Idle && background.isEmpty()) {
     background = Resources::loadTextureUncached("STARTSCREEN.TGA");
@@ -260,8 +267,8 @@ void MainWindow::paintEvent(PaintEvent& event) {
     world->globalFx()->scrBlend(p,Rect(0,0,w(),h()));
     }
 
-  if(st!=Gothic::LoadState::Idle && st!=Gothic::LoadState::Finalize) {
-    if(st==Gothic::LoadState::Saving) {
+  if(preparingSave || (st!=Gothic::LoadState::Idle && st!=Gothic::LoadState::Finalize)) {
+    if(preparingSave || st==Gothic::LoadState::Saving) {
       drawSaving(p);
       } else {
       if(auto back = Gothic::inst().loadingBanner(); back!=nullptr && !back->isEmpty()) {
@@ -995,8 +1002,6 @@ void MainWindow::drawSaving(Painter &p) {
     }
 
   if(saveback==nullptr)
-    saveback = Resources::loadTexture("SAVING.TGA");
-  if(saveback==nullptr)
     return;
 
   const float scale = Gothic::interfaceScale(this);
@@ -1323,6 +1328,14 @@ uint64_t MainWindow::tick() {
     return 0;
     }
 
+#if defined(__IOS__)
+  // The save request owns the next rendered frame while its thumbnail is
+  // captured. Keep gameplay frozen, but continue rendering the immediate
+  // saving feedback until the regular GPU fence permits a safe readback.
+  if(pendingSave.active())
+    return 0;
+#endif
+
   video.tick();
   if(video.isActive())
     return 0;
@@ -1517,24 +1530,21 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
 #endif
 
 #if defined(__IOS__)
-  // Capturing a GPU thumbnail here (screenshoot + submit + readPixels) aborts
-  // inside the Metal driver on iOS, crashing the save. Save with a small
-  // placeholder preview and no screenshot background instead.
-  {
-    const int sw = std::max(4, Gothic::options().saveGameImageSize.w);
-    const int sh = std::max(4, Gothic::options().saveGameImageSize.h);
-    Tempest::Pixmap pm(uint32_t(sw), uint32_t(sh), Tempest::TextureFormat::RGBA8);
-    Gothic::inst().startSave(Tempest::Texture2d(),
-      [slot=std::string(slot),name=std::string(name),pm](std::unique_ptr<GameSession>&& game){
-        if(!game)
-          return std::move(game);
-        Tempest::WFile f(slot);
-        Serialize      s(f);
-        game->save(s,name,pm);
-        return std::move(game);
-        });
+  if(pendingSave.active() || Gothic::inst().checkLoading()!=Gothic::LoadState::Idle)
     return;
-  }
+
+  // A GPU readback from this input callback used to collide with Metal's
+  // active encoder. Queue it for the normal render command instead. The local
+  // pending state makes the saving banner visible on the very next frame,
+  // before screenshot preparation or save serialization can do any work.
+  pendingSave.slot        = std::string(slot);
+  pendingSave.name        = std::string(name);
+  pendingSave.requestedAt = Application::tickCount();
+  pendingSave.stage       = PendingSave::Stage::CaptureRequested;
+  Gothic::inst().setLoadingProgress(0);
+  Log::i("[save] requested; preview capture queued");
+  update();
+  return;
 #endif
 
   auto tex  = renderer.screenshoot(cmdId);
@@ -1580,6 +1590,53 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
 
   update();
   }
+
+#if defined(__IOS__)
+void MainWindow::startPendingSave(Pixmap&& preview) {
+  auto screen = std::make_shared<Pixmap>(std::move(preview));
+  auto slot   = std::move(pendingSave.slot);
+  auto name   = std::move(pendingSave.name);
+
+  pendingSave.preview     = Attachment();
+  pendingSave.requestedAt = 0;
+  pendingSave.frameId     = 0;
+  pendingSave.stage       = PendingSave::Stage::None;
+
+  Gothic::inst().startSave(Texture2d(),
+    [slot=std::move(slot),name=std::move(name),screen=std::move(screen)](std::unique_ptr<GameSession>&& game){
+      if(!game)
+        return std::move(game);
+      Tempest::WFile f(slot);
+      Serialize      s(f);
+      game->save(s,name,*screen);
+      return std::move(game);
+      });
+  update();
+  }
+
+void MainWindow::processPendingSave() {
+  if(pendingSave.stage!=PendingSave::Stage::AwaitingGpu)
+    return;
+  if(!fence[pendingSave.frameId].wait(0))
+    return;
+
+  try {
+    auto preview = device.readPixels(textureCast<const Texture2d&>(pendingSave.preview));
+    const uint64_t elapsed = Application::tickCount()-pendingSave.requestedAt;
+    Log::i("[save] preview readback complete after ",elapsed," ms");
+    startPendingSave(std::move(preview));
+    }
+  catch(const std::exception& e) {
+    Log::e("[save] preview readback failed; using placeholder: ",e.what());
+    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    }
+  catch(...) {
+    Log::e("[save] preview readback failed; using placeholder: ",
+           ExceptionDump::describe(std::current_exception()));
+    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    }
+  }
+#endif
 
 void MainWindow::onVideo(std::string_view fname) {
   if(Gothic::inst().isBenchmarkMode())
@@ -1698,6 +1755,12 @@ void MainWindow::render(){
     static uint64_t time=Application::tickCount();
     const auto frameStart = std::chrono::steady_clock::now();
 
+#if defined(__IOS__)
+    // No render encoder exists at this point. A preview submitted by an older
+    // regular frame may therefore be read back safely once its fence signals.
+    processPendingSave();
+#endif
+
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     processMemoryEvents();
     const uint64_t perfFrameStart = perfNowUs();
@@ -1778,12 +1841,51 @@ void MainWindow::render(){
     uiMesh [cmdId].update(device,uiLayer);
     numMesh[cmdId].update(device,numOverlay);
 
+#if defined(__IOS__)
+    bool captureSavePreview = false;
+    if(pendingSave.stage==PendingSave::Stage::CaptureRequested) {
+      try {
+        constexpr uint32_t thumbW = 800;
+        const uint32_t srcW = std::max<uint32_t>(1,swapchain.w());
+        const uint32_t srcH = std::max<uint32_t>(1,swapchain.h());
+        const uint32_t w = std::min(thumbW,srcW);
+        const uint32_t h = std::max<uint32_t>(1,uint32_t((uint64_t(srcH)*w)/srcW));
+        pendingSave.preview = device.attachment(TextureFormat::RGBA8,w,h);
+        captureSavePreview = !pendingSave.preview.isEmpty();
+        if(!captureSavePreview) {
+          Log::e("[save] preview allocation returned an empty image; using placeholder");
+          startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+          }
+        }
+      catch(const std::exception& e) {
+        Log::e("[save] preview allocation failed; using placeholder: ",e.what());
+        startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+        }
+      catch(...) {
+        Log::e("[save] preview allocation failed; using placeholder: ",
+               ExceptionDump::describe(std::current_exception()));
+        startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+        }
+      }
+#endif
+
     CommandBuffer& cmd = commands[cmdId];
     {
     auto enc = cmd.startEncoding(device);
     renderer.draw(enc,cmdId,swapchain.currentImage(),uiMesh[cmdId],numMesh[cmdId],inventory,video);
+#if defined(__IOS__)
+    if(captureSavePreview)
+      renderer.drawSavePreview(enc,pendingSave.preview);
+#endif
     }
     sync = device.submit(cmd);
+#if defined(__IOS__)
+    if(captureSavePreview) {
+      pendingSave.frameId = cmdId;
+      pendingSave.stage   = PendingSave::Stage::AwaitingGpu;
+      Log::i("[save] preview submitted with regular frame");
+      }
+#endif
     device.present(swapchain);
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     submitPerfFrame(perfNowUs());
