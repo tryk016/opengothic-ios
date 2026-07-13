@@ -228,6 +228,9 @@ repurposes the existing “Gothic 1 controls” choice as
 immediately and persisted in the root `Documents/Gothic.ini` as
 `ENGINE/zMaxFpsMode` (`0`, `1` or `2`). The original `GAME/useGothic1Controls`
 value remains unchanged, so the selected combat-control scheme is preserved.
+The iOS limiter changes the native `CADisplayLink` cadence; it does not sleep
+the render/UI thread. Off requests the adaptive 30–120 Hz ProMotion range, while
+30 and 60 request fixed display-link rates.
 
 Saving now shows its banner immediately. The slot preview is captured through a
 small render attachment and read back only after the frame fence, avoiding the

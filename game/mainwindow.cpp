@@ -44,6 +44,10 @@
 
 using namespace Tempest;
 
+#if defined(__IOS__)
+extern "C" void tempestIosSetPreferredFrameRate(int fps);
+#endif
+
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
 namespace {
 
@@ -1160,6 +1164,11 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
 #else
   constexpr int directDrawable = 0;
 #endif
+#if defined(__IOS__)
+  constexpr const char* framePacer = "display_link";
+#else
+  constexpr const char* framePacer = "software_sleep";
+#endif
 
   string_frm<1024> line("PERF v=1 scene=",perfWindow.scene,
                         " perf_exp=",perfExperiment,
@@ -1168,6 +1177,7 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
                         " world_far_plane=",worldFarPlane,
                         " draw_distance_percent=",drawDistancePercent,
                         " fps_limit=",maxFpsTarget,
+                        " frame_pacer=",framePacer,
                         " window_ms=",size_t(elapsedUs/1000u),
                         " fps=",measuredFps,
                         " frame_p50_ms=",percentileMs(perfWindow.frameUs,50u),
@@ -1883,12 +1893,22 @@ void MainWindow::render(){
 #endif
     cmdId = (cmdId+1u)%Resources::MaxFramesInFlight;
 
-    // iOS presentation is synchronized to the display cadence. Integer
-    // millisecond periods (33/16 ms) wake before the 30/60 Hz display boundary;
-    // sleeping for the mathematically rounded-up 33334/16667 us can cross that
-    // boundary and defer presentation by another display interval. Preserve the
-    // legacy pacing measured in build -63, while still letting an explicit
-    // 30 FPS choice override the otherwise fixed 16 ms menu cadence.
+#if defined(__IOS__)
+    // UIKit and the game fibers share the main thread. Sleeping here also blocks
+    // CADisplayLink, so after a 33 ms sleep the game has to wait for a later
+    // display callback and an intended 30 FPS becomes roughly 27 FPS. Let the
+    // native display link schedule Off/30/60 directly instead. Preserve the old
+    // default 60 FPS menu policy, while an explicit user cap wins everywhere.
+    uint32_t displayFps = maxFpsTarget;
+    if(displayFps==0 && !Gothic::inst().isInGame() && !video.isActive())
+      displayFps = 60u;
+    if(iosFrameRateTarget!=displayFps) {
+      tempestIosSetPreferredFrameRate(int(displayFps));
+      iosFrameRateTarget = displayFps;
+      }
+
+    auto t = Application::tickCount();
+#else
     uint64_t targetPeriodMs = 0;
     if(!Gothic::inst().isInGame() && !video.isActive())
       targetPeriodMs = 16u;
@@ -1900,6 +1920,7 @@ void MainWindow::render(){
       Application::sleep(delay);
       t += delay;
       }
+#endif
 
     fps.push(t-time);
     if(Gothic::inst().isBenchmarkMode() && Gothic::inst().world()!=nullptr && Gothic::inst().world()->currentCs()!=nullptr)

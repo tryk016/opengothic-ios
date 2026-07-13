@@ -128,6 +128,22 @@ else
   fi
 fi
 
+# Expose a tiny C bridge so OpenGothic can select the CADisplayLink cadence at
+# runtime. The game and UIKit fibers share the main thread on iOS, therefore a
+# software sleep inside MainWindow::render blocks CADisplayLink itself and adds
+# another partial/full refresh interval after the requested delay.
+if grep -q 'tempestIosSetPreferredFrameRate' "$VC"; then
+  echo "skip: iosapi.mm runtime frame-rate bridge (already patched)"
+else
+  perl -0777 -pi -e 's/(static TempestWindow\* mainWindow = nullptr;\r?\n)/$1\nextern "C" void tempestIosSetPreferredFrameRate(int fps) {\n  auto* window = mainWindow;\n  if(window==nil || window->displayLink==nil)\n    return;\n  if (\@available(iOS 15.0, *)) {\n    if(fps==30)\n      window->displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 30, 30);\n    else if(fps==60)\n      window->displayLink.preferredFrameRateRange = CAFrameRateRangeMake(60, 60, 60);\n    else\n      window->displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 120, 120);\n    } else {\n    window->displayLink.preferredFramesPerSecond = fps>0 ? fps : 60;\n    }\n  }\n/s' "$VC"
+  if grep -q 'tempestIosSetPreferredFrameRate' "$VC"; then
+    echo "patched: iosapi.mm runtime CADisplayLink frame-rate bridge"
+  else
+    echo "ERROR: failed to patch iosapi.mm runtime frame-rate bridge (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
 # Fix: never let a C++ exception from event/render dispatch escape into the
 # fiber run-loop. Without a guard it unwinds through implProcessEvents into
 # implExec/main (no handler) -> std::terminate -> SIGABRT (crash to home).

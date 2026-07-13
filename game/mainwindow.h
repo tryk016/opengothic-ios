@@ -259,4 +259,7 @@ class MainWindow : public Tempest::Window {
     BenchmarkData benchmark;
     uint32_t      maxFpsTarget = 0;
     uint64_t      maxFpsInv = 0;
+#if defined(__IOS__)
+    uint32_t      iosFrameRateTarget = uint32_t(-1);
+#endif
   };
