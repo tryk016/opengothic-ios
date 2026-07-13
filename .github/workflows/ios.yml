@@ -42,11 +42,9 @@ jobs:
     runs-on: macos-latest
     env:
       SIDESTORE_MEMORY_TEST: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test) }}
-      NPC_DIALOG_CULLING: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
-      THREE_FRAMES_IN_FLIGHT: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
-      DIRECT_DRAWABLE_LAZY_SSAO: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
+      IOS_PERFORMANCE_BASELINE: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ios' || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test) }}
       WORLD_FAR_PLANE_60000: ${{ github.ref == 'refs/heads/codex/ios-performance-far-plane-60000' }}
-      DYNAMIC_DRAW_DISTANCE: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') && github.ref != 'refs/heads/codex/ios-performance-far-plane-60000' }}
+      DYNAMIC_DRAW_DISTANCE: ${{ (startsWith(github.ref, 'refs/heads/codex/ios-performance') || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ios' || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test)) && github.ref != 'refs/heads/codex/ios-performance-far-plane-60000' }}
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -68,10 +66,10 @@ jobs:
             -DOPENGOTHIC_IOS_VERSION="1.0.${{ github.run_number }}" \
             -DOPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED="$SIDESTORE_MEMORY_TEST" \
             -DOPENGOTHIC_PERF_DIAGNOSTICS="$SIDESTORE_MEMORY_TEST" \
-            -DOPENGOTHIC_NPC_ANIMATION_CULLING="$SIDESTORE_MEMORY_TEST" \
-            -DOPENGOTHIC_NPC_DIALOG_CULLING="$NPC_DIALOG_CULLING" \
-            -DOPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT="$THREE_FRAMES_IN_FLIGHT" \
-            -DOPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO="$DIRECT_DRAWABLE_LAZY_SSAO" \
+            -DOPENGOTHIC_NPC_ANIMATION_CULLING="$IOS_PERFORMANCE_BASELINE" \
+            -DOPENGOTHIC_NPC_DIALOG_CULLING="$IOS_PERFORMANCE_BASELINE" \
+            -DOPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT="$IOS_PERFORMANCE_BASELINE" \
+            -DOPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO="$IOS_PERFORMANCE_BASELINE" \
             -DOPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000="$WORLD_FAR_PLANE_60000" \
             -DOPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE="$DYNAMIC_DRAW_DISTANCE"
 

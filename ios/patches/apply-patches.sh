@@ -216,10 +216,10 @@ else
   fi
 fi
 
-# Combined iOS performance experiment: expose an opt-in path that renders the
-# final pass directly into CAMetalDrawable. The patch is always present after
-# this script, but production and the stable performance branch keep the path
-# dormant unless CMake defines TEMPEST_METAL_DIRECT_DRAWABLE.
+# Validated iOS performance path: expose an opt-in implementation that renders
+# the final pass directly into CAMetalDrawable. The patch is always present
+# after this script; production and performance builds enable it through the
+# CMake-owned TEMPEST_METAL_DIRECT_DRAWABLE definition.
 DIRECT_DRAWABLE_PATCH="$ROOT/ios/patches/tempest-metal-direct-drawable-v2.patch"
 if grep -q 'Direct-drawable v2 experiment' "$MTS"; then
   echo "skip: mtswapchain.mm direct drawable v2 support (already patched)"
