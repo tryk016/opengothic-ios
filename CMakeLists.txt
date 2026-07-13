@@ -51,6 +51,10 @@ if(WIN32)
 elseif(IOS)
   enable_language(OBJCXX)
   set(CMAKE_OSX_DEPLOYMENT_TARGET 15.0)
+  option(OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED
+         "Mark SideStore test builds as requesting Increased Memory Limit" OFF)
+  option(OPENGOTHIC_PERF_DIAGNOSTICS
+         "Enable low-frequency performance and memory telemetry" OFF)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
@@ -68,6 +72,14 @@ elseif(IOS)
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
+  if(OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED=1)
+  endif()
+  if(OPENGOTHIC_PERF_DIAGNOSTICS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_PERF_DIAGNOSTICS=1)
+  endif()
   # App icon: Xcode's actool compiles this asset catalog on the CI runner and
   # injects the CFBundleIcons keys, so the icon shows on the home screen.
   set(OPENGOTHIC_APPICON "${CMAKE_SOURCE_DIR}/ios/Assets.xcassets")
@@ -80,7 +92,7 @@ endif()
 
 if(IOS)
   file(GLOB_RECURSE ObjCSOURCES "game/*.mm")
-  target_link_libraries(${PROJECT_NAME} "-framework UIKit" "-framework GameController" "-framework AVFoundation")
+  target_link_libraries(${PROJECT_NAME} "-framework UIKit" "-framework GameController" "-framework AVFoundation" "-framework Security")
 elseif(APPLE)
   target_link_libraries(${PROJECT_NAME} "-framework AppKit")
   file(GLOB_RECURSE ObjCSOURCES "game/*.mm")

@@ -128,6 +128,16 @@ class MainWindow : public Tempest::Window {
     void     tickCamera(uint64_t dt);
     void     isDialogClosed(bool& ret);
 
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    void        logMemorySnapshot(const char* event);
+    void        processMemoryEvents();
+    const char* perfScene() const;
+    void        resetPerfWindow(uint64_t nowUs);
+    void        beginPerfFrame(uint64_t nowUs);
+    void        submitPerfFrame(uint64_t nowUs);
+    void        flushPerfWindow(uint64_t nowUs, bool force);
+#endif
+
     template<Tempest::KeyEvent::KeyType k>
     void     onMarvinKey();
 
@@ -191,6 +201,20 @@ class MainWindow : public Tempest::Window {
     Tempest::Widget*          uiKeyUp=nullptr;
     Tempest::Point            dMouse;
     uint64_t                  lastTick=0;
+
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    struct PerfWindow final {
+      std::vector<uint32_t> frameUs;
+      std::vector<uint32_t> tickUs;
+      std::vector<uint32_t> animationUs;
+      uint64_t              startedUs       = 0;
+      uint64_t              lastSubmittedUs = 0;
+      size_t                framesStarted   = 0;
+      size_t                framesSubmitted = 0;
+      size_t                fenceMisses     = 0;
+      const char*           scene           = "startup";
+      } perfWindow;
+#endif
 
     Tempest::Shortcut         funcKey[11];
     Tempest::Shortcut         displayPos;

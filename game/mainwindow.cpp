@@ -25,14 +25,52 @@
 #include "utils/gamepad.h"
 #include "utils/haptics.h"
 #include "utils/exceptiondump.h"
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+#include "utils/memoryinfo.h"
+#endif
 #include "ui/padglyph.h"
 
+#include <algorithm>
 #include <array>
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+#include <chrono>
+#include <limits>
+#endif
 
 #include "commandline.h"
 #include "gothic.h"
 
 using namespace Tempest;
+
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+namespace {
+
+uint64_t perfNowUs() {
+  const auto now = std::chrono::steady_clock::now().time_since_epoch();
+  return uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+  }
+
+uint32_t perfSample(uint64_t value) {
+  const uint64_t max = uint64_t(std::numeric_limits<uint32_t>::max());
+  return uint32_t(value>max ? max : value);
+  }
+
+double percentileMs(const std::vector<uint32_t>& samples, size_t percentile) {
+  if(samples.empty())
+    return 0.0;
+  auto sorted = samples;
+  std::sort(sorted.begin(),sorted.end());
+  const size_t rank = (sorted.size()*percentile + 99u)/100u;
+  const size_t at   = std::min(sorted.size()-1u,rank>0u ? rank-1u : 0u);
+  return double(sorted[at])/1000.0;
+  }
+
+double memoryMiB(uint64_t bytes, bool valid) {
+  return valid ? double(bytes)/(1024.0*1024.0) : -1.0;
+  }
+
+}
+#endif
 
 MainWindow::MainWindow(Device& device)
   : Window(Maximized),device(device),swapchain(device,hwnd()),
@@ -45,6 +83,11 @@ MainWindow::MainWindow(Device& device)
     gamepad(*this,player),
 #endif
     runtimeMode(R_Normal) {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  MemoryInfo::initialize();
+  resetPerfWindow(perfNowUs());
+#endif
+
   Gothic::inst().onSettingsChanged.bind(this,&MainWindow::onSettings);
   onSettings();
   safeArea = SafeArea::insets();
@@ -119,9 +162,16 @@ MainWindow::MainWindow(Device& device)
 
   displayPos = Shortcut(*this,Event::M_Alt,Event::K_P);
   displayPos.onActivated.bind(this, &MainWindow::onMarvinKey<Event::K_P>);
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  logMemorySnapshot("main_window_ready");
+#endif
   }
 
 MainWindow::~MainWindow() {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  flushPerfWindow(perfNowUs(),true);
+  logMemorySnapshot("shutdown");
+#endif
   GameMusic::inst().stopMusic();
   Gothic::inst().cancelLoading();
   device.waitIdle();
@@ -964,6 +1014,124 @@ void MainWindow::isDialogClosed(bool& ret) {
   ret = !(dialogs.isActive() || document.isActive());
   }
 
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+void MainWindow::logMemorySnapshot(const char* event) {
+  const auto mem = MemoryInfo::snapshot();
+  const bool ceilingValid = mem.footprintValid && mem.availableValid;
+  const uint64_t ceiling = ceilingValid ? mem.footprintBytes+mem.availableBytes : 0;
+  const int entitlementPresent = !mem.increasedMemoryLimitChecked ? -1 :
+                                 (mem.increasedMemoryLimitPresent ? 1 : 0);
+  string_frm<512> line("MEM v=1 event=",event!=nullptr ? event : "unknown",
+                       " footprint_mb=",memoryMiB(mem.footprintBytes,mem.footprintValid),
+                       " available_mb=",memoryMiB(mem.availableBytes,mem.availableValid),
+                       " estimated_ceiling_mb=",memoryMiB(ceiling,ceilingValid),
+                       " thermal=",MemoryInfo::thermalStateName(mem.thermal),
+                       " entitlement_requested=",mem.increasedMemoryLimitRequested ? 1 : 0,
+                       " entitlement_present=",entitlementPresent);
+  Log::i(line.c_str());
+  }
+
+void MainWindow::processMemoryEvents() {
+  const uint32_t events = MemoryInfo::consumeEvents();
+  if(events==MemoryInfo::NoEvent)
+    return;
+
+  flushPerfWindow(perfNowUs(),true);
+  if((events & MemoryInfo::MemoryWarning)!=0u)
+    logMemorySnapshot("memory_warning");
+  if((events & MemoryInfo::DidEnterBackground)!=0u)
+    logMemorySnapshot("did_enter_background");
+  if((events & MemoryInfo::WillEnterForeground)!=0u)
+    logMemorySnapshot("will_enter_foreground");
+  if((events & MemoryInfo::DidBecomeActive)!=0u)
+    logMemorySnapshot("did_become_active");
+  }
+
+const char* MainWindow::perfScene() const {
+  if(Gothic::inst().checkLoading()!=Gothic::LoadState::Idle)
+    return "loading";
+  if(video.isActive())
+    return "video";
+  if(Gothic::inst().world()!=nullptr)
+    return "world";
+  return "menu";
+  }
+
+void MainWindow::resetPerfWindow(uint64_t nowUs) {
+  perfWindow.frameUs.clear();
+  perfWindow.tickUs.clear();
+  perfWindow.animationUs.clear();
+  perfWindow.frameUs.reserve(2048);
+  perfWindow.tickUs.reserve(2048);
+  perfWindow.animationUs.reserve(2048);
+  perfWindow.startedUs       = nowUs;
+  perfWindow.lastSubmittedUs = 0;
+  perfWindow.framesStarted   = 0;
+  perfWindow.framesSubmitted = 0;
+  perfWindow.fenceMisses     = 0;
+  perfWindow.scene           = perfScene();
+  }
+
+void MainWindow::beginPerfFrame(uint64_t nowUs) {
+  if(perfWindow.startedUs==0)
+    resetPerfWindow(nowUs);
+  perfWindow.framesStarted++;
+  }
+
+void MainWindow::submitPerfFrame(uint64_t nowUs) {
+  if(perfWindow.lastSubmittedUs!=0 && nowUs>=perfWindow.lastSubmittedUs)
+    perfWindow.frameUs.push_back(perfSample(nowUs-perfWindow.lastSubmittedUs));
+  perfWindow.lastSubmittedUs = nowUs;
+  perfWindow.framesSubmitted++;
+  }
+
+void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
+  static constexpr uint64_t WindowUs = 10u*1000u*1000u;
+  if(perfWindow.startedUs==0 || nowUs<perfWindow.startedUs) {
+    resetPerfWindow(nowUs);
+    return;
+    }
+
+  const uint64_t elapsedUs = nowUs-perfWindow.startedUs;
+  if(!force && elapsedUs<WindowUs)
+    return;
+  if(perfWindow.framesStarted==0 || elapsedUs==0) {
+    resetPerfWindow(nowUs);
+    return;
+    }
+
+  const auto mem = MemoryInfo::snapshot();
+  const bool ceilingValid = mem.footprintValid && mem.availableValid;
+  const uint64_t ceiling = ceilingValid ? mem.footprintBytes+mem.availableBytes : 0;
+  const int entitlementPresent = !mem.increasedMemoryLimitChecked ? -1 :
+                                 (mem.increasedMemoryLimitPresent ? 1 : 0);
+  const size_t npcCount = Gothic::inst().world()!=nullptr ?
+                          size_t(Gothic::inst().world()->npcCount()) : 0u;
+  const double measuredFps = double(perfWindow.framesSubmitted)*1000000.0/double(elapsedUs);
+
+  string_frm<1024> line("PERF v=1 scene=",perfWindow.scene,
+                        " window_ms=",size_t(elapsedUs/1000u),
+                        " fps=",measuredFps,
+                        " frame_p50_ms=",percentileMs(perfWindow.frameUs,50u),
+                        " frame_p95_ms=",percentileMs(perfWindow.frameUs,95u),
+                        " frame_p99_ms=",percentileMs(perfWindow.frameUs,99u),
+                        " cpu_tick_p95_ms=",percentileMs(perfWindow.tickUs,95u),
+                        " cpu_anim_p95_ms=",percentileMs(perfWindow.animationUs,95u),
+                        " frame_started=",perfWindow.framesStarted,
+                        " frame_submitted=",perfWindow.framesSubmitted,
+                        " fence_miss=",perfWindow.fenceMisses,
+                        " npc=",npcCount,
+                        " mem_footprint_mb=",memoryMiB(mem.footprintBytes,mem.footprintValid),
+                        " mem_available_mb=",memoryMiB(mem.availableBytes,mem.availableValid),
+                        " mem_ceiling_mb=",memoryMiB(ceiling,ceilingValid),
+                        " thermal=",MemoryInfo::thermalStateName(mem.thermal),
+                        " entitlement_requested=",mem.increasedMemoryLimitRequested ? 1 : 0,
+                        " entitlement_present=",entitlementPresent);
+  Log::i(line.c_str());
+  resetPerfWindow(nowUs);
+  }
+#endif
+
 template<Tempest::KeyEvent::KeyType k>
 void MainWindow::onMarvinKey() {
   switch(k) {
@@ -1238,6 +1406,10 @@ Camera::Mode MainWindow::solveCameraMode() const {
 void MainWindow::startGame(std::string_view slot) {
   // gothic.emitGlobalSound(gothic.loadSoundFx("NEWGAME"));
 
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  logMemorySnapshot("new_game_requested");
+#endif
+
   if(Gothic::inst().checkLoading()==Gothic::LoadState::Idle){
     setGameImpl(nullptr);
     }
@@ -1253,6 +1425,10 @@ void MainWindow::startGame(std::string_view slot) {
   }
 
 void MainWindow::loadGame(std::string_view slot) {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  logMemorySnapshot("load_game_requested");
+#endif
+
   if(Gothic::inst().checkLoading()==Gothic::LoadState::Idle){
     setGameImpl(nullptr);
     }
@@ -1275,6 +1451,10 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
     return;
   if(auto w = Gothic::inst().world(); w!=nullptr && w->currentCs()!=nullptr)
     return;
+
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  logMemorySnapshot("save_game_requested");
+#endif
 
 #if defined(__IOS__)
   // Capturing a GPU thumbnail here (screenshoot + submit + readPixels) aborts
@@ -1348,6 +1528,10 @@ void MainWindow::onVideo(std::string_view fname) {
   }
 
 void MainWindow::onStartLoading() {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  flushPerfWindow(perfNowUs(),true);
+  logMemorySnapshot("loadsave_begin");
+#endif
   player   .clearInput();
 #if defined(__MOBILE_PLATFORM__)
   // A ring can own a display-only Item tied to the outgoing World. Destroy it
@@ -1359,6 +1543,9 @@ void MainWindow::onStartLoading() {
   }
 
 void MainWindow::onWorldLoaded() {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  flushPerfWindow(perfNowUs(),true);
+#endif
   dMouse = Point();
 
   if(Gothic::inst().isBenchmarkMode()) {
@@ -1389,9 +1576,16 @@ void MainWindow::onWorldLoaded() {
     pl->multSpeed(1.f);
   lastTick = Application::tickCount();
   player.clearFocus();
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  logMemorySnapshot("loadsave_complete");
+#endif
   }
 
 void MainWindow::onSessionExit() {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+  flushPerfWindow(perfNowUs(),true);
+  logMemorySnapshot("session_exit");
+#endif
   rootMenu.setMainMenu();
   }
 
@@ -1443,6 +1637,12 @@ void MainWindow::render(){
   try {
     static uint64_t time=Application::tickCount();
 
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    processMemoryEvents();
+    const uint64_t perfFrameStart = perfNowUs();
+    beginPerfFrame(perfFrameStart);
+#endif
+
     static bool once=true;
     if(once) {
       Gothic::inst().emitGlobalSoundWav("GAMESTART.WAV");
@@ -1462,13 +1662,28 @@ void MainWindow::render(){
       once player position is updated, animation bones(cameraBone in particular) can be updated
       lastly - camera position
       */
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    const uint64_t tickStart = perfNowUs();
+#endif
     const uint64_t dt = tick();
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.tickUs.push_back(perfSample(perfNowUs()-tickStart));
+
+    const uint64_t animationStart = perfNowUs();
+#endif
     updateAnimation(dt);
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.animationUs.push_back(perfSample(perfNowUs()-animationStart));
+#endif
     tickCamera(dt);
 
     auto& sync = fence[cmdId];
     if(!sync.wait(0)) {
       // GPU rendering is not done, pass to next frame
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+      perfWindow.fenceMisses++;
+      flushPerfWindow(perfNowUs(),false);
+#endif
       std::this_thread::yield();
       return;
       }
@@ -1500,6 +1715,9 @@ void MainWindow::render(){
     }
     sync = device.submit(cmd);
     device.present(swapchain);
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    submitPerfFrame(perfNowUs());
+#endif
     cmdId = (cmdId+1u)%Resources::MaxFramesInFlight;
 
     auto t = Application::tickCount();
@@ -1517,6 +1735,9 @@ void MainWindow::render(){
     if(Gothic::inst().isBenchmarkMode() && Gothic::inst().world()!=nullptr && Gothic::inst().world()->currentCs()!=nullptr)
       benchmark.push(t-time);
     time = t;
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    flushPerfWindow(perfNowUs(),false);
+#endif
     }
   catch(const Tempest::SwapchainSuboptimal&) {
     Log::e("swapchain is outdated - reset renderer");
