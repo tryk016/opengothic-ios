@@ -211,6 +211,7 @@ class MainWindow : public Tempest::Window {
       uint64_t              startedUs       = 0;
       uint64_t              lastSubmittedUs = 0;
       size_t                framesStarted   = 0;
+      size_t                framesUpdated   = 0;
       size_t                framesSubmitted = 0;
       size_t                fenceMisses     = 0;
       const char*           scene           = "startup";

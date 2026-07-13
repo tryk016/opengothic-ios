@@ -59,6 +59,8 @@ elseif(IOS)
          "Skip full skeletal pose updates for distant offscreen NPCs" OFF)
   option(OPENGOTHIC_NPC_DIALOG_CULLING
          "Keep distant NPC pose culling active during dialogs and cutscenes" OFF)
+  option(OPENGOTHIC_IOS_EARLY_FENCE_GATE
+         "Check the frame fence before updating game and animation state" OFF)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
@@ -94,6 +96,10 @@ elseif(IOS)
     endif()
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_NPC_DIALOG_CULLING=1)
+  endif()
+  if(OPENGOTHIC_IOS_EARLY_FENCE_GATE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_IOS_EARLY_FENCE_GATE=1)
   endif()
   # App icon: Xcode's actool compiles this asset catalog on the CI runner and
   # injects the CFBundleIcons keys, so the icon shows on the home screen.

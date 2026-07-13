@@ -43,6 +43,7 @@ jobs:
     env:
       SIDESTORE_MEMORY_TEST: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') || (github.event_name == 'workflow_dispatch' && inputs.sidestore_memory_test) }}
       NPC_DIALOG_CULLING: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
+      EARLY_FENCE_GATE_TEST: ${{ github.ref == 'refs/heads/codex/ios-performance-early-fence-gate' }}
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -65,7 +66,8 @@ jobs:
             -DOPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED="$SIDESTORE_MEMORY_TEST" \
             -DOPENGOTHIC_PERF_DIAGNOSTICS="$SIDESTORE_MEMORY_TEST" \
             -DOPENGOTHIC_NPC_ANIMATION_CULLING="$SIDESTORE_MEMORY_TEST" \
-            -DOPENGOTHIC_NPC_DIALOG_CULLING="$NPC_DIALOG_CULLING"
+            -DOPENGOTHIC_NPC_DIALOG_CULLING="$NPC_DIALOG_CULLING" \
+            -DOPENGOTHIC_IOS_EARLY_FENCE_GATE="$EARLY_FENCE_GATE_TEST"
 
       - name: Build (code signing disabled)
         run: |

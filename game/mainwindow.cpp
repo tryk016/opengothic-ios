@@ -1070,6 +1070,7 @@ void MainWindow::resetPerfWindow(uint64_t nowUs) {
   perfWindow.startedUs       = nowUs;
   perfWindow.lastSubmittedUs = 0;
   perfWindow.framesStarted   = 0;
+  perfWindow.framesUpdated   = 0;
   perfWindow.framesSubmitted = 0;
   perfWindow.fenceMisses     = 0;
   perfWindow.scene           = perfScene();
@@ -1112,7 +1113,9 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
   const size_t npcCount = world!=nullptr ? size_t(world->npcCount()) : 0u;
   const auto npcAnimation = world!=nullptr ? world->animationStats() : WorldObjects::AnimationStats{};
   const double measuredFps = double(perfWindow.framesSubmitted)*1000000.0/double(elapsedUs);
-#if defined(OPENGOTHIC_NPC_DIALOG_CULLING)
+#if defined(OPENGOTHIC_IOS_EARLY_FENCE_GATE)
+  constexpr const char* perfExperiment = "early_fence_gate";
+#elif defined(OPENGOTHIC_NPC_DIALOG_CULLING)
   constexpr const char* perfExperiment = "npc_dialog_culling";
 #else
   constexpr const char* perfExperiment = "control";
@@ -1129,6 +1132,7 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
                         " cpu_anim_p95_ms=",percentileMs(perfWindow.animationUs,95u),
                         " cpu_pose_refresh_p95_ms=",percentileMs(perfWindow.poseRefreshUs,95u),
                         " frame_started=",perfWindow.framesStarted,
+                        " frame_updated=",perfWindow.framesUpdated,
                         " frame_submitted=",perfWindow.framesSubmitted,
                         " fence_miss=",perfWindow.fenceMisses,
                         " npc=",npcCount,
@@ -1670,12 +1674,31 @@ void MainWindow::render(){
         }
       }
 
+#if defined(OPENGOTHIC_IOS_EARLY_FENCE_GATE)
+    // A busy frame slot means this callback cannot submit any rendering work.
+    // Gate before simulation and pose work so a 120 Hz display link does not
+    // update the world only to discard the corresponding frame. tick() keeps
+    // wall-clock time in lastTick, so the next accepted frame receives the
+    // accumulated dt (subject to its existing 50 ms safety clamp).
+    auto& sync = fence[cmdId];
+    if(!sync.wait(0)) {
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+      perfWindow.fenceMisses++;
+      flushPerfWindow(perfNowUs(),false);
+#endif
+      std::this_thread::yield();
+      return;
+      }
+    Resources::resetRecycled(cmdId);
+#endif
+
     /*
       Note: game update goes first
       once player position is updated, animation bones(cameraBone in particular) can be updated
       lastly - camera position
       */
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.framesUpdated++;
     const uint64_t tickStart = perfNowUs();
 #endif
     const uint64_t dt = tick();
@@ -1690,6 +1713,7 @@ void MainWindow::render(){
 #endif
     tickCamera(dt);
 
+#if !defined(OPENGOTHIC_IOS_EARLY_FENCE_GATE)
     auto& sync = fence[cmdId];
     if(!sync.wait(0)) {
       // GPU rendering is not done, pass to next frame
@@ -1701,6 +1725,7 @@ void MainWindow::render(){
       return;
       }
     Resources::resetRecycled(cmdId);
+#endif
 
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     const uint64_t poseRefreshStart = perfNowUs();
