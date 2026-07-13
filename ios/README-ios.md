@@ -230,10 +230,12 @@ immediately and persisted in the root `Documents/Gothic.ini` as
 `ENGINE/zMaxFpsMode` (`0`, `1` or `2`). The original `GAME/useGothic1Controls`
 value remains unchanged, so the selected combat-control scheme is preserved.
 
+Saving now shows its banner immediately. The slot preview is captured through a
+small render attachment and read back only after the frame fence, avoiding the
+old synchronous Metal-driver abort. If preview capture fails, saving still
+continues with a placeholder. This path has been confirmed on a physical device.
+
 ## Known limitations / follow-ups
-- **Save-slot thumbnails** are not captured on iOS yet — slots show name, date
-  and in-game time, but the preview picture is blank (the GPU screenshot readback
-  aborted in the Metal driver, so a placeholder is saved instead).
 - **Mesh shaders** are defaulted **off** on iOS for GPU compatibility; modern
   Apple GPUs (A17 Pro / M-series) could re-enable them.
 - **No TestFlight / App Store** — requires a paid Apple Developer account and

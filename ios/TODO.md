@@ -124,6 +124,8 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
       (`screenshoot`+`submit`+`readPixels`) which aborts in the Metal driver on
       iOS. On iOS: skip that path, save a small placeholder preview + empty
       background; also guard the saving screen against an empty banner texture.
+      This was the safe interim fix and was later superseded by the fence-safe
+      preview path documented below.
 - [x] **Skip cutscenes** — output-only cutscene lines (`state==Idle`,
       `current.time>0`) ignored all input; `DialogMenu::keyDownEvent` now lets
       Esc/Return (touch Skip, pad B) call `skipPhrase` there too.
@@ -247,9 +249,12 @@ Bug ids (B1–B9, N1–N5) refer to the code-review report; phases refer to the
   temporary `[save]` breadcrumbs + PoolProbe call-sites removed (probe util kept
   dormant in `utils/poolprobe.*`); README "saving is broken" note replaced with
   a thumbnail-only limitation.
-- Still TODO: real save **thumbnail** on iOS (placeholder image is saved; the
-  original GPU-readback abort may have been this very pool bug — worth
-  re-testing the upstream screenshot path now).
+- **DEVICE-CONFIRMED (2026-07-13):** real save thumbnails are restored without
+  reusing the old synchronous callback path. The saving banner appears
+  immediately; an 800 px attachment is submitted with the regular frame and read
+  only after its fence, with the placeholder retained as fallback. Four tested
+  saves completed preview readback in 78/83/86/83 ms, with working save/load and
+  no fallback, Metal error or crash. Merged into the production iOS baseline.
 
 ## ⏳ To do — deferred (needs on-device iteration)
 - [ ] **B9 / N1** — pause game tick (`onTimer`) + `displayLink` while
