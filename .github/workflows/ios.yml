@@ -46,7 +46,7 @@ jobs:
       THREE_FRAMES_IN_FLIGHT: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
       DIRECT_DRAWABLE_LAZY_SSAO: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') }}
       WORLD_FAR_PLANE_60000: ${{ github.ref == 'refs/heads/codex/ios-performance-far-plane-60000' }}
-      DYNAMIC_DRAW_DISTANCE: ${{ github.ref == 'refs/heads/codex/ios-performance-dynamic-draw-distance' }}
+      DYNAMIC_DRAW_DISTANCE: ${{ startsWith(github.ref, 'refs/heads/codex/ios-performance') && github.ref != 'refs/heads/codex/ios-performance-far-plane-60000' }}
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
