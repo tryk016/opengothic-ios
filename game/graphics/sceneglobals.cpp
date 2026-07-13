@@ -1,7 +1,20 @@
 #include "sceneglobals.h"
 
+#include <algorithm>
+
 #include "graphics/shaders.h"
 #include "gothic.h"
+
+namespace {
+constexpr uint32_t vobDistanceFarPlane(int value) {
+  return uint32_t(std::clamp(value,0,14)+1)*20000u;
+  }
+
+static_assert(vobDistanceFarPlane(0)==20000u);
+static_assert(vobDistanceFarPlane(3)==80000u);
+static_assert(vobDistanceFarPlane(4)==100000u);
+static_assert(vobDistanceFarPlane(14)==300000u);
+}
 
 static uint32_t nextPot(uint32_t x) {
   x--;
@@ -62,6 +75,18 @@ bool SceneGlobals::isShadowView(VisCamera v) {
   return false;
   }
 
+uint32_t SceneGlobals::configuredVobFarPlane() {
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  return vobDistanceFarPlane(Gothic::settingsGetI("ENGINE","zVobFarClipZScale"));
+#else
+  return 0u;
+#endif
+  }
+
+uint32_t SceneGlobals::configuredVobFadeStart() {
+  return configuredVobFarPlane()*4u/5u;
+  }
+
 void SceneGlobals::initSettings() {
   zWindEnabled = Gothic::inst().settingsGetI("ENGINE","zWindEnabled")!=0;
 
@@ -72,6 +97,11 @@ void SceneGlobals::initSettings() {
     windPeriod   = 1;
     zWindEnabled = false;
     }
+
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  uboGlobalCpu.vobFarClip   = float(configuredVobFarPlane());
+  uboGlobalCpu.vobFadeStart = float(configuredVobFadeStart());
+#endif
   }
 
 void SceneGlobals::setViewProject(const Tempest::Matrix4x4& v, const Tempest::Matrix4x4& p,
@@ -204,6 +234,9 @@ void SceneGlobals::commitUbo(uint8_t fId) {
 
 void SceneGlobals::prepareGlobals(Tempest::Encoder<Tempest::CommandBuffer>& cmd, uint8_t fId) {
   static_assert(sizeof(UboGlobal)%sizeof(uint32_t)==0);
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  static_assert(sizeof(UboGlobal)%16u==0);
+#endif
 
   cmd.setDebugMarker("Update globals");
   auto& pso = Shaders::inst().copyBuf;

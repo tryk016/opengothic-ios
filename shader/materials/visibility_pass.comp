@@ -174,10 +174,33 @@ bool frustrumTest(const vec4 sphere) {
   return true;
   }
 
+#if defined(VOB_DISTANCE_FADE)
+float vobDistanceFade(const Cluster cluster) {
+  if(cluster.instanceId==0xFFFFFFFF || scene.vobFarClip<=0.0)
+    return 1.0;
+
+  const float distanceToSurface = max(length(cluster.sphere.xyz-scene.camPos)-cluster.sphere.w,0.0);
+  if(distanceToSurface<=scene.vobFadeStart)
+    return 1.0;
+  if(distanceToSurface>=scene.vobFarClip)
+    return 0.0;
+
+  const float fade = clamp((scene.vobFarClip-distanceToSurface)/
+                           (scene.vobFarClip-scene.vobFadeStart),0.0,1.0);
+  return fade*fade*(3.0-2.0*fade);
+  }
+#endif
+
 void runCluster(const uint clusterId) {
   const Cluster cluster = clusters[clusterId];
   if(cluster.sphere.w<=0.f)
     return; // disabled or deleted
+
+#if defined(VOB_DISTANCE_FADE)
+  const float objectFade = vobDistanceFade(cluster);
+  if(objectFade<=0.0)
+    return;
+#endif
 
   if(!frustrumTest(cluster.sphere))
     return;
@@ -211,8 +234,13 @@ void runCluster(const uint clusterId) {
 
   uint writeOffset = cmd[commandId].writeOffset;
   writeOffset      += atomicAdd(cmd[commandId].instanceCount, cluster.meshletCount);
+#if defined(VOB_DISTANCE_FADE)
+  const uint packedFade = packUnorm2x16(vec2(objectFade,0.0));
+#else
+  const uint packedFade = 0;
+#endif
   for(int i=0; i<cluster.meshletCount; ++i)
-    payload[writeOffset+i] = uvec4(instanceId, meshletId+i, bucketId, 0);
+    payload[writeOffset+i] = uvec4(instanceId, meshletId+i, bucketId, packedFade);
   }
 
 void main() {

@@ -26,6 +26,8 @@ class SceneGlobals final {
       };
 
     static bool isShadowView(VisCamera v);
+    static uint32_t configuredVobFarPlane();
+    static uint32_t configuredVobFadeStart();
 
     void setViewProject(const Tempest::Matrix4x4& view, const Tempest::Matrix4x4& proj,
                         float zNear, float zFar,
@@ -120,6 +122,11 @@ class SceneGlobals final {
       Tempest::Vec2                   cloudsDir[2] = {};
 
       float                           probeGridBias = 3;
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+      float                           vobFadeStart  = 0;
+      float                           vobFarClip    = 0;
+      float                           vobPadd       = 0;
+#endif
       };
 
     Tempest::UniformBuffer<UboGlobal> uboGlobalPf[Resources::MaxFramesInFlight][V_Count];

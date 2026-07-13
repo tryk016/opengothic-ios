@@ -19,6 +19,7 @@
 #include "world/triggers/abstracttrigger.h"
 #include "world/objects/npc.h"
 #include "world/world.h"
+#include "graphics/sceneglobals.h"
 #include "game/serialize.h"
 #include "game/globaleffects.h"
 #include "utils/gthfont.h"
@@ -493,6 +494,12 @@ void MainWindow::onSettings() {
   if(auto* camera = Gothic::inst().camera())
     camera->setViewport(swapchain.w(),swapchain.h());
   Log::i("iOS draw distance: percent=",farPlane/1000u," world_far_plane=",farPlane);
+#endif
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  const uint32_t vobFarPlane = SceneGlobals::configuredVobFarPlane();
+  Log::i("iOS object distance: percent=",vobFarPlane/1000u,
+         " fade_start=",SceneGlobals::configuredVobFadeStart(),
+         " vob_far_plane=",vobFarPlane);
 #endif
   }
 
@@ -1135,7 +1142,11 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
 #else
   constexpr const char* perfExperiment = "control";
 #endif
-#if defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  constexpr const char* gpuExperiment = "vob_distance_fade";
+  const uint32_t worldFarPlane = Camera::configuredFarPlane();
+  const uint32_t drawDistancePercent = worldFarPlane/1000u;
+#elif defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
   constexpr const char* gpuExperiment = "dynamic_draw_distance";
   const uint32_t worldFarPlane = Camera::configuredFarPlane();
   const uint32_t drawDistancePercent = worldFarPlane/1000u;
@@ -1152,6 +1163,15 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
   constexpr uint32_t worldFarPlane = 100000u;
   constexpr uint32_t drawDistancePercent = 100u;
 #endif
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+  const uint32_t vobFarPlane = SceneGlobals::configuredVobFarPlane();
+  const uint32_t vobFadeStart = SceneGlobals::configuredVobFadeStart();
+  const uint32_t vobDistancePercent = vobFarPlane/1000u;
+#else
+  constexpr uint32_t vobFarPlane = 0u;
+  constexpr uint32_t vobFadeStart = 0u;
+  constexpr uint32_t vobDistancePercent = 0u;
+#endif
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
   constexpr int directDrawable = 1;
 #else
@@ -1164,6 +1184,9 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
                         " direct_drawable=",directDrawable,
                         " world_far_plane=",worldFarPlane,
                         " draw_distance_percent=",drawDistancePercent,
+                        " vob_far_plane=",vobFarPlane,
+                        " vob_fade_start=",vobFadeStart,
+                        " vob_distance_percent=",vobDistancePercent,
                         " fps_limit=",maxFpsTarget,
                         " window_ms=",size_t(elapsedUs/1000u),
                         " fps=",measuredFps,

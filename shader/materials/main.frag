@@ -21,6 +21,10 @@ layout(location = 1) in Varyings  shInp;
 layout(location = 3) in flat uint vsmMipId;
 #endif
 
+#if defined(VOB_OBJECT) && defined(VOB_DISTANCE_FADE)
+layout(location = 5) in flat float objectFade;
+#endif
+
 #if DEBUG_DRAW
 layout(location = DEBUG_DRAW_LOC) in flat uint debugId;
 #endif
@@ -324,6 +328,15 @@ void mainWater(vec4 t) {
 #endif
 
 void main() {
+#if defined(VOB_OBJECT) && defined(VOB_DISTANCE_FADE)
+  if(objectFade<1.0) {
+    const vec2 pixel = floor(gl_FragCoord.xy);
+    const float threshold = fract(52.9829189*fract(dot(pixel,vec2(0.06711056,0.00583715))));
+    if(objectFade<=threshold)
+      discard;
+    }
+#endif
+
 #if defined(MAT_UV)
   vec4 t = diffuseTex();
 #  if defined(ATEST)

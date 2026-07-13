@@ -58,6 +58,12 @@ layout(location = 3) out flat uint vsmMipIdOut;
 layout(location = 3) out flat uint vsmMipIdOut[];
 #endif
 
+#if defined(GL_VERTEX_SHADER) && defined(LVL_OBJECT) && defined(VOB_DISTANCE_FADE)
+layout(location = 5) out flat float objectFadeOut;
+#elif defined(LVL_OBJECT) && defined(VOB_DISTANCE_FADE)
+layout(location = 5) out flat float objectFadeOut[];
+#endif
+
 #if defined(VIRTUAL_SHADOW)
 uint shadowPageId = 0;
 #endif
@@ -197,6 +203,28 @@ vec4  processVertex(out Varyings var, uint instanceOffset, const uint meshletId,
 #endif
   }
 
+#if defined(LVL_OBJECT) && defined(VOB_DISTANCE_FADE)
+float objectDistanceFade(const uvec4 task) {
+#if defined(VIRTUAL_SHADOW)
+  if(scene.vobFarClip<=0.0)
+    return 1.0;
+
+  const float radius = bucket[task.z].bboxRadius + bucket[task.z].waveMaxAmplitude;
+  const float distanceToSurface = max(length(pullPosition(task.x)-scene.camPos)-radius,0.0);
+  if(distanceToSurface<=scene.vobFadeStart)
+    return 1.0;
+  if(distanceToSurface>=scene.vobFarClip)
+    return 0.0;
+
+  const float fade = clamp((scene.vobFarClip-distanceToSurface)/
+                           (scene.vobFarClip-scene.vobFadeStart),0.0,1.0);
+  return fade*fade*(3.0-2.0*fade);
+#else
+  return unpackUnorm2x16(task.w).x;
+#endif
+  }
+#endif
+
 #if defined(GL_VERTEX_SHADER)
 void vertexShader(const uvec4 task) {
   const uint  instanceId = task.x;
@@ -212,6 +240,10 @@ void vertexShader(const uvec4 task) {
     gl_Position = vec4(uintBitsToFloat(0x7fc00000));
     return;
     }
+
+#if defined(LVL_OBJECT) && defined(VOB_DISTANCE_FADE)
+  objectFadeOut = objectDistanceFade(task);
+#endif
 
 #if defined(MAT_VARYINGS)
   bucketIdOut = bucketId;
@@ -239,6 +271,11 @@ void meshShader(const uvec4 task) {
 
   // Alloc outputs
   SetMeshOutputsEXT(vertCount, primCount);
+
+#if defined(LVL_OBJECT) && defined(VOB_DISTANCE_FADE)
+  if(laneID<vertCount)
+    objectFadeOut[laneID] = objectDistanceFade(task);
+#endif
 
 #if defined(MAT_VARYINGS)
   bucketIdOut[laneID] = bucketId;

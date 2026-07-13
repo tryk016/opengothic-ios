@@ -67,6 +67,8 @@ elseif(IOS)
          "Limit the iOS world camera far plane to 60000 Gothic units" OFF)
   option(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE
          "Map the Gothic draw-distance menu setting to the world camera far plane" OFF)
+  option(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE
+         "Map the Gothic object-distance menu setting to dithered VOB fading" OFF)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
@@ -122,6 +124,10 @@ elseif(IOS)
   if(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE=1)
+  endif()
+  if(OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_GPU_EXPERIMENT_VOB_DISTANCE_FADE=1)
   endif()
   # App icon: Xcode's actool compiles this asset catalog on the CI runner and
   # injects the CFBundleIcons keys, so the icon shows on the home screen.

@@ -38,6 +38,11 @@ struct SceneDesc {
   ivec2 screenRes;
   vec4  cloudsDir;
   float probeGridBias;
+#if defined(VOB_DISTANCE_FADE)
+  float vobFadeStart;
+  float vobFarClip;
+  float vobPadd;
+#endif
   };
 
 struct LightSource {
