@@ -11,7 +11,11 @@ set(CMAKE_RELWITHDEBINFO_POSTFIX "")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_SKIP_RPATH ON)
 
-add_executable(${PROJECT_NAME})
+if(ANDROID)
+  add_library(${PROJECT_NAME} SHARED)
+else()
+  add_executable(${PROJECT_NAME})
+endif()
 
 if(MSVC)
   add_definitions(-D_USE_MATH_DEFINES)
@@ -29,7 +33,7 @@ if(NOT MSVC)
   if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "7.1" AND NOT APPLE AND NOT ${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")
     target_compile_options(${PROJECT_NAME} PRIVATE -Wno-format-truncation)
   endif()
-  if(UNIX)
+  if(UNIX AND NOT ANDROID)
     # -rdynamic is needed to allow obtaining meaningful backtraces
     target_link_options(${PROJECT_NAME} PRIVATE -rdynamic)
   endif()
@@ -131,6 +135,13 @@ elseif(IOS)
     MACOSX_PACKAGE_LOCATION Resources)
 elseif(APPLE)
   enable_language(OBJCXX)
+elseif(ANDROID)
+  # GameActivity native glue
+  find_package(game-activity REQUIRED CONFIG)
+  # game/main_android.cpp includes Tempest-internal headers (e.g.
+  # "system/api/androidapi.h") by path relative to Engine/, which is not on
+  # the public include path added below (Engine/include only).
+  include_directories(lib/Tempest/Engine)
 endif()
 
 if(IOS)
@@ -139,6 +150,13 @@ if(IOS)
 elseif(APPLE)
   target_link_libraries(${PROJECT_NAME} "-framework AppKit")
   file(GLOB_RECURSE ObjCSOURCES "game/*.mm")
+endif()
+
+if(ANDROID)
+  # Android entry lives in game/main_android.cpp; .mm files are Apple-only and excluded by the glob (only *.cpp/*.h gathered).
+  target_link_libraries(${PROJECT_NAME}
+    game-activity::game-activity_static
+    android log)
 endif()
 
 ## OpenGothic
@@ -174,6 +192,8 @@ endif()
 
 if(WIN32)
   target_link_libraries(${PROJECT_NAME} shlwapi DbgHelp)
+elseif(ANDROID)
+  # nothing extra here; handled above
 elseif(UNIX)
   target_link_libraries(${PROJECT_NAME} -lpthread -ldl)
 endif()
