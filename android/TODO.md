@@ -4,10 +4,27 @@ Tracks M1 (boot-to-menu) task-by-task status. See
 `docs/superpowers/plans/2026-07-14-android-port-m1.md` for the full plan and
 `.superpowers/sdd/progress.md` for the cross-task ledger.
 
+**M1 status: COMPLETE**, and the port reached further than its "boot to
+menu" goal. On an x86_64 emulator (`emulator-5554`, Pixel Tablet AVD profile,
+API 35), Gothic II: NotR boots, renders the main menu, takes touch input,
+starts a new game via "Nowa gra", plays the in-engine intro cutscene, and
+survives backgrounding/resuming without crashing. See
+[`DEVELOPMENT.md`](DEVELOPMENT.md) for the architecture, event-loop/lifecycle
+design, the CI gotchas, and the full commit timeline; see
+[`README-android.md`](README-android.md) for the (currently work-in-progress)
+end-user install guide.
+
+**Not yet done:** none of this has been confirmed on real arm64 hardware, or
+under the ~4 GB RAM memory pressure that is the actual target device class —
+see the M2 section at the bottom.
+
 ## Task 1: First light — scaffolding, CI, clear-screen APK
 
-Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
-machine — real verification is CI green + on-device dark-red screen).
+Status: **COMPLETE — device-confirmed.** Implemented, then verified via CI
+green and, later, on an x86_64 emulator: the dark-red `#3a0000` clear screen
+rendered through the new Vulkan/AndroidApi swapchain path. Fully superseded
+by Tasks 2-5 below, which replaced the clear-screen stub with the real
+engine.
 
 Done:
 - [x] Gradle project skeleton (`android/settings.gradle`, `android/build.gradle`,
@@ -64,9 +81,9 @@ Known concerns / expected CI iteration (flagged for the controller):
 
 ## Task 2: Boot the real engine (replace the clear-screen stub)
 
-Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
-machine — real verification is CI green + logcat showing a controlled
-data-load failure, not the dark-red clear screen).
+Status: **COMPLETE — device-confirmed.** On the emulator, logcat showed
+"OpenGothic v1.0 dev" boot, followed by a controlled `GothicNotFoundException`
+("Gothic path is not provided... -g <path>") — no crash. Commit `4cdaba69`.
 
 Done:
 - [x] `game/main_android.cpp` — replaced `ClearWindow`/`android_main` body with
@@ -115,9 +132,11 @@ Known concerns / expected CI iteration (flagged for the controller):
 
 ## Task 3: Storage data root — point the engine at /sdcard/OpenGothic/Gothic2
 
-Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
-machine — real verification is CI green + logcat showing the engine load
-`Gothic.ini`/VDFs from the device and reach the **main menu render**).
+Status: **COMPLETE — device-confirmed.** On the emulator, the full Gothic
+II: NotR main menu renders (VDFs mounted from `/sdcard/OpenGothic/Gothic2`,
+Vulkan device on the host GPU, shaders compiled). Log showed "no Gothic.ini
+- using default settings" — non-blocking; the RFile CWD-first patch was not
+needed to reach the menu. Commit `9932e342`.
 
 Done:
 - [x] `game/main_android.cpp` — added `::chdir("/sdcard/OpenGothic")`
@@ -172,9 +191,11 @@ Known concerns / expected CI iteration (flagged for the controller):
 
 ## Task 4: Touch input — tap dispatched as mouse click for menu nav
 
-Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
-machine — real verification is CI green + on-device taps highlighting/
-activating main-menu items via `adb shell input tap`).
+Status: **COMPLETE — device-confirmed, and further than planned.** Taps
+reach the engine via `dispatchMouse*`; tapping the shared iOS `mobileUi`
+overlay's confirm zone activated "Nowa gra", loaded a world, and played the
+in-engine intro cutscene. Audio outputs correctly (the emulator's audio HAL
+chokes harmlessly; the engine's PCM output is fine). Commit `e3ab6dab`.
 
 Done:
 - [x] `android/patches/apply-patches.sh` (`androidapi.cpp` heredoc) —
@@ -235,9 +256,12 @@ Known concerns / expected CI iteration (flagged for the controller):
 
 ## Task 5: Lifecycle hardening — surface loss on background/resume
 
-Status: implemented, **UNVERIFIED** (no local NDK/Gradle/build toolchain on
-this machine — real verification is CI green + on-device: press Home, wait,
-return to foreground, confirm no SIGSEGV and rendering resumes).
+Status: **COMPLETE — device-confirmed.** Backgrounding (Home) and resuming
+the emulator no longer SIGSEGVs, in both the main menu and in-game; the
+render loop stays alive and animating after resume (the intro title kept
+rendering). Commit `e71fd931`. Also: `dc4d41db` marked the `latest-android`
+GitHub Release WIP / do-not-install. With this task done, M1 is complete and
+only Task 6 (docs) remained.
 
 Confirmed bug (reproduced on-device before this task): backgrounding (Home)
 survives, but returning to foreground SIGSEGVs the game thread. Root cause:
@@ -377,10 +401,45 @@ Known concerns / expected CI iteration (flagged for the controller):
   `presentQueue->waitIdle()` — deliberately used instead of/in addition to
   that for the safety-critical background/resume path.
 
+## Task 6: Documentation
+
+Status: **COMPLETE.** `DEVELOPMENT.md`, `README-android.md` written/finalized,
+this file's M1 statuses updated to reflect device confirmation, and the root
+`README.md` now points at the Android build alongside the existing iOS entry.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
-- Virtual on-screen gamepad / touch movement controls.
-- Real controller + haptics support via the Game Controller Library.
-- Radial/quick-select rings adapted for touch.
-- World-load memory tuning for 4 GB devices.
-- `android/DEVELOPMENT.md`, `android/README-android.md` (Task 6 docs).
+M1 proved the engine boots, renders, takes touch input, and survives
+backgrounding — on an **x86_64 desktop emulator**. None of the items below
+were in scope for "boot to menu, survive resume", and none have been
+started:
+
+- **Real low-RAM/arm64 hardware validation — the actual point of the port.**
+  M1 was only run on a desktop-class x86_64 emulator. The production target
+  is budget arm64 phones around 4 GB RAM (see the `Helio G99` comment in
+  `android/app/build.gradle`'s `abiFilters`); world-load memory behavior
+  under real memory pressure is completely unvalidated — only the main menu
+  and the intro cutscene have been reached so far, not sustained gameplay.
+- Full on-screen virtual gamepad, tuned for Android (the current shared iOS
+  `mobileUi` overlay works for menu confirm/cancel taps but was neither
+  designed nor tuned for Android touch/screen sizes).
+- Real controllers + haptics via the Android Game Controller Library (the
+  iOS port's `GCExtendedGamepad`-based pipeline in `game/utils/gamepad.mm`
+  has no Android equivalent yet).
+- Radial/quick-select rings (`game/ui/quickring.*`) and target lock-on
+  adapted for Android touch/controller input.
+- `GameTextInput` (or equivalent) for on-screen save-name entry.
+- Verify `Gothic.ini` persistence on Android: the engine takes the same code
+  path as desktop/Linux (not iOS's auto-populated profile — see
+  `game/gothic.cpp`'s `#if defined(__IOS__)` branch), reading/writing
+  `Gothic.ini` from the `chdir`-ed `/sdcard/OpenGothic/` working directory.
+  M1 only observed "no Gothic.ini - using default settings" at the menu;
+  whether in-game option changes actually flush and reload correctly across
+  a restart has not been tested.
+- Audio-init try/catch guard around `Tempest::SoundDevice` construction
+  (skipped in Task 5 as scope-creep — audio already works; this would only
+  harden a currently-unobserved failure mode).
+- Storage-permission gating/polling before bootstrap (noted since Task 3):
+  M1 assumes `MANAGE_EXTERNAL_STORAGE` is already granted at first launch via
+  `MainActivity.ensureAllFilesAccess()`'s Settings redirect, with no in-native
+  polling for a mid-session grant.

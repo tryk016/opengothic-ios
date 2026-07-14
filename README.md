@@ -4,6 +4,12 @@ An **unofficial iOS port** of [OpenGothic](https://github.com/Try/OpenGothic) �
 re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbing to build, sideload,
 and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-screen virtual gamepad.
 
+An early-stage **Android port** is also in development on the
+[`android` branch](https://github.com/tryk016/opengothic-ios/tree/android) — it boots to the main menu
+and beyond, but is pre-alpha and **not yet ready for players**. See
+[`android/README-android.md`](android/README-android.md) to try it anyway, or
+[`android/DEVELOPMENT.md`](android/DEVELOPMENT.md) for the architecture notes.
+
 > ### ⚠️ Work in progress
 > This fork is under **active development**. The core loop — gameplay, the on-screen virtual gamepad,
 > save/load with slot previews, haptics and the stable iOS performance profile — has been **tested and
