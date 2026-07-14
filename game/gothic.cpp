@@ -115,19 +115,36 @@ Gothic::Gothic() {
 #endif
   iniFile.reset(new IniFile(u"Gothic.ini"));
 #if defined(__IOS__)
+  constexpr int iosProfileVersion = 2;
+  bool          iosProfileChanged = false;
   if(!hasUserIni) {
     // Keep the copied PC system/Gothic.ini untouched. This small writable
     // overlay gives a fresh iOS install its device profile immediately.
     iniFile->set("GAME",     "useQuickSaveKeys",  1);
     iniFile->set("INTERNAL", "vidResIndex",       2);
     iniFile->set("ENGINE",   "zCloudShadowScale", 0);
-    iniFile->set("ENGINE",   "shadowResolution", 512);
+    iniFile->set("ENGINE",   "shadowResolution", 1024);
+    iniFile->set("ENGINE",   "zMaxFpsMode",       1);
     iniFile->set("GAMEPAD",  "deadZone",          0.25f);
     iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
     iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
     iniFile->set("GAMEPAD",  "triggerThreshold",  0.50f);
     iniFile->set("GAMEPAD",  "lookSensitivity",   0.20f);
     iniFile->set("GAMEPAD",  "invertY",           0);
+    iosProfileChanged = true;
+    }
+  else if(iniFile->getI("INTERNAL","iosProfileVersion",0)<iosProfileVersion) {
+    // Upgrade only values that can be identified as the previous generated
+    // profile. Explicit Off/30/60 choices already have zMaxFpsMode and remain
+    // untouched; a missing choice adopts the new 30 FPS default.
+    if(iniFile->getI("ENGINE","shadowResolution",-1)==512)
+      iniFile->set("ENGINE", "shadowResolution", 1024);
+    if(!iniFile->has("ENGINE","zMaxFpsMode"))
+      iniFile->set("ENGINE", "zMaxFpsMode", 1);
+    iosProfileChanged = true;
+    }
+  if(iosProfileChanged) {
+    iniFile->set("INTERNAL", "iosProfileVersion", iosProfileVersion);
     iniFile->flush();
     }
 #else
@@ -170,7 +187,8 @@ Gothic::Gothic() {
 #if defined(__IOS__)
   // 0 = uncapped, 1 = 30 FPS, 2 = 60 FPS. The iOS game-options menu maps the
   // requested replacement choice to this runtime setting.
-  defaults->set("ENGINE",       "zMaxFpsMode", 0);
+  defaults->set("ENGINE",       "zMaxFpsMode",       1);
+  defaults->set("ENGINE",       "shadowResolution", 1024);
 #endif
 
   defaults->set("VIDEO", "zVidBrightness", 0.5f);

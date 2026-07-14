@@ -200,10 +200,11 @@ copied with the game data:
 
 On the first successful launch after valid game data is installed, OpenGothic
 creates the second file with this complete iOS profile when it does not exist.
-An existing override — even an empty or malformed one — is not auto-populated
-or replaced; values changed later through the game menu are still written there
-normally. A launch that stops at the missing-data alert happens before profile
-creation and will try again after the game data is copied.
+Existing explicit menu choices are preserved. Profile version 2 performs one
+targeted migration: the old generated 512 px shadow setting becomes 1024 px and
+a missing FPS choice becomes the new 30 FPS default. Other existing values are
+not auto-populated or replaced. A launch that stops at the missing-data alert
+happens before profile creation and will try again after the game data is copied.
 
 ```ini
 [GAME]
@@ -211,10 +212,12 @@ useQuickSaveKeys=1
 
 [INTERNAL]
 vidResIndex=2
+iosProfileVersion=2
 
 [ENGINE]
 zCloudShadowScale=0
-shadowResolution=512
+shadowResolution=1024
+zMaxFpsMode=1
 
 [GAMEPAD]
 deadZone=0.25
@@ -226,9 +229,10 @@ invertY=0
 ```
 
 When upgrading from an older build, a root override may already exist with only
-the settings saved previously. Keep it and add any desired values from the
-profile above, or rename/delete it once to let the app generate the complete
-profile on the next launch. The copied `system/Gothic.ini` is unaffected.
+the settings saved previously. Keep it: the targeted version-2 migration above
+runs once, while all unrelated values and explicit FPS selections stay intact.
+You can still rename/delete the override once to regenerate the complete profile.
+The copied `system/Gothic.ini` is unaffected.
 
 `vidResIndex=2` renders only the 3D scene at half resolution and upscales it;
 HUD, menus and subtitles remain native and sharp. `zCloudShadowScale=0` disables
@@ -256,8 +260,8 @@ noStuckProtect=1        ; disable the L3+R3 unstuck warp
 The controller does not reserve any shortcut for quick save/load. The
 `useQuickSaveKeys` engine option above remains available for keyboard F5/F9.
 
-The build runs uncapped by default for ProMotion. On iOS, Options → Game
-repurposes the existing “Gothic 1 controls” choice as
+The build defaults to 30 FPS to reduce sustained iPhone load. On iOS,
+Options → Game repurposes the existing “Gothic 1 controls” choice as
 “FPS limit”, with Off, 30 and 60 FPS values. The selection is applied
 immediately and persisted in the root `Documents/Gothic.ini` as
 `ENGINE/zMaxFpsMode` (`0`, `1` or `2`). The original `GAME/useGothic1Controls`

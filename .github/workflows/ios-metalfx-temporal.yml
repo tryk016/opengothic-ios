@@ -101,14 +101,14 @@ jobs:
                 "category": "games",
                 "version": "$VERSION",
                 "versionDate": "$DATE",
-                "versionDescription": "Recommended MetalFX Temporal build $VERSION.",
+                "versionDescription": "Recommended MetalFX Temporal build $VERSION. Defaults: 30 FPS and 1024 px shadow maps.",
                 "downloadURL": "$IPA_URL",
                 "size": $SIZE,
                 "versions": [
                   {
                     "version": "$VERSION",
                     "date": "$DATE",
-                    "localizedDescription": "Recommended MetalFX Temporal build $VERSION.",
+                    "localizedDescription": "Recommended MetalFX Temporal build $VERSION. Defaults: 30 FPS and 1024 px shadow maps.",
                     "downloadURL": "$IPA_URL",
                     "size": $SIZE
                   }
@@ -129,6 +129,8 @@ jobs:
           NOTES="Unsigned MetalFX Temporal iOS build \`1.2.${{ github.run_number }}\` (commit ${{ github.sha }}).
 
           **Recommended build.** Uses Apple's MetalFX Temporal upscaling for the best reconstruction quality available in this port, with automatic MetalFX Spatial and Lanczos fallbacks. Device-tested on Apple A17 Pro with half-resolution rendering and the extended graphics options enabled; no visual artifacts were observed.
+
+          The iOS profile defaults to 30 FPS and 1024 px shadow maps. Existing explicit FPS choices remain unchanged; the legacy generated 512 px shadow setting is upgraded once.
 
           **Download:** \`OpenGothic-MetalFX-Temporal.ipa\` below, then sideload with your own free Apple ID via SideStore / AltStore / Sideloadly.
           **SideStore source:** add this URL in SideStore → Sources → +

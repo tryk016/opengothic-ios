@@ -134,10 +134,10 @@ B cancels; drag anywhere else and release to use the selected sector.
 The copied `Documents/system/Gothic.ini` is never overwritten. On the first
 successful launch after valid game data is installed, OpenGothic creates a
 separate `Documents/Gothic.ini` override if it is absent, with the complete iOS
-profile: half-resolution 3D rendering, SSAO off, 512 px shadow maps, quick-save
-support and all stable `[GAMEPAD]` defaults (including `crossAxisGuard=0.12`).
-An existing root override — even an empty one — is not auto-populated or
-replaced.
+profile: half-resolution 3D rendering, SSAO off, 1024 px shadow maps, a 30 FPS
+default, quick-save support and all stable `[GAMEPAD]` defaults (including
+`crossAxisGuard=0.12`). Existing explicit FPS choices remain unchanged; the
+legacy generated 512 px shadow setting is upgraded once to 1024 px.
 
 The generated profile, upgrade note, override priority, optional FPS cap and
 diagnostic settings are documented in the
@@ -145,7 +145,8 @@ diagnostic settings are documented in the
 
 Options → Video → **Drawing distance** is live on iOS: 100% corresponds to an
 approximately 1 km world far plane, while 80%/60%/40% correspond to roughly
-800/600/400 m. Options → Game → **FPS limit** provides Off, 30 and 60 FPS.
+800/600/400 m. Options → Game → **FPS limit** provides Off, 30 and 60 FPS;
+30 FPS is the iOS default.
 
 ### Known limitations
 
