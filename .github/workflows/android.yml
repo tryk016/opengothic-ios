@@ -54,15 +54,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Signed Android build \`1.0.${{ github.run_number }}\` (commit ${{ github.sha }}).
-          Install: download OpenGothic.apk, enable 'Unknown sources', install.
-          Put your legally-owned Gothic II data in /sdcard/OpenGothic/Gothic2/. No assets included."
+          NOTES="## ⚠️ WORK IN PROGRESS — NOT PLAYABLE YET — DO NOT INSTALL ⚠️
+
+          This is an automated Android **test build** (\`1.0.${{ github.run_number }}\`, commit ${{ github.sha }}) of the OpenGothic port. It is **incomplete and not ready for players** — it is published only for development/CI purposes.
+
+          A proper release with real install instructions will replace this notice once the Android port is ready. Please don't install these builds or file issues against them yet."
+          TITLE="OpenGothic Android — WIP test build (do not install)"
           if gh release view latest-android >/dev/null 2>&1; then
-            gh release edit latest-android --prerelease --notes "$NOTES"
+            gh release edit latest-android --prerelease --title "$TITLE" --notes "$NOTES"
             gh release upload latest-android OpenGothic.apk --clobber
           else
             gh release create latest-android OpenGothic.apk \
-              --title "OpenGothic Android — latest" --prerelease --notes "$NOTES"
+              --title "$TITLE" --prerelease --notes "$NOTES"
           fi
 
       - name: Upload APK artifact
