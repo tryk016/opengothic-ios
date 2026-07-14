@@ -205,6 +205,7 @@ cat > "$API_CPP" <<'EOF'
 #include <game-activity/native_app_glue/android_native_app_glue.h>
 #include <android/native_window.h>
 #include <android/looper.h>
+#include <android/input.h>
 
 #include <atomic>
 #include <thread>
@@ -347,10 +348,46 @@ void AndroidApi::implProcessEvents(AppCallBack& /*cb*/) {
     dispatchResize(*g_owner, e);
     }
 
-  // TODO(Task 4): pump game-activity's android_input_buffer motion events
-  // here (android_app_swap_input_buffers) and forward taps via
-  // dispatchMouseDown/dispatchMouseMove/dispatchMouseUp, mirroring how
-  // iosapi.mm maps UITouch -> dispatchMouse*.
+  // Drain per-frame touch input and forward it as mouse events, mirroring
+  // how iosapi.mm maps UITouch -> dispatchMouse* (touchesBegan/Moved/Ended
+  // each synthesize a MouseEvent at the touch position and dispatch it
+  // directly -- there is no separate "hover" move sent before a down, so we
+  // don't synthesize one here either). Coordinates from
+  // GameActivityPointerAxes are already in surface pixels -- the same space
+  // as ANativeWindow_getWidth/Height -- so unlike iOS (which multiplies
+  // touch points by contentScaleFactor) no extra DPI scaling is needed here.
+  android_input_buffer* ib = android_app_swap_input_buffers(g_app);
+  if(ib!=nullptr) {
+    for(uint64_t i=0; i<ib->motionEventsCount; ++i) {
+      const GameActivityMotionEvent& m = ib->motionEvents[i];
+      if(m.pointerCount==0 || g_owner==nullptr)
+        continue;
+
+      const int32_t action = m.action & AMOTION_EVENT_ACTION_MASK;
+      Event::Type   type    = Event::NoEvent;
+      if(action==AMOTION_EVENT_ACTION_DOWN)
+        type = Event::MouseDown;
+      else if(action==AMOTION_EVENT_ACTION_UP || action==AMOTION_EVENT_ACTION_CANCEL)
+        type = Event::MouseUp; // cancelled gesture -> release, same as iosapi.mm's touchesCancelled -> touchesEnded
+      else if(action==AMOTION_EVENT_ACTION_MOVE)
+        type = Event::MouseMove;
+      else
+        continue;
+
+      const float x   = GameActivityPointerAxes_getX(&m.pointers[0]);
+      const float y   = GameActivityPointerAxes_getY(&m.pointers[0]);
+      const int   pid = m.pointers[0].id; // touch-point id, not to be confused with the outer ALooper `id`
+
+      MouseEvent e(int(x), int(y), Event::ButtonLeft, Event::M_NoModifier, 0, pid, type);
+      if(type==Event::MouseDown)
+        dispatchMouseDown(*g_owner, e);
+      else if(type==Event::MouseUp)
+        dispatchMouseUp(*g_owner, e);
+      else if(type==Event::MouseMove)
+        dispatchMouseMove(*g_owner, e);
+      }
+    android_app_clear_motion_events(ib);
+    }
 
   if(g_owner!=nullptr && g_app->window!=nullptr)
     dispatchRender(*g_owner);

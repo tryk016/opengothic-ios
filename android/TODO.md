@@ -170,6 +170,69 @@ Known concerns / expected CI iteration (flagged for the controller):
   (`if(gpath.size()>0 && gpath.back()!='/') gpath.push_back('/');`), so the
   no-trailing-slash literal used here is fine as-is.
 
+## Task 4: Touch input — tap dispatched as mouse click for menu nav
+
+Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
+machine — real verification is CI green + on-device taps highlighting/
+activating main-menu items via `adb shell input tap`).
+
+Done:
+- [x] `android/patches/apply-patches.sh` (`androidapi.cpp` heredoc) —
+      `implProcessEvents` now drains `game-activity`'s per-frame motion-event
+      buffer after cmd handling and before `dispatchRender`:
+      `android_app_swap_input_buffers(g_app)` → for each
+      `GameActivityMotionEvent`, mask `m.action & AMOTION_EVENT_ACTION_MASK`
+      and map `AMOTION_EVENT_ACTION_DOWN/UP/MOVE` (and `CANCEL`, treated as an
+      `UP`) to `Event::MouseDown/MouseUp/MouseMove`, read the primary pointer's
+      position via `GameActivityPointerAxes_getX/Y(&m.pointers[0])`, build a
+      `Tempest::MouseEvent` with the **exact constructor signature copied from
+      `iosapi.mm`** (`x, y, Event::ButtonLeft, Event::M_NoModifier, 0,
+      mouseID, type`) and dispatch it via `dispatchMouseDown/Up/Move(*g_owner,
+      e)` — `g_owner` is the same `Tempest::Window*` handle the existing
+      `dispatchResize`/`dispatchRender` calls already use. Always
+      `android_app_clear_motion_events(ib)` after the loop, even if there was
+      no owner yet, so stale events never queue up and replay as a burst
+      later.
+      Event order mirrors `iosapi.mm` exactly: `touchesBegan/Moved/Ended` each
+      synthesize a single `MouseEvent` at the touch position and dispatch it
+      directly — there is **no** separate hover/move sent before a down — so
+      no synthetic move-before-down was added on the Android side either.
+- [x] Added `#include <android/input.h>` to `androidapi.cpp` for the
+      `AMOTION_EVENT_ACTION_*` constants (previously relied only on the
+      transitive include from `android_native_app_glue.h`).
+- [x] Renamed the pointer-id local to `pid` to avoid shadowing the
+      pre-existing outer `int id` (the `ALooper_pollAll` result) already in
+      `implProcessEvents`'s scope.
+
+Explicitly not done (out of scope for M1's "tap = click" goal):
+- Multi-touch: only the primary pointer (`m.pointers[0]`) is read. A second
+  finger touching down mid-gesture emits `AMOTION_EVENT_ACTION_POINTER_DOWN/
+  _UP` (distinct from plain `DOWN`/`UP` once masked), which this code ignores
+  by design — deferred to M2's virtual gamepad/touch-controls work.
+- No coordinate scaling is applied (unlike iOS, which multiplies by
+  `contentScaleFactor`): `GameActivityPointerAxes_getX/Y` already report
+  surface pixels, the same space as `ANativeWindow_getWidth/Height`.
+
+Known concerns / expected CI iteration (flagged for the controller):
+- **Coordinate alignment**: relies on the Activity being truly edge-to-edge
+  with no letterboxing/inset offset between the touch coordinate space and
+  the rendered surface (the existing `implSetAsFullscreen` comment says the
+  theme is already fullscreen/edge-to-edge). If on-device taps land visually
+  offset from the highlighted item (e.g. a status/nav-bar inset not accounted
+  for), that points here first — not something a Windows-only, no-NDK
+  environment can verify by reading source alone.
+- `GameActivityMotionEvent`/`GameActivityPointerAxes_getX/Y`/
+  `android_input_buffer`/`android_app_swap_input_buffers`/
+  `android_app_clear_motion_events` are assumed reachable transitively via the
+  already-included `<game-activity/native_app_glue/android_native_app_glue.h>`
+  (this is the standard, documented AGDK GameActivity input-handling API —
+  same shape as Google's own sample code) — first real compiler confirmation
+  happens in CI, consistent with Task 1's note that `game-activity`'s exact
+  header shape is CI-iterative.
+- Did not special-case `AMOTION_EVENT_ACTION_POINTER_DOWN/_UP` (see "not done"
+  above) — if on-device testing shows a stuck "button held" menu state after
+  a brief accidental multi-touch, that is the mechanism to revisit.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 - Virtual on-screen gamepad / touch movement controls.
