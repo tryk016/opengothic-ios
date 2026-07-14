@@ -154,8 +154,13 @@ endif()
 
 if(ANDROID)
   # Android entry lives in game/main_android.cpp; .mm files are Apple-only and excluded by the glob (only *.cpp/*.h gathered).
+  # GameActivity's JNI entry points (Java_..._initializeNativeCode etc.) are only
+  # called from Java, so Release --gc-sections strips them from libGothic2Notr.so
+  # -> java.lang.UnsatisfiedLinkError at startup. --whole-archive keeps the glue.
   target_link_libraries(${PROJECT_NAME}
+    -Wl,--whole-archive
     game-activity::game-activity_static
+    -Wl,--no-whole-archive
     android log)
 endif()
 
