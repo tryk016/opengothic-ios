@@ -15,7 +15,9 @@
 #include <stacktrace>
 #endif
 
-#if defined(__LINUX__) || defined(__APPLE__)
+// Android is Linux (__LINUX__ is set) but Bionic's backtrace()/backtrace_symbols()
+// are only declared at API level 33+; we target minSdk 26, so exclude Android.
+#if (defined(__LINUX__) || defined(__APPLE__)) && !defined(__ANDROID__)
 #include <execinfo.h> // backtrace
 #include <dlfcn.h>    // dladdr
 #include <cxxabi.h>   // __cxa_demangle
@@ -212,7 +214,7 @@ void CrashLog::dumpStack(const char *sig, const char *extGpuLog) {
   tracebackStd(fout);
 #elif defined(__WINDOWS__)
   traceback.log(db, fout);
-#elif defined(__LINUX__) || defined(__APPLE__)
+#elif (defined(__LINUX__) || defined(__APPLE__)) && !defined(__ANDROID__)
   tracebackLinux(fout);
 #endif
   fout.flush();
@@ -231,7 +233,7 @@ void CrashLog::tracebackStd(std::ostream &out) {
   }
 
 void CrashLog::tracebackLinux(std::ostream &out) {
-#if defined(__LINUX__) || defined(__APPLE__)
+#if (defined(__LINUX__) || defined(__APPLE__)) && !defined(__ANDROID__)
   // inspired by https://gist.github.com/fmela/591333/36faca4c2f68f7483cd0d3a357e8a8dd5f807edf (BSD)
   void *callstack[64] = {};
   char **symbols = nullptr;
