@@ -74,6 +74,16 @@ class MainWindow : public Tempest::Window {
     void padSkipVideo();                        // skip it (mirrors desktop Esc)
 #endif
 
+#if defined(__ANDROID__)
+    // Lifecycle hooks wired up by main_android.cpp to AndroidApi::setSurfaceCallbacks
+    // (see androidapi.cpp). Backgrounding tears down the ANativeWindow the
+    // current `swapchain`'s VkSurfaceKHR was built from; resuming hands back
+    // a DIFFERENT ANativeWindow*, so the surface (not just the swapchain
+    // images) must be rebuilt -- Swapchain::reset() alone is not enough.
+    void onSurfaceDestroyed();                       // APP_CMD_TERM_WINDOW: drain the GPU before the window dies
+    void onSurfaceCreated(Tempest::SystemApi::Window* w); // resume: rebuild swapchain against the new window
+#endif
+
   private:
     void paintEvent     (Tempest::PaintEvent& event) override;
     void resizeEvent    (Tempest::SizeEvent & event) override;

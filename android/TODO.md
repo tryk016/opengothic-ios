@@ -233,6 +233,150 @@ Known concerns / expected CI iteration (flagged for the controller):
   above) — if on-device testing shows a stuck "button held" menu state after
   a brief accidental multi-touch, that is the mechanism to revisit.
 
+## Task 5: Lifecycle hardening — surface loss on background/resume
+
+Status: implemented, **UNVERIFIED** (no local NDK/Gradle/build toolchain on
+this machine — real verification is CI green + on-device: press Home, wait,
+return to foreground, confirm no SIGSEGV and rendering resumes).
+
+Confirmed bug (reproduced on-device before this task): backgrounding (Home)
+survives, but returning to foreground SIGSEGVs the game thread. Root cause:
+`APP_CMD_TERM_WINDOW` destroys the `ANativeWindow`, but the engine's
+`VSwapchain` (built from that window's `VkSurfaceKHR`) is never torn down or
+rebuilt; `APP_CMD_INIT_WINDOW` on resume hands back a **different**
+`ANativeWindow*`, and the next frame renders against the stale, freed
+surface. `Swapchain::reset()` (the existing resize path) only rebuilds the
+swapchain **images**, not the surface (confirmed by reading
+`vswapchain.cpp`: `reset()` calls `cleanupSwapchain()` +`createSwapchain()`
+only; `surface`/`hwnd` are private members only touched by the constructor
+and `cleanup()`) — so it cannot recover a changed window handle.
+
+Done:
+- [x] Chose **approach (b)** from the brief (full `Swapchain` reconstruction)
+      over (a) (teaching `vswapchain.cpp` to read a "live" window and
+      self-heal in `reset()`). `Tempest::Device::swapchain(SystemApi::Window*)`
+      already exists and does exactly this — `Device::swapchain(w)` →
+      `api.createSwapchain(w,dev)` → `new Detail::VSwapchain(*dx, w)`, the
+      same call `Swapchain(Device&, SystemApi::Window*)`'s constructor uses
+      — so a full, independent surface+swapchain rebuild against a new
+      window is already a first-class, already-battle-tested operation.
+      This needed **zero changes** to `vswapchain.cpp`/`vulkanapi.cpp`/
+      `device.cpp` — confirmed by reading all three.
+- [x] `android/patches/apply-patches.sh` (`androidapi.h`/`androidapi.cpp`
+      heredocs) — added `AndroidApi::setSurfaceCallbacks(onSurfaceDestroyed,
+      onSurfaceCreated)`, a one-time registration point for two
+      `std::function` callbacks:
+      - `handleAppCmd`'s `APP_CMD_TERM_WINDOW` case now calls
+        `onSurfaceDestroyed()` **synchronously**, before returning — not via
+        the existing deferred `g_windowChanged` flag mechanism. This matters:
+        `android_native_app_glue`'s post-exec for `TERM_WINDOW` nulls
+        `android_app::window` and signals a condvar *after* this callback
+        returns, and the platform's `onNativeWindowDestroyed` (UI thread)
+        blocks on that condvar before actually releasing the
+        `ANativeWindow`. That makes this handler returning the actual
+        synchronization point gating real teardown — deferring would race
+        the OS's teardown of the buffer queue while GPU work might still
+        reference it (exactly what the observed "Surface: freeAllBuffers: 1
+        buffers were freed while being dequeued!" logcat line describes).
+      - `implProcessEvents`'s existing window-changed check now compares
+        `g_app->window` against a remembered `g_lastWindow`: unchanged
+        (a same-window resize/orientation change) still takes the original,
+        cheap `dispatchResize` → `swapchain.reset()` path, untouched; an
+        actually **different** window (background/resume) instead calls
+        `onSurfaceCreated(newWindow)` and updates the baseline. This avoids
+        both a wasteful double-reset on genuine resizes and a wasteful
+        redundant recreate on the very first boot (the callback isn't even
+        registered yet at that point — `setSurfaceCallbacks` also seeds
+        `g_lastWindow` to the boot window and clears any pending stale
+        flag, so registration itself can't misfire a spurious recreate).
+      - Both callback invocations are wrapped in `try/catch`
+        (`std::exception` + `catch(...)`, logged via `Tempest::Log::e`,
+        which double-writes to logcat tag `"app"` **and** the `log.txt`
+        sink `main_android.cpp` installs) so a failure can't unwind a C++
+        exception across the glue's C callback boundary
+        (`handleAppCmd`/`source->process`), which would otherwise be
+        undefined behavior / `std::terminate`.
+- [x] `game/mainwindow.h`/`mainwindow.cpp` (main repo, not the submodule —
+      edited directly) — two new `#if defined(__ANDROID__)` public methods:
+      - `onSurfaceDestroyed()`: `device.waitIdle()` (wrapped in
+        `try{}catch(...){}`), draining any in-flight GPU work before the
+        window dies. `dispatchRender` is already guarded off while windowless
+        (pre-existing `g_app->window!=nullptr` check), so nothing new gets
+        submitted after this.
+      - `onSurfaceCreated(Tempest::SystemApi::Window* w)`:
+        `device.waitIdle(); swapchain = device.swapchain(w);
+        renderer.resetSwapchain(); camera->setViewport(...)` — the exact
+        same recovery shape already used by the pre-existing
+        `catch(const Tempest::SwapchainSuboptimal&)` block in `tick()`
+        (`device.waitIdle(); swapchain.reset(); renderer.resetSwapchain();`),
+        just with a full `Swapchain` replace instead of `.reset()` since the
+        window handle itself changed. `Renderer::resetSwapchain()` already
+        starts with its own `device.waitIdle()` and fully re-derives
+        attachments — confirmed by reading `renderer.cpp` — so this is not
+        new, untested machinery.
+- [x] `game/main_android.cpp` — registers the two callbacks right after
+      `MainWindow wx(device);` and before `Tempest::Application app;
+      app.exec();`, as two lambdas capturing `wx` by reference (valid for
+      `wx`'s whole remaining lifetime, which spans the entire `app.exec()`
+      call — the only place these callbacks can fire from).
+
+Explicitly not done:
+- [ ] **Audio-init try/catch guard** — skipped. Read `main_android.cpp` in
+      full: it does not construct a `Tempest::SoundDevice` directly at all;
+      that construction is nested inside `Resources`'s member-initializer
+      list (`resources.h:232`, `Tempest::SoundDevice sound;`), a class
+      shared by every platform, and 5 other places
+      (`gothic.h`/`gamemusic.h`/`gamesession.h`/`dialogmenu.h`/
+      `videowidget.cpp`) each construct their own `SoundDevice` too. There is
+      no cheap, local, Android-only wrap point in `main_android.cpp` itself;
+      doing this properly means changing `Tempest::SoundDevice`'s
+      constructor (submodule, affects all platforms) or restructuring
+      `Resources`'s construction order — both bigger than "wrap in
+      main_android.cpp" and explicitly called out as skippable in the brief
+      ("Do NOT spend long on this... Skip if it would expand scope"), and
+      audio is already confirmed working on-device (Task 4 note: "engine
+      outputs PCM; emulator HAL chokes harmlessly"). Any existing exception
+      from this path is already caught by `main_android.cpp`'s pre-existing
+      outer `catch(const std::exception&)` around the whole bootstrap
+      (logs + `SystemMsg::fatal`, not a silent crash) — so boot-time
+      robustness here is degraded (a real init failure still aborts boot)
+      but not worse than before, and not a raw crash either.
+
+Known concerns / expected CI iteration (flagged for the controller):
+- **This is the core, hardest fix of M1 and is unverified on real hardware.**
+  Confidence is high (the swapchain reconstruction reuses the exact code
+  path the constructor and the existing `SwapchainSuboptimal` recovery
+  already exercise; the synchronous-teardown timing is derived from the
+  documented `android_native_app_glue` command-ack protocol, not a guess),
+  but this could not be built or run locally. On resume, watch logcat for:
+  - No `SIGSEGV` / `Force removing ActivityRecord ... app died` after
+    `adb shell input keyevent KEYCODE_HOME` then re-foregrounding.
+  - Whether "Surface: freeAllBuffers: N buffers were freed while being
+    dequeued!" still appears at backgrounding time. It may still print once
+    (it can fire from the platform side regardless of how fast our
+    `onSurfaceDestroyed` runs, depending on exactly how much GPU work was
+    in flight the instant `TERM_WINDOW` arrived) — the important signal is
+    whether it's still followed by a crash, not whether the line itself is
+    fully eliminated.
+  - Any `AndroidApi: onSurfaceDestroyed:` / `AndroidApi: onSurfaceCreated:`
+    warning lines (tag `"app"`, from the new `Log::e` catch blocks) — these
+    mean `device.waitIdle()` or `device.swapchain(w)` threw, which would
+    point at a real device/driver-level problem worth its own investigation
+    rather than a silent hang/crash.
+  - That rendering visibly resumes (menu or in-game frame appears) rather
+    than the app sitting on a black/frozen frame after resume — a black
+    frame with no crash would suggest the new `swapchain` came up but
+    `renderer.resetSwapchain()`/attachment recreation has its own issue.
+- Multiple rapid Home/resume cycles, and backgrounding during a big
+  blocking load (e.g. right after starting a new game), are untested code
+  paths worth a device pass beyond the single background/resume test named
+  in the brief.
+- `Device::waitIdle()` waits on **all** device queues
+  (`waitIdleSync`/`vkDeviceWaitIdle`, confirmed in `vdevice.cpp`), a
+  stronger guarantee than `VSwapchain::cleanupSwapchain()`'s own internal
+  `presentQueue->waitIdle()` — deliberately used instead of/in addition to
+  that for the safety-critical background/resume path.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 - Virtual on-screen gamepad / touch movement controls.

@@ -165,6 +165,7 @@ fi
 cat > "$API_H" <<'EOF'
 #pragma once
 #include <Tempest/SystemApi>
+#include <functional>
 struct android_app;
 struct ANativeWindow;
 
@@ -173,6 +174,18 @@ class AndroidApi final: SystemApi {
   public:
     using SystemApi::dispatchRender;
     static void  setAndroidApp(android_app* app);
+
+    // Lifecycle hook, registered once by main_android.cpp after the initial
+    // Device/Swapchain exist. onSurfaceDestroyed runs synchronously from the
+    // APP_CMD_TERM_WINDOW handler (before the ANativeWindow is released --
+    // see the comment at the call site in androidapi.cpp for why this must
+    // not be deferred). onSurfaceCreated runs when a *different* window
+    // shows up (resume after backgrounding), and is handed that new window
+    // handle so the caller can rebuild its Swapchain (surface included)
+    // against it -- Swapchain::reset() alone only rebuilds the images
+    // against the OLD, now-dead surface (see vswapchain.cpp).
+    static void  setSurfaceCallbacks(std::function<void()> onSurfaceDestroyed,
+                                      std::function<void(SystemApi::Window*)> onSurfaceCreated);
   private:
     AndroidApi();
     Window*  implCreateWindow(Tempest::Window* owner, uint32_t width, uint32_t height) override;
@@ -209,6 +222,7 @@ cat > "$API_CPP" <<'EOF'
 
 #include <atomic>
 #include <thread>
+#include <exception>
 
 #include <Tempest/Window>
 #include <Tempest/Event>
@@ -221,19 +235,56 @@ Tempest::Window*    g_owner   = nullptr;
 std::atomic_bool    g_running {true};
 std::atomic_bool    g_windowChanged {false};
 
+// The ANativeWindow* that the caller's Swapchain/VkSurfaceKHR was (or is
+// about to be) built against. Compared on each window-changed tick so a
+// same-window resize keeps using the cheap Swapchain::reset() path while an
+// actually-different window (background/resume) gets a full surface
+// rebuild via g_onSurfaceCreated. Set from setSurfaceCallbacks() and updated
+// whenever g_onSurfaceCreated is invoked.
+ANativeWindow*      g_lastWindow = nullptr;
+
+std::function<void()>                   g_onSurfaceDestroyed;
+std::function<void(SystemApi::Window*)> g_onSurfaceCreated;
+
 // Runs on the glue thread, synchronously, from inside ALooper_pollAll() (via
 // android_poll_source::process). Keep this to bookkeeping only -- the actual
 // SystemApi:: dispatch happens from AndroidApi::implProcessEvents (a member
 // function, so it has access to the protected dispatch* statics), mirroring
 // how iosapi.mm defers Resize dispatch out of the UIKit callback and into
 // implProcessEvents.
+//
+// APP_CMD_TERM_WINDOW is the one exception to "defer to implProcessEvents":
+// android_native_app_glue's post-exec for this command nulls android_app::window
+// and broadcasts a condvar *after* this callback returns -- and the platform's
+// onNativeWindowDestroyed (running on the UI thread) blocks on that condvar
+// before it actually releases the ANativeWindow. That makes this handler,
+// returning, the exact synchronization point gating the real teardown: any
+// GPU work still referencing the surface MUST be drained before we return
+// here, or the OS can free/disconnect the window's buffer queue while it is
+// still in use (this is what "Surface: freeAllBuffers: N buffers were freed
+// while being dequeued" in logcat is reporting), which later SIGSEGVs the
+// next time the stale surface is touched. So g_onSurfaceDestroyed runs
+// synchronously, right here, not via the g_windowChanged flag.
 void handleAppCmd(android_app* app, int32_t cmd) {
   (void)app;
   switch(cmd) {
     case APP_CMD_INIT_WINDOW:
     case APP_CMD_WINDOW_RESIZED:
-    case APP_CMD_TERM_WINDOW:
       g_windowChanged.store(true);
+      break;
+    case APP_CMD_TERM_WINDOW:
+      if(g_onSurfaceDestroyed) {
+        try {
+          g_onSurfaceDestroyed();
+          }
+        catch(const std::exception& e) {
+          Log::e("AndroidApi: onSurfaceDestroyed: ", e.what());
+          }
+        catch(...) {
+          Log::e("AndroidApi: onSurfaceDestroyed: unknown exception");
+          }
+        }
+      g_windowChanged.store(false); // handled synchronously above; nothing left for this transition
       break;
     case APP_CMD_DESTROY:
       g_running.store(false);
@@ -248,6 +299,21 @@ void AndroidApi::setAndroidApp(android_app* app) {
   g_app = app;
   if(g_app!=nullptr)
     g_app->onAppCmd = &handleAppCmd;
+  }
+
+void AndroidApi::setSurfaceCallbacks(std::function<void()> onSurfaceDestroyed,
+                                      std::function<void(SystemApi::Window*)> onSurfaceCreated) {
+  g_onSurfaceDestroyed = std::move(onSurfaceDestroyed);
+  g_onSurfaceCreated   = std::move(onSurfaceCreated);
+  // The window the caller already built its initial Swapchain against is the
+  // baseline: only a LATER, different ANativeWindow* should be treated as a
+  // "surface changed" event. Also drop any pending g_windowChanged left over
+  // from bootstrap (the AndroidApi ctor pumps the very first INIT_WINDOW
+  // before this registration can happen), so the first implProcessEvents
+  // tick after registration doesn't immediately (and redundantly) re-fire a
+  // recreate against the same window it was just built with.
+  g_lastWindow = (g_app!=nullptr) ? g_app->window : nullptr;
+  g_windowChanged.store(false);
   }
 
 AndroidApi::AndroidApi() {
@@ -344,8 +410,31 @@ void AndroidApi::implProcessEvents(AppCallBack& /*cb*/) {
     }
 
   if(g_windowChanged.exchange(false) && g_owner!=nullptr && g_app->window!=nullptr) {
-    SizeEvent e(ANativeWindow_getWidth(g_app->window), ANativeWindow_getHeight(g_app->window));
-    dispatchResize(*g_owner, e);
+    if(g_app->window!=g_lastWindow) {
+      // The ANativeWindow itself changed (first bind, or a resume after
+      // backgrounding) -- Swapchain::reset() only rebuilds the swapchain
+      // images against the OLD, cached VkSurfaceKHR/hwnd (see
+      // vswapchain.cpp reset()/createSwapchain()), so it cannot recover
+      // this case. Hand the new window to the registered callback so it can
+      // rebuild the Swapchain (surface included) from scratch, then treat
+      // it as the new baseline. A same-window resize (below) keeps using
+      // the cheap reset() path via dispatchResize, unchanged.
+      if(g_onSurfaceCreated) {
+        try {
+          g_onSurfaceCreated(reinterpret_cast<SystemApi::Window*>(g_app->window));
+          }
+        catch(const std::exception& e) {
+          Log::e("AndroidApi: onSurfaceCreated: ", e.what());
+          }
+        catch(...) {
+          Log::e("AndroidApi: onSurfaceCreated: unknown exception");
+          }
+        }
+      g_lastWindow = g_app->window;
+      } else {
+      SizeEvent e(ANativeWindow_getWidth(g_app->window), ANativeWindow_getHeight(g_app->window));
+      dispatchResize(*g_owner, e);
+      }
     }
 
   // Drain per-frame touch input and forward it as mouse events, mirroring

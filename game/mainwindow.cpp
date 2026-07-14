@@ -402,6 +402,33 @@ void MainWindow::resizeEvent(SizeEvent&) {
   dMouse = Point();
   }
 
+#if defined(__ANDROID__)
+void MainWindow::onSurfaceDestroyed() {
+  // Called synchronously from AndroidApi's APP_CMD_TERM_WINDOW handling,
+  // before the ANativeWindow is released (see the comment in androidapi.cpp
+  // for why this cannot be deferred to the next frame). Drain any in-flight
+  // GPU work that still references the doomed surface/swapchain images --
+  // dispatchRender is already guarded off while windowless (see
+  // implProcessEvents), so nothing new gets submitted after this point.
+  try { device.waitIdle(); } catch(...) {}
+  }
+
+void MainWindow::onSurfaceCreated(Tempest::SystemApi::Window* w) {
+  // Resume after backgrounding: `w` is a different ANativeWindow* than the
+  // one `swapchain`'s VkSurfaceKHR currently wraps (that old window is gone
+  // by now). Swapchain::reset() only rebuilds the swapchain IMAGES against
+  // the old, cached surface (see vswapchain.cpp) -- rebuild the whole
+  // Swapchain (surface included) against the new window instead, the same
+  // way the constructor does and the way the SwapchainSuboptimal recovery
+  // path in tick() below rebuilds it.
+  device.waitIdle();
+  swapchain = device.swapchain(w);
+  renderer.resetSwapchain();
+  if(auto camera = Gothic::inst().camera())
+    camera->setViewport(swapchain.w(),swapchain.h());
+  }
+#endif
+
 void MainWindow::mouseDownEvent(MouseEvent &event) {
   if(event.button<sizeof(mouseP))
     mouseP[event.button]=true;

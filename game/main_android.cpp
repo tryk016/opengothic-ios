@@ -151,6 +151,19 @@ extern "C" void android_main(struct android_app* app) {
     gothic.setupGlobalScripts();
 
     MainWindow        wx(device);
+
+    // Task 5: wire lifecycle hardening so backgrounding/resuming the app
+    // does not SIGSEGV. AndroidApi (androidapi.cpp) calls these directly
+    // from its APP_CMD_TERM_WINDOW / APP_CMD_INIT_WINDOW handling; see the
+    // comments on MainWindow::onSurfaceDestroyed/onSurfaceCreated and in
+    // androidapi.cpp for why the destroyed callback in particular must run
+    // synchronously rather than being deferred. Register before app.exec()
+    // starts the render loop, and after `wx` exists so the callbacks always
+    // have a valid MainWindow to call into.
+    Tempest::AndroidApi::setSurfaceCallbacks(
+      [&wx](){ wx.onSurfaceDestroyed(); },
+      [&wx](Tempest::SystemApi::Window* w){ wx.onSurfaceCreated(w); });
+
     Tempest::Application app;
     app.exec();
     }
