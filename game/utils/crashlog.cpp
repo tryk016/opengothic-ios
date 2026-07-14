@@ -197,7 +197,7 @@ void CrashLog::dumpStack(const char *sig, const char *extGpuLog) {
 #elif defined(__WINDOWS__)
   traceback.collect(0);
   traceback.log(db, std::cout);
-#elif defined(__LINUX__) || defined(__APPLE__)
+#elif (defined(__LINUX__) || defined(__APPLE__)) && !defined(__ANDROID__)
   tracebackLinux(std::cout);
 #endif
   std::cout << std::endl;

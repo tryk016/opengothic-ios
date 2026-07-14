@@ -407,6 +407,67 @@ Status: **COMPLETE.** `DEVELOPMENT.md`, `README-android.md` written/finalized,
 this file's M1 statuses updated to reflect device confirmation, and the root
 `README.md` now points at the Android build alongside the existing iOS entry.
 
+## Post-M1: final whole-branch review — hardening fixes
+
+Status: **COMPLETE.** The branch's final whole-branch review verdicted "Ready
+to merge" with four Minor-hardening findings (no functional defects). All
+four addressed; no behavior change expected on any currently-tested path.
+
+- [x] **crashlog.cpp Android guard asymmetry.** The `std::cout` traceback
+      dispatch in `CrashLog::dumpStack` was missing the `&& !defined(__ANDROID__)`
+      guard its `fout`/crash.log twin already had. `tracebackLinux`'s own body
+      is Android-guarded already, so this was harmless today — a symmetry fix
+      against a latent foot-gun. Both dispatch sites now read
+      `#elif (defined(__LINUX__) || defined(__APPLE__)) && !defined(__ANDROID__)`.
+- [x] **Key-event buffer never cleared.** `implProcessEvents` drained
+      `android_input_buffer` motion events and called
+      `android_app_clear_motion_events(ib)`, but never cleared key events — so
+      hardware key events (incl. Back) would accumulate in game-activity's
+      fixed-size key-event buffer and get dropped once full. Added
+      `android_app_clear_key_events(ib)` right after the existing
+      motion-events clear (symbol verified against the real, upstream
+      `android_native_app_glue.h`: `void android_app_clear_key_events(struct
+      android_input_buffer* inputBuffer);` — same shape as
+      `android_app_clear_motion_events`, matches exactly). Still not
+      *processing* key events (out of scope, same as Task 4's touch-only
+      scope) — just draining the buffer so it can't overflow.
+- [x] **ABA hazard in resume/surface-change detection.** The window-changed
+      check only compared `g_app->window != g_lastWindow` by pointer value —
+      if the OS ever reused the same address for a new `ANativeWindow` after
+      an `APP_CMD_TERM_WINDOW`, the comparison would read "unchanged", the
+      cheap `dispatchResize`/`Swapchain::reset()` path would run against the
+      dead surface, and Task 5's SIGSEGV fix would be reintroduced. Added
+      `g_wasTerminated` (`std::atomic_bool`, same declaration pattern as
+      `g_running`/`g_windowChanged`): set in `handleAppCmd`'s
+      `APP_CMD_TERM_WINDOW` case right after `onSurfaceDestroyed()` runs;
+      consumed via `g_wasTerminated.exchange(false)` into a local **before**
+      the `g_app->window!=g_lastWindow` comparison in `implProcessEvents`
+      (deliberately not inlined into the `||`, since short-circuit evaluation
+      would otherwise skip the exchange whenever the pointer already
+      differed, leaking the flag set into a later, genuinely-same-window
+      resize tick). A window-changed tick now takes the full
+      `onSurfaceCreated` recreate path if the pointer differs **or**
+      `g_wasTerminated` was set, closing the ABA hole while a genuine
+      same-window resize (no preceding `TERM_WINDOW`) still takes the cheap
+      path, unchanged. `g_lastWindow`'s own update logic is untouched.
+- [x] **vulkanapi.cpp patch-step guard granularity.** The two perl edits (the
+      `VK_KHR_ANDROID_SURFACE_EXTENSION_NAME` macro define, and the
+      `SURFACE_EXTENSION_NAME` `#elif defined(__ANDROID__)` dispatch branch)
+      sat under one shared skip-guard/post-check that only re-verified the
+      first macro — a partial apply (e.g. the second edit's context drifting
+      upstream) could go undetected on every future run. Split into two
+      independent guard+post-check blocks, one per edit, mirroring the
+      per-sub-edit pattern `vswapchain.cpp`'s three steps (and
+      `systemapi.cpp`'s two steps) already use elsewhere in this same script.
+
+Verified: `bash android/patches/apply-patches.sh` run twice back-to-back —
+first run patches all steps (including both halves of the now-split
+vulkanapi.cpp guard), second run reports "skip: ... (already patched)" for
+every step, confirming idempotency held. `lib/Tempest` reverted afterward to
+its pre-existing dirty state (only `Engine/io/rfile.mm` and
+`Engine/system/api/iosapi.mm` modified — both unrelated pre-existing local
+changes, untouched by and unrelated to this pass).
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 M1 proved the engine boots, renders, takes touch input, and survives

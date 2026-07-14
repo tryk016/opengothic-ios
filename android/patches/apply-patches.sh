@@ -61,18 +61,29 @@ fi
 # --------------------------------------------------------------------------
 
 if grep -q 'VK_KHR_ANDROID_SURFACE_EXTENSION_NAME' "$VK"; then
-  echo "skip: vulkanapi.cpp android surface extension (already patched)"
+  echo "skip: vulkanapi.cpp android surface extension macro (already patched)"
 else
   perl -0777 -pi -e \
     's/(#define VK_KHR_XLIB_SURFACE_EXTENSION_NAME  "VK_KHR_xlib_surface"\r?\n)/${1}#define VK_KHR_ANDROID_SURFACE_EXTENSION_NAME "VK_KHR_android_surface"\n/' \
     "$VK"
+  if grep -q 'VK_KHR_ANDROID_SURFACE_EXTENSION_NAME' "$VK"; then
+    echo "patched: vulkanapi.cpp android surface extension macro"
+  else
+    echo "ERROR: failed to patch vulkanapi.cpp surface extension macro (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+if grep -q '#define SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME' "$VK"; then
+  echo "skip: vulkanapi.cpp android SURFACE_EXTENSION_NAME dispatch (already patched)"
+else
   perl -0777 -pi -e \
     's/(#define SURFACE_EXTENSION_NAME VK_KHR_XLIB_SURFACE_EXTENSION_NAME\r?\n)#endif/${1}#elif defined(__ANDROID__)\n#define SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME\n#endif/' \
     "$VK"
-  if grep -q 'VK_KHR_ANDROID_SURFACE_EXTENSION_NAME' "$VK"; then
-    echo "patched: vulkanapi.cpp android surface extension"
+  if grep -q '#define SURFACE_EXTENSION_NAME VK_KHR_ANDROID_SURFACE_EXTENSION_NAME' "$VK"; then
+    echo "patched: vulkanapi.cpp android SURFACE_EXTENSION_NAME dispatch"
   else
-    echo "ERROR: failed to patch vulkanapi.cpp surface extension (pattern not found)" >&2
+    echo "ERROR: failed to patch vulkanapi.cpp SURFACE_EXTENSION_NAME dispatch (pattern not found)" >&2
     exit 1
   fi
 fi
@@ -235,6 +246,17 @@ Tempest::Window*    g_owner   = nullptr;
 std::atomic_bool    g_running {true};
 std::atomic_bool    g_windowChanged {false};
 
+// Set (from handleAppCmd) when APP_CMD_TERM_WINDOW tears down a surface, and
+// consumed (cleared) on the next window-changed tick in implProcessEvents.
+// Needed because pointer identity alone is an ABA hazard: if the OS hands
+// back a new ANativeWindow allocated at the same address as the one that was
+// just destroyed, `g_app->window!=g_lastWindow` below would be false and the
+// cheap resize path would run against a Swapchain/VkSurfaceKHR still built on
+// the dead surface -- reintroducing the SIGSEGV the surface-recreate path
+// exists to fix. Forcing the full recreate whenever a teardown happened,
+// regardless of pointer equality, closes that hole.
+std::atomic_bool    g_wasTerminated {false};
+
 // The ANativeWindow* that the caller's Swapchain/VkSurfaceKHR was (or is
 // about to be) built against. Compared on each window-changed tick so a
 // same-window resize keeps using the cheap Swapchain::reset() path while an
@@ -284,6 +306,9 @@ void handleAppCmd(android_app* app, int32_t cmd) {
           Log::e("AndroidApi: onSurfaceDestroyed: unknown exception");
           }
         }
+      g_wasTerminated.store(true); // force a full recreate on the next window-init tick, even if
+                                   // the OS reuses this ANativeWindow's address (ABA hazard) --
+                                   // see g_wasTerminated's declaration comment above
       g_windowChanged.store(false); // handled synchronously above; nothing left for this transition
       break;
     case APP_CMD_DESTROY:
@@ -410,15 +435,25 @@ void AndroidApi::implProcessEvents(AppCallBack& /*cb*/) {
     }
 
   if(g_windowChanged.exchange(false) && g_owner!=nullptr && g_app->window!=nullptr) {
-    if(g_app->window!=g_lastWindow) {
+    // Consume g_wasTerminated exactly once per tick, unconditionally -- if
+    // this were instead inlined as `g_app->window!=g_lastWindow ||
+    // g_wasTerminated.exchange(false)`, short-circuit evaluation would skip
+    // the exchange whenever the pointer already differed, leaving the flag
+    // set for a later, genuinely-same-window resize tick to misfire against.
+    const bool wasTerminated = g_wasTerminated.exchange(false);
+    if(g_app->window!=g_lastWindow || wasTerminated) {
       // The ANativeWindow itself changed (first bind, or a resume after
-      // backgrounding) -- Swapchain::reset() only rebuilds the swapchain
+      // backgrounding), or the previous surface was just torn down via
+      // APP_CMD_TERM_WINDOW (wasTerminated) -- treat the latter as a genuine
+      // change too, even if the OS reused the same address for the new
+      // window (ABA hazard): Swapchain::reset() only rebuilds the swapchain
       // images against the OLD, cached VkSurfaceKHR/hwnd (see
       // vswapchain.cpp reset()/createSwapchain()), so it cannot recover
-      // this case. Hand the new window to the registered callback so it can
+      // either case. Hand the new window to the registered callback so it can
       // rebuild the Swapchain (surface included) from scratch, then treat
-      // it as the new baseline. A same-window resize (below) keeps using
-      // the cheap reset() path via dispatchResize, unchanged.
+      // it as the new baseline. A same-window resize with no preceding
+      // TERM_WINDOW (below) keeps using the cheap reset() path via
+      // dispatchResize, unchanged.
       if(g_onSurfaceCreated) {
         try {
           g_onSurfaceCreated(reinterpret_cast<SystemApi::Window*>(g_app->window));
@@ -476,6 +511,11 @@ void AndroidApi::implProcessEvents(AppCallBack& /*cb*/) {
         dispatchMouseMove(*g_owner, e);
       }
     android_app_clear_motion_events(ib);
+    // Key events aren't processed yet (M1 targets mouse/touch only), but the
+    // buffer must still be drained each tick, or hardware key events (incl.
+    // the Back button) queue up in the fixed-size buffer and get dropped
+    // once it fills.
+    android_app_clear_key_events(ib);
     }
 
   if(g_owner!=nullptr && g_app->window!=nullptr)
