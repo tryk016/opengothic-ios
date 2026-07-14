@@ -11,6 +11,7 @@
 #include <dmusic.h>
 
 #include <cstring>
+#include <unistd.h>   // ::chdir
 
 #include "system/api/androidapi.h"   // setAndroidApp
 
@@ -58,6 +59,16 @@ extern "C" void android_main(struct android_app* app) {
   // (MainWindow, below), so keep this call first and do not reorder it after
   // any Tempest object that might construct a Window.
   Tempest::AndroidApi::setAndroidApp(app);
+
+  // Task 3: land on the writable data root before anything relative-path
+  // based runs (log.txt right below, then Gothic.ini/saves inside the
+  // engine). Game data itself is addressed explicitly via the absolute
+  // "-g /sdcard/OpenGothic/Gothic2" argv entry below; chdir just makes
+  // log.txt/Gothic.ini/saves resolve next to Gothic2/ instead of landing in
+  // whatever unspecified (and likely unwritable) CWD the native-glue thread
+  // starts with.
+  if(::chdir("/sdcard/OpenGothic")!=0)
+    Tempest::Log::e("unable to chdir to /sdcard/OpenGothic");
 
   // --- from here down, mirrors game/main.cpp's bootstrap (mobile path) ---
   try {
@@ -115,15 +126,16 @@ extern "C" void android_main(struct android_app* app) {
   try {
     AudioSession::activate();   // no-op off iOS, kept for parity with main.cpp
 
-    // android_main has no argc/argv from the OS. Synthesize the same
-    // "no options" argv a normal GUI process gets (just the program name),
-    // so CommandLine takes the identical no-flags path main.cpp's mobile
-    // targets take. Data root stays default here (Task 3 wires it to
-    // /sdcard/OpenGothic): Gothic.ini/Data won't be found yet, so
-    // CommandLine throws GothicNotFoundException below - that is the
-    // expected, correct outcome for Task 2.
-    const char* argv[] = {"opengothic"};
-    CommandLine cmd{1,argv};
+    // android_main has no argc/argv from the OS. Synthesize the equivalent of
+    // a desktop/iOS invocation run with "-g <path>": commandline.cpp parses
+    // "-g" by taking the next argv entry verbatim as `gpath`, the game-data
+    // root that rootPath()/nestedPath()/validateGothicPath() all key off of
+    // (validated by checking <gpath>/Data and <gpath>/_work/Data both
+    // exist). Game data is staged on-device at /sdcard/OpenGothic/Gothic2/
+    // (Data/, _work/, system/), matching the chdir() above one level up.
+    const char* argv[] = {"opengothic", "-g", "/sdcard/OpenGothic/Gothic2"};
+    int argc = 3;
+    CommandLine cmd{argc,argv};
 
     Tempest::ApiFlags flg = cmd.isValidationMode() ? Tempest::ApiFlags::Validation : Tempest::ApiFlags::NoFlags;
     VulkanApi         api{flg};
@@ -143,10 +155,14 @@ extern "C" void android_main(struct android_app* app) {
     app.exec();
     }
   catch(const GothicNotFoundException& e) {
-    // Expected on Task 2: game data isn't wired yet (Task 3 sets the data
-    // root). This is thrown from CommandLine, before any Device/Window is
-    // created, so it is a clean, controlled shutdown of the glue thread -
-    // not a crash-on-launch.
+    // Task 3 wires -g /sdcard/OpenGothic/Gothic2 above, so this should now
+    // only fire for a genuine problem: data not copied to that path yet,
+    // MANAGE_EXTERNAL_STORAGE not granted (validateGothicPath()'s Data/ and
+    // _work/Data/ existence checks fail silently under denied storage
+    // access), or a relative-path lookup inside CommandLine/ZenKit that
+    // doesn't resolve against the absolute -g root. This is thrown from
+    // CommandLine, before any Device/Window is created, so it is a clean,
+    // controlled shutdown of the glue thread - not a crash-on-launch.
     Tempest::Log::e("fatal: ", e.what());
     SystemMsg::fatal("Gothic II data not found",
                      "Copy your Gothic II: NotR files (Data/, _work/, system/) "

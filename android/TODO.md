@@ -113,6 +113,63 @@ Known concerns / expected CI iteration (flagged for the controller):
   any header) rather than sharing code — acceptable duplication given the
   "don't touch Tempest" constraint and small size of the helper.
 
+## Task 3: Storage data root — point the engine at /sdcard/OpenGothic/Gothic2
+
+Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
+machine — real verification is CI green + logcat showing the engine load
+`Gothic.ini`/VDFs from the device and reach the **main menu render**).
+
+Done:
+- [x] `game/main_android.cpp` — added `::chdir("/sdcard/OpenGothic")`
+      (`<unistd.h>`) right after `Tempest::AndroidApi::setAndroidApp(app)`
+      and before the log-file / engine bootstrap, so relative `log.txt`,
+      `Gothic.ini`, and saves resolve under a writable, known directory
+      instead of an unspecified native-glue-thread CWD. Return value is
+      checked and logged via `Tempest::Log::e` on failure rather than
+      silently ignored (`-Wall -Wconversion -Werror` is on for this target).
+- [x] `game/main_android.cpp` — the synthesized argv now passes the Gothic II
+      data root explicitly: `{"opengothic", "-g", "/sdcard/OpenGothic/Gothic2"}`,
+      `argc=3`. Confirmed against `game/commandline.cpp` (`CommandLine::CommandLine`,
+      ~line 62): `-g` takes the next argv entry verbatim into `gpath`, the
+      exact field `rootPath()`/`nestedPath()`/`validateGothicPath()` all use
+      as the game-data root (`validateGothicPath()` checks `<gpath>/Data` and
+      `<gpath>/_work/Data` both exist). This is the same flag named in the
+      Task 2 logcat evidence — `commandline.cpp:197`'s
+      `"Gothic path is not provided. Please use command line argument -g <path>"`.
+- [x] Updated the stale Task-2 comment on the `GothicNotFoundException` catch
+      block: it no longer describes an expected/default outcome, since data
+      is now wired — a controller note explains what a genuine catch there
+      would now mean (data not copied yet, storage permission not granted,
+      or a relative-path lookup that doesn't honor the absolute `-g` root).
+
+Explicitly not done (out of scope per controller brief, left for the
+controller to request only if on-device testing shows they're needed):
+- Storage-permission gating/polling (`Environment.isExternalStorageManager()`)
+  before bootstrap — relies on the test device already having
+  `MANAGE_EXTERNAL_STORAGE` granted and `MainActivity.kt`'s existing
+  Settings-redirect/relaunch flow (Task 1).
+- Tempest `io/rfile` CWD-first relative-path patch (the iOS-style fix) — only
+  to be added if logcat still shows file-open failures for `Gothic.ini`/VDFs
+  after this change, since ZenKit is expected to open them by the absolute
+  `-g` path already.
+- `lib/Tempest` (submodule) was not touched.
+
+Known concerns / expected CI iteration (flagged for the controller):
+- If logcat shows the engine getting past `CommandLine` (no more
+  `GothicNotFoundException`) but still failing later on a relative open
+  (e.g. `Gothic.ini` under `system/`, or a save file), that is exactly the
+  RFile CWD-first patch scenario called out above — watch for "Unable to
+  open file" after the "Gothic path is not provided" line disappears.
+- `chdir("/sdcard/OpenGothic")` assumes that path exists and is
+  writable/readable by the app's UID by the time `android_main` runs (i.e.
+  storage permission is already granted at first launch, per this task's
+  stated assumption). No JNI polling/gating was added; a grant-then-relaunch
+  flow is accepted for M1 per the brief.
+- Did not add a trailing slash to `/sdcard/OpenGothic/Gothic2`;
+  `commandline.cpp` appends one itself if missing
+  (`if(gpath.size()>0 && gpath.back()!='/') gpath.push_back('/');`), so the
+  no-trailing-slash literal used here is fine as-is.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 - Virtual on-screen gamepad / touch movement controls.
