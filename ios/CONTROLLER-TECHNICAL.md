@@ -66,9 +66,10 @@ between those two existing pages for LB/RB. No `MENU.DAT` layout is replaced.
 The left stick is intentionally ignored throughout both character pages; their
 navigation belongs exclusively to the D-pad.
 
-The quest category and quest-text windows are Tempest modal overlays. Synthetic
-controller/touch events normally bypass the system overlay dispatcher, so
-`GameMenu::onModalKeyboard()` explicitly gives the active quest window exclusive
+Desktop keeps the original blocking Tempest dialogs for quest lists and text. On
+mobile, opening `Dialog::exec()` from a synthetic touch/controller event would
+stall the render loop, so `GameMenu` uses an equivalent non-blocking list/content
+state instead. `GameMenu::onModalKeyboard()` gives that active state exclusive
 ownership: D-pad Up/Down moves or scrolls, A enters the selected quest and B closes
 exactly one level. Input must never fall through to the category menu underneath.
 

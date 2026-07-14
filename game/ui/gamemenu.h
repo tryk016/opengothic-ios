@@ -80,8 +80,11 @@ class GameMenu : public Tempest::Widget {
 
     Item                                  hItems[zenkit::IMenu::item_count];
     Item*                                 ctrlInput = nullptr;
-    ListViewDialog*                       questListDialog = nullptr;
-    ListContentDialog*                    questContentDialog = nullptr;
+    Item*                                 questListItem = nullptr;
+    Item*                                 questContentItem = nullptr;
+    uint32_t                              questListReturnItem = 0;
+    uint32_t                              questContentReturnItem = 0;
+    bool                                  questContentWasVisible = false;
     uint32_t                              curItem=0;
     bool                                  exitFlag=false;
     bool                                  closeFlag=false;
@@ -99,6 +102,12 @@ class GameMenu : public Tempest::Widget {
     Item*                                 selectedItem();
     Item*                                 selectedNextItem(Item* cur);
     Item*                                 selectedContentItem(Item* it);
+    const QuestLog::Quest*                selectedQuest(const Item& list) const;
+    void                                  openQuestList(Item& list, uint32_t returnItem);
+    void                                  closeQuestList();
+    void                                  moveQuestList(int direction);
+    void                                  openQuestContent();
+    void                                  closeQuestContent();
     void                                  setSelection(int cur, int seek=1);
     void                                  initItems();
     void                                  getText(const Item &it, std::vector<char>& out);
