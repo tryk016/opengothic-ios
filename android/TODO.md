@@ -62,6 +62,57 @@ Known concerns / expected CI iteration (flagged for the controller):
   unverified since it has never run; per the brief, this is expected to take
   a few CI iterations to shake out.
 
+## Task 2: Boot the real engine (replace the clear-screen stub)
+
+Status: implemented, **UNVERIFIED** (no local NDK/Gradle toolchain on this
+machine — real verification is CI green + logcat showing a controlled
+data-load failure, not the dark-red clear screen).
+
+Done:
+- [x] `game/main_android.cpp` — replaced `ClearWindow`/`android_main` body with
+      the real bootstrap mirrored from `game/main.cpp`'s mobile path: log
+      setup (`Tempest::WFile` + `Log::setOutputCallback`), `CrashLog::setup()`,
+      `zenkit::Logger`/`Dm_setLogger` callbacks, `Workers::setThreadName`,
+      `AudioSession::activate()`, `CommandLine` → `VulkanApi` → `Device` →
+      `Resources` → `Gothic` → `GameMusic` → `gothic.setupGlobalScripts()` →
+      `MainWindow` → `Tempest::Application::exec()`, wrapped in the same
+      `catch(GothicNotFoundException&)` / `catch(std::exception&)` pair as
+      `main.cpp`. `g_androidApp`/`AndroidApi::setAndroidApp(app)` stay first,
+      before any of the above, preserving the Task 1 ordering invariant
+      (`AndroidApi`'s ctor blocks until `app->window != nullptr`, so it must be
+      wired before the first `Window`/`MainWindow` gets constructed).
+- [x] `android_main` has no OS-supplied `argc`/`argv`; synthesized a
+      single-element `argv = {"opengothic"}` (`argc=1`) so `CommandLine` takes
+      the same "no flags" path a normal GUI process with no arguments takes —
+      this is the same path `main.cpp`'s `int main(int argc, const char**
+      argv)` already takes on iOS (there is no separate iOS arg-synthesis;
+      `main()` there just receives the platform's normal empty/1-arg argv).
+- [x] Data root left DEFAULT (Task 3 wires `/sdcard/OpenGothic`). Since
+      Android's `InstallDetect::detectG2()` has no platform branch (falls to
+      `return u"";`), `CommandLine`'s ctor throws `GothicNotFoundException`
+      before any `Device`/`VulkanApi`/`Window` is constructed — expected,
+      controlled failure for this task, logged via `Tempest::Log::e` /
+      `SystemMsg::fatal` (both route through `__android_log_print`, tag
+      `"app"`, visible via `adb logcat | grep -i gothic`).
+
+Known concerns / expected CI iteration (flagged for the controller):
+- `Tempest::WFile logFile("log.txt")` uses a relative path; Android's process
+  CWD for a native-activity glue thread is unspecified and this write may
+  fail. That's already wrapped in the same `try/catch(...)` main.cpp uses, so
+  it falls back to console/`__android_log_print` only — not fatal, but worth
+  checking in logcat that the "unable to setup logfile" fallback message (or
+  its absence) matches expectations.
+- Because the failure happens inside `CommandLine`'s constructor (before
+  `VulkanApi`/`Device`/`MainWindow` exist), the Task 1 `AndroidApi`
+  window-blocking handshake is never exercised by this run. That handshake
+  still needs on-device verification once Task 3 wires real data and the
+  bootstrap proceeds far enough to construct `MainWindow`.
+- Selected a single-arg `Tempest::Device(AbstractGraphicsApi&)` construction
+  path plus a locally-duplicated `selectDevice()` helper (mirroring
+  `main.cpp`'s free function, which is file-local there and not exposed via
+  any header) rather than sharing code — acceptable duplication given the
+  "don't touch Tempest" constraint and small size of the helper.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 - Virtual on-screen gamepad / touch movement controls.
