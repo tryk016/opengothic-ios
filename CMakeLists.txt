@@ -69,6 +69,8 @@ elseif(IOS)
          "Map the Gothic draw-distance menu setting to the world camera far plane" OFF)
   option(OPENGOTHIC_METALFX_SPATIAL
          "Use MetalFX Spatial for reduced-resolution HDR scene upscaling on supported iOS devices" OFF)
+  option(OPENGOTHIC_METALFX_TEMPORAL
+         "Use MetalFX Temporal AA upscaling with Spatial/Lanczos fallback on supported iOS devices" OFF)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
@@ -128,6 +130,13 @@ elseif(IOS)
   if(OPENGOTHIC_METALFX_SPATIAL)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_METALFX_SPATIAL=1)
+  endif()
+  if(OPENGOTHIC_METALFX_TEMPORAL)
+    if(NOT OPENGOTHIC_METALFX_SPATIAL)
+      message(FATAL_ERROR "OPENGOTHIC_METALFX_TEMPORAL requires OPENGOTHIC_METALFX_SPATIAL for its fallback path")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_METALFX_TEMPORAL=1)
   endif()
   # App icon: Xcode's actool compiles this asset catalog on the CI runner and
   # injects the CFBundleIcons keys, so the icon shows on the home screen.

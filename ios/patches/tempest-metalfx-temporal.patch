@@ -1,0 +1,422 @@
+diff --git a/Engine/CMakeLists.txt b/Engine/CMakeLists.txt
+index eea5af79..a3beb4ec 100644
+--- a/Engine/CMakeLists.txt
++++ b/Engine/CMakeLists.txt
+@@ -333,0 +334,3 @@ elseif(IOS)
++  if(OPENGOTHIC_METALFX_TEMPORAL)
++    target_compile_definitions(${PROJECT_NAME} PRIVATE TEMPEST_METALFX_TEMPORAL=1)
++  endif()
+diff --git a/Engine/formats/image/pixmapcodeccommon.cpp b/Engine/formats/image/pixmapcodeccommon.cpp
+index dff1c736..385e9b4c 100644
+--- a/Engine/formats/image/pixmapcodeccommon.cpp
++++ b/Engine/formats/image/pixmapcodeccommon.cpp
+@@ -260,0 +261 @@ bool PixmapCodecCommon::save(ODevice &f, const char *ext, const uint8_t* cdata,
++    case TextureFormat::RG16F:
+diff --git a/Engine/formats/pixmap.cpp b/Engine/formats/pixmap.cpp
+index 1cb96208..8d9b1446 100644
+--- a/Engine/formats/pixmap.cpp
++++ b/Engine/formats/pixmap.cpp
+@@ -456,0 +457 @@ size_t Pixmap::blockSizeForFormat(TextureFormat frm) {
++    case TextureFormat::RG16F:       return 4;
+@@ -496,0 +498 @@ uint8_t Pixmap::componentCount(TextureFormat frm) {
++    case TextureFormat::RG16F:       return 2;
+@@ -527,0 +530 @@ Size Pixmap::blockCount(TextureFormat frm, uint32_t w, uint32_t h) {
++    case TextureFormat::RG16F:
+diff --git a/Engine/gapi/abstractgraphicsapi.cpp b/Engine/gapi/abstractgraphicsapi.cpp
+index 4c5d79d8..187fbf5b 100644
+--- a/Engine/gapi/abstractgraphicsapi.cpp
++++ b/Engine/gapi/abstractgraphicsapi.cpp
+@@ -91,0 +92,5 @@ bool AbstractGraphicsApi::CommandBuffer::spatialUpscale(SpatialScaler&, Texture&
++bool AbstractGraphicsApi::CommandBuffer::temporalUpscale(TemporalScaler&, Texture&, Texture&,
++                                                         Texture&, Texture&, const TemporalScalerArgs&) {
++  return false;
++  }
++
+@@ -113,0 +119,5 @@ AbstractGraphicsApi::SpatialScaler*
++AbstractGraphicsApi::TemporalScaler*
++  AbstractGraphicsApi::createTemporalScaler(Device*, const TemporalScalerDesc&) {
++  return nullptr;
++  }
++
+diff --git a/Engine/gapi/abstractgraphicsapi.h b/Engine/gapi/abstractgraphicsapi.h
+index ad7de277..26595fca 100644
+--- a/Engine/gapi/abstractgraphicsapi.h
++++ b/Engine/gapi/abstractgraphicsapi.h
+@@ -129,0 +130 @@ namespace Tempest {
++    RG16F,
+@@ -149,0 +151,21 @@ namespace Tempest {
++  struct TemporalScalerDesc final {
++    TextureFormat inputFormat  = Undefined;
++    TextureFormat depthFormat  = Undefined;
++    TextureFormat motionFormat = Undefined;
++    TextureFormat outputFormat = Undefined;
++    uint32_t      inputWidth   = 0;
++    uint32_t      inputHeight  = 0;
++    uint32_t      outputWidth  = 0;
++    uint32_t      outputHeight = 0;
++    bool          autoExposure = true;
++    };
++
++  struct TemporalScalerArgs final {
++    float jitterOffsetX      = 0.f;
++    float jitterOffsetY      = 0.f;
++    float motionVectorScaleX = 1.f;
++    float motionVectorScaleY = 1.f;
++    bool  resetHistory       = false;
++    bool  depthReversed      = false;
++    };
++
+@@ -176,0 +199 @@ namespace Tempest {
++      case RG16F:       return "RG16F";
+@@ -549,0 +573 @@ namespace Tempest {
++      struct TemporalScaler:NoCopy {};
+@@ -604,0 +629,2 @@ namespace Tempest {
++        virtual bool temporalUpscale(TemporalScaler& scaler, Texture& color, Texture& depth,
++                                     Texture& motion, Texture& output, const TemporalScalerArgs& args);
+@@ -671,0 +698 @@ namespace Tempest {
++      virtual TemporalScaler* createTemporalScaler(Device* d, const TemporalScalerDesc& desc);
+diff --git a/Engine/gapi/directx12/dxdevice.h b/Engine/gapi/directx12/dxdevice.h
+index af70f85c..8be79cd9 100644
+--- a/Engine/gapi/directx12/dxdevice.h
++++ b/Engine/gapi/directx12/dxdevice.h
+@@ -122,0 +123,2 @@ inline DXGI_FORMAT nativeFormat(TextureFormat f) {
++    case TextureFormat::RG16F:
++      return DXGI_FORMAT_R16G16_FLOAT;
+diff --git a/Engine/gapi/metal/metal_cpp.mm b/Engine/gapi/metal/metal_cpp.mm
+index d4186e50..602658bf 100644
+--- a/Engine/gapi/metal/metal_cpp.mm
++++ b/Engine/gapi/metal/metal_cpp.mm
+@@ -4 +4 @@
+-#if defined(TEMPEST_METALFX_SPATIAL)
++#if defined(TEMPEST_METALFX_SPATIAL) || defined(TEMPEST_METALFX_TEMPORAL)
+@@ -10 +10 @@
+-#if defined(TEMPEST_METALFX_SPATIAL)
++#if defined(TEMPEST_METALFX_SPATIAL) || defined(TEMPEST_METALFX_TEMPORAL)
+diff --git a/Engine/gapi/metal/mtcommandbuffer.cpp b/Engine/gapi/metal/mtcommandbuffer.cpp
+index e2837c26..9c12dedd 100644
+--- a/Engine/gapi/metal/mtcommandbuffer.cpp
++++ b/Engine/gapi/metal/mtcommandbuffer.cpp
+@@ -15,0 +16,3 @@
++#if defined(TEMPEST_METALFX_TEMPORAL)
++#include "mttemporalscaler.h"
++#endif
+@@ -813,0 +817,17 @@ bool MtCommandBuffer::spatialUpscale(AbstractGraphicsApi::SpatialScaler& scaler,
++#if defined(TEMPEST_METALFX_TEMPORAL)
++bool MtCommandBuffer::temporalUpscale(AbstractGraphicsApi::TemporalScaler& scaler,
++                                      AbstractGraphicsApi::Texture& color,
++                                      AbstractGraphicsApi::Texture& depth,
++                                      AbstractGraphicsApi::Texture& motion,
++                                      AbstractGraphicsApi::Texture& output,
++                                      const TemporalScalerArgs& args) {
++  setEncoder(E_None,nullptr);
++  auto& sx  = reinterpret_cast<MtTemporalScaler&>(scaler);
++  auto& src = reinterpret_cast<MtTexture&>(color);
++  auto& z   = reinterpret_cast<MtTexture&>(depth);
++  auto& mv  = reinterpret_cast<MtTexture&>(motion);
++  auto& dst = reinterpret_cast<MtTexture&>(output);
++  return sx.encode(*impl,src,z,mv,dst,args);
++  }
++#endif
++
+diff --git a/Engine/gapi/metal/mtcommandbuffer.h b/Engine/gapi/metal/mtcommandbuffer.h
+index 0001ba94..0a30cc6d 100644
+--- a/Engine/gapi/metal/mtcommandbuffer.h
++++ b/Engine/gapi/metal/mtcommandbuffer.h
+@@ -25,0 +26,3 @@ class MtSpatialScaler;
++#if defined(TEMPEST_METALFX_TEMPORAL)
++class MtTemporalScaler;
++#endif
+@@ -76,0 +80,8 @@ class MtCommandBuffer : public AbstractGraphicsApi::CommandBuffer {
++#if defined(TEMPEST_METALFX_TEMPORAL)
++    bool temporalUpscale(AbstractGraphicsApi::TemporalScaler& scaler,
++                         AbstractGraphicsApi::Texture& color,
++                         AbstractGraphicsApi::Texture& depth,
++                         AbstractGraphicsApi::Texture& motion,
++                         AbstractGraphicsApi::Texture& output,
++                         const TemporalScalerArgs& args) override;
++#endif
+diff --git a/Engine/gapi/metal/mtdevice.h b/Engine/gapi/metal/mtdevice.h
+index 8e1d4464..ac0c52ba 100644
+--- a/Engine/gapi/metal/mtdevice.h
++++ b/Engine/gapi/metal/mtdevice.h
+@@ -74,0 +75,2 @@ inline MTL::PixelFormat nativeFormat(TextureFormat frm) {
++    case RG16F:
++      return MTL::PixelFormatRG16Float;
+diff --git a/Engine/gapi/metal/mtdevice.mm b/Engine/gapi/metal/mtdevice.mm
+index 70f7a546..feffe809 100644
+--- a/Engine/gapi/metal/mtdevice.mm
++++ b/Engine/gapi/metal/mtdevice.mm
+@@ -224 +224 @@ void MtDevice::deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev) {
+-                                      TextureFormat::R11G11B10UF, TextureFormat::RGBA16F,
++                                      TextureFormat::R11G11B10UF, TextureFormat::RG16F, TextureFormat::RGBA16F,
+@@ -230 +230 @@ void MtDevice::deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev) {
+-                                      TextureFormat::R11G11B10UF, TextureFormat::RGBA16F,
++                                      TextureFormat::R11G11B10UF, TextureFormat::RG16F, TextureFormat::RGBA16F,
+@@ -237 +237 @@ void MtDevice::deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev) {
+-                                      TextureFormat::R11G11B10UF, TextureFormat::RGBA16F,
++                                      TextureFormat::R11G11B10UF, TextureFormat::RG16F, TextureFormat::RGBA16F,
+@@ -259,0 +260 @@ void MtDevice::deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev) {
++      storBit |= uint64_t(1) << TextureFormat::RG16F;
+diff --git a/Engine/gapi/metal/mttemporalscaler.h b/Engine/gapi/metal/mttemporalscaler.h
+new file mode 100644
+index 00000000..a127c105
+--- /dev/null
++++ b/Engine/gapi/metal/mttemporalscaler.h
+@@ -0,0 +1,31 @@
++#pragma once
++
++#if defined(TEMPEST_BUILD_METAL) && defined(TEMPEST_METALFX_TEMPORAL)
++
++#include <Tempest/AbstractGraphicsApi>
++#include <MetalFX/MetalFX.hpp>
++
++#include "nsptr.h"
++
++namespace Tempest {
++namespace Detail {
++
++class MtDevice;
++class MtTexture;
++
++class MtTemporalScaler final : public AbstractGraphicsApi::TemporalScaler {
++  public:
++    MtTemporalScaler(MtDevice& device, const TemporalScalerDesc& desc);
++
++    bool isValid() const { return impl!=nullptr; }
++    bool encode(MTL::CommandBuffer& cmd, MtTexture& color, MtTexture& depth,
++                MtTexture& motion, MtTexture& output, const TemporalScalerArgs& args);
++
++  private:
++    NsPtr<MTLFX::TemporalScaler> impl;
++  };
++
++}
++}
++
++#endif
+diff --git a/Engine/gapi/metal/mttemporalscaler.mm b/Engine/gapi/metal/mttemporalscaler.mm
+new file mode 100644
+index 00000000..84fa4a58
+--- /dev/null
++++ b/Engine/gapi/metal/mttemporalscaler.mm
+@@ -0,0 +1,94 @@
++#if defined(TEMPEST_BUILD_METAL) && defined(TEMPEST_METALFX_TEMPORAL)
++
++#include "mttemporalscaler.h"
++
++#include <Tempest/MetalApi>
++
++#include "mtdevice.h"
++#include "mttexture.h"
++
++using namespace Tempest;
++using namespace Tempest::Detail;
++
++MtTemporalScaler::MtTemporalScaler(MtDevice& device, const TemporalScalerDesc& cfg) {
++  if(cfg.inputWidth==0 || cfg.inputHeight==0 || cfg.outputWidth==0 || cfg.outputHeight==0)
++    return;
++  if(!MTLFX::TemporalScalerDescriptor::supportsDevice(device.impl.get()))
++    return;
++
++  auto pool = NsPtr<NS::AutoreleasePool>::init();
++  auto raw  = MTLFX::TemporalScalerDescriptor::alloc();
++  if(raw==nullptr)
++    return;
++  auto desc = NsPtr<MTLFX::TemporalScalerDescriptor>(raw->init());
++  if(desc==nullptr)
++    return;
++
++  desc->setColorTextureFormat(nativeFormat(cfg.inputFormat));
++  desc->setDepthTextureFormat(nativeFormat(cfg.depthFormat));
++  desc->setMotionTextureFormat(nativeFormat(cfg.motionFormat));
++  desc->setOutputTextureFormat(nativeFormat(cfg.outputFormat));
++  desc->setInputWidth(cfg.inputWidth);
++  desc->setInputHeight(cfg.inputHeight);
++  desc->setOutputWidth(cfg.outputWidth);
++  desc->setOutputHeight(cfg.outputHeight);
++  desc->setAutoExposureEnabled(cfg.autoExposure);
++
++  impl = NsPtr<MTLFX::TemporalScaler>(desc->newTemporalScaler(device.impl.get()));
++  }
++
++bool MtTemporalScaler::encode(MTL::CommandBuffer& cmd, MtTexture& color, MtTexture& depth,
++                              MtTexture& motion, MtTexture& output, const TemporalScalerArgs& args) {
++  if(impl==nullptr || color.impl==nullptr || depth.impl==nullptr ||
++     motion.impl==nullptr || output.impl==nullptr)
++    return false;
++  if(color.impl->pixelFormat()!=impl->colorTextureFormat() ||
++     depth.impl->pixelFormat()!=impl->depthTextureFormat() ||
++     motion.impl->pixelFormat()!=impl->motionTextureFormat() ||
++     output.impl->pixelFormat()!=impl->outputTextureFormat())
++    return false;
++  if(color.impl->width()!=impl->inputWidth() || color.impl->height()!=impl->inputHeight() ||
++     depth.impl->width()!=impl->inputWidth() || depth.impl->height()!=impl->inputHeight() ||
++     motion.impl->width()!=impl->inputWidth() || motion.impl->height()!=impl->inputHeight() ||
++     output.impl->width()!=impl->outputWidth() || output.impl->height()!=impl->outputHeight())
++    return false;
++
++  const auto colorUsage  = impl->colorTextureUsage();
++  const auto depthUsage  = impl->depthTextureUsage();
++  const auto motionUsage = impl->motionTextureUsage();
++  const auto outputUsage = impl->outputTextureUsage();
++  if((color.impl->usage()&colorUsage)!=colorUsage ||
++     (depth.impl->usage()&depthUsage)!=depthUsage ||
++     (motion.impl->usage()&motionUsage)!=motionUsage ||
++     (output.impl->usage()&outputUsage)!=outputUsage)
++    return false;
++
++  impl->setInputContentWidth(color.impl->width());
++  impl->setInputContentHeight(color.impl->height());
++  impl->setColorTexture(color.impl.get());
++  impl->setDepthTexture(depth.impl.get());
++  impl->setMotionTexture(motion.impl.get());
++  impl->setOutputTexture(output.impl.get());
++  impl->setPreExposure(1.f);
++  impl->setJitterOffsetX(args.jitterOffsetX);
++  impl->setJitterOffsetY(args.jitterOffsetY);
++  impl->setMotionVectorScaleX(args.motionVectorScaleX);
++  impl->setMotionVectorScaleY(args.motionVectorScaleY);
++  impl->setReset(args.resetHistory);
++  impl->setDepthReversed(args.depthReversed);
++  impl->encodeToCommandBuffer(&cmd);
++  return true;
++  }
++
++AbstractGraphicsApi::TemporalScaler*
++  MetalApi::createTemporalScaler(AbstractGraphicsApi::Device* device, const TemporalScalerDesc& desc) {
++  auto& dev = *reinterpret_cast<MtDevice*>(device);
++  auto* scaler = new MtTemporalScaler(dev,desc);
++  if(!scaler->isValid()) {
++    delete scaler;
++    return nullptr;
++    }
++  return scaler;
++  }
++
++#endif
+diff --git a/Engine/gapi/metalapi.h b/Engine/gapi/metalapi.h
+index ae3d88cf..b1a70f2e 100644
+--- a/Engine/gapi/metalapi.h
++++ b/Engine/gapi/metalapi.h
+@@ -30,0 +31,3 @@ class MetalApi : public AbstractGraphicsApi {
++#if defined(TEMPEST_METALFX_TEMPORAL)
++    TemporalScaler* createTemporalScaler(Device* d, const TemporalScalerDesc& desc) override;
++#endif
+diff --git a/Engine/gapi/vulkan/vdevice.h b/Engine/gapi/vulkan/vdevice.h
+index 3839929b..a39709b4 100644
+--- a/Engine/gapi/vulkan/vdevice.h
++++ b/Engine/gapi/vulkan/vdevice.h
+@@ -100,0 +101,2 @@ inline VkFormat nativeFormat(TextureFormat f) {
++    case TextureFormat::RG16F:
++      return VK_FORMAT_R16G16_SFLOAT;
+diff --git a/Engine/graphics/device.cpp b/Engine/graphics/device.cpp
+index 0930d0e6..10086a23 100644
+--- a/Engine/graphics/device.cpp
++++ b/Engine/graphics/device.cpp
+@@ -253,0 +254,4 @@ SpatialScaler Device::spatialScaler(const SpatialScalerDesc& desc) {
++TemporalScaler Device::temporalScaler(const TemporalScalerDesc& desc) {
++  return TemporalScaler(api.createTemporalScaler(dev,desc));
++  }
++
+diff --git a/Engine/graphics/device.h b/Engine/graphics/device.h
+index 20f96de6..684165c5 100644
+--- a/Engine/graphics/device.h
++++ b/Engine/graphics/device.h
+@@ -17,0 +18 @@
++#include <Tempest/TemporalScaler>
+@@ -135,0 +137 @@ class Device {
++    TemporalScaler        temporalScaler(const TemporalScalerDesc& desc);
+diff --git a/Engine/graphics/encoder.cpp b/Engine/graphics/encoder.cpp
+index 418db0ae..851e5d5f 100644
+--- a/Engine/graphics/encoder.cpp
++++ b/Engine/graphics/encoder.cpp
+@@ -336,0 +337,16 @@ bool Encoder<CommandBuffer>::spatialUpscale(const SpatialScaler& scaler, const A
++
++
++bool Encoder<CommandBuffer>::temporalUpscale(const TemporalScaler& scaler, const Attachment& color,
++                                             const ZBuffer& depth, const Attachment& motion,
++                                             StorageImage& output, const TemporalScalerArgs& args) {
++  if(scaler.isEmpty() || color.isEmpty() || depth.isEmpty() || motion.isEmpty() || output.isEmpty())
++    return false;
++  if(state.stage==Rendering)
++    impl->endRendering();
++  state = State();
++  auto& clr = *textureCast<const Texture2d&>(color).impl.handler;
++  auto& dep = *textureCast<const Texture2d&>(depth).impl.handler;
++  auto& mov = *textureCast<const Texture2d&>(motion).impl.handler;
++  auto& dst = *output.tImpl.impl.handler;
++  return impl->temporalUpscale(*scaler.impl.handler,clr,dep,mov,dst,args);
++  }
+diff --git a/Engine/graphics/encoder.h b/Engine/graphics/encoder.h
+index a2c0fb50..3e146cbe 100644
+--- a/Engine/graphics/encoder.h
++++ b/Engine/graphics/encoder.h
+@@ -10,0 +11 @@
++#include <Tempest/TemporalScaler>
+@@ -123,0 +125,2 @@ class Encoder<Tempest::CommandBuffer> {
++    bool temporalUpscale(const TemporalScaler& scaler, const Attachment& color, const ZBuffer& depth,
++                         const Attachment& motion, StorageImage& output, const TemporalScalerArgs& args);
+diff --git a/Engine/graphics/temporalscaler.cpp b/Engine/graphics/temporalscaler.cpp
+new file mode 100644
+index 00000000..ef3a3c06
+--- /dev/null
++++ b/Engine/graphics/temporalscaler.cpp
+@@ -0,0 +1,12 @@
++#include "temporalscaler.h"
++
++using namespace Tempest;
++
++TemporalScaler::~TemporalScaler() {
++  delete impl.handler;
++  }
++
++TemporalScaler& TemporalScaler::operator=(TemporalScaler&& other) {
++  std::swap(impl,other.impl);
++  return *this;
++  }
+diff --git a/Engine/graphics/temporalscaler.h b/Engine/graphics/temporalscaler.h
+new file mode 100644
+index 00000000..1caf7216
+--- /dev/null
++++ b/Engine/graphics/temporalscaler.h
+@@ -0,0 +1,33 @@
++#pragma once
++
++#include <Tempest/AbstractGraphicsApi>
++
++#include "../utility/dptr.h"
++
++namespace Tempest {
++
++class Device;
++class CommandBuffer;
++template<class T>
++class Encoder;
++
++class TemporalScaler final {
++  public:
++    TemporalScaler() = default;
++    TemporalScaler(TemporalScaler&&) = default;
++    ~TemporalScaler();
++
++    TemporalScaler& operator=(TemporalScaler&& other);
++
++    bool isEmpty() const { return impl.handler==nullptr; }
++
++  private:
++    explicit TemporalScaler(AbstractGraphicsApi::TemporalScaler* scaler):impl(scaler) {}
++
++    Detail::DPtr<AbstractGraphicsApi::TemporalScaler*> impl;
++
++  friend class Tempest::Device;
++  friend class Encoder<Tempest::CommandBuffer>;
++  };
++
++}
+diff --git a/Engine/include/Tempest/TemporalScaler b/Engine/include/Tempest/TemporalScaler
+new file mode 100644
+index 00000000..2aa7e1fa
+--- /dev/null
++++ b/Engine/include/Tempest/TemporalScaler
+@@ -0,0 +1 @@
++#include "../graphics/temporalscaler.h"
