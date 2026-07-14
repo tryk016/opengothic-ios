@@ -468,6 +468,55 @@ its pre-existing dirty state (only `Engine/io/rfile.mm` and
 `Engine/system/api/iosapi.mm` modified — both unrelated pre-existing local
 changes, untouched by and unrelated to this pass).
 
+## M2 — real-device test IN PROGRESS (2026-07-14)
+
+First run on **real arm64 hardware**: Samsung Galaxy Tab A9 (SM-X115) —
+Helio G99 / Mali-G57 MC2 / 3.5 GB usable / Android 15 (the exact target
+class). **The port runs on the real device:** arm64 native code executes
+(the emulator was x86_64), Vulkan initialises on the real Mali-G57
+(`I/app: GPU = Mali-G57 MC2`), and the full "NOC KRUKA" main menu renders.
+Menu footprint ≈ 470–490 MB PSS with ~1 GB free; under memory pressure the
+low-memory-killer evicted *background* apps but spared the foreground game.
+
+**Data layout confirmed mandatory:** `validateGothicPath()` needs `Data/`
+**and** `_work/Data/` **and** `_work/Data/Scripts/_compiled/` — copying only
+`Data/` yields `E/app: Invalid gothic path` and the engine exits (the process
+then lingers as a ~28 MB husk on the home screen, so it looks like nothing
+happened). The `_work/` tree (446 MB; the GOTHIC.DAT/MENU.DAT compiled scripts
+plus Music + Video) is **not** optional and is **not** in the VDFs.
+README-android.md already lists it — the one-time copy must include it.
+
+Fixed on-device (committed):
+- [x] **Screen doze mid-play** (`a0b08b7f`) — no wake-lock meant the 30 s
+      screen-off timeout dozed the display during the input-less intro/load,
+      destroying the Vulkan surface and stalling the engine on a black frame.
+      `MainActivity` now holds `FLAG_KEEP_SCREEN_ON`.
+- [x] **180° orientation flip** (`b28b9dcf`) — `sensorLandscape` let the
+      surface transform flip (ROTATE_90↔ROTATE_270) after a doze/wake, which
+      desynced touch input from the rendered frame (the mobileUi A/B buttons
+      jumped to their mirror position and taps stopped landing). Manifest
+      locked to fixed `landscape`.
+
+Open — needs attention before touch is truly playable:
+- [ ] **Content rendered rotated 90°** on portrait-native panels.
+      `vswapchain.cpp:312` sets `preTransform = currentTransform` but the
+      engine never pre-rotates, so on a portrait-native panel the game draws
+      sideways inside the (correctly landscape) window — in every orientation
+      (the emulator hid this: its transform is identity). Proper fix is Android
+      pre-rotation: `preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR`
+      **plus** swapping `imageExtent` when the transform is 90/270 — note
+      `findSwapExtent` returns `capabilities.currentExtent` (portrait
+      800×1340), so a naive one-line `preTransform` change risks an infinite
+      recreate/SUBOPTIMAL loop (hang) — **plus** transforming input
+      coordinates to match. This is a shared-Tempest change (via
+      apply-patches) that needs real CI + on-device iteration; it is the top
+      blocker for real touch playability and was deliberately **not** attempted
+      autonomously.
+- [ ] **World-load-under-3.5 GB memory test still pending** — only the menu
+      (~490 MB, ~1 GB free) has been measured; a full new-game world load
+      under real memory pressure was blocked by the orientation/input bug above
+      and is the next thing to finish once these fixes are on-device.
+
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
 M1 proved the engine boots, renders, takes touch input, and survives
