@@ -15,7 +15,7 @@
             android:name="opengothic.gothic2.MainActivity"
             android:exported="true"
             android:configChanges="orientation|keyboardHidden|screenSize|screenLayout|density|keyboard|navigation|uiMode"
-            android:screenOrientation="sensorLandscape"
+            android:screenOrientation="landscape"
             android:theme="@style/Theme.AppCompat.NoActionBar">
 
             <!-- GameActivity loads libGothic2Notr.so -->
