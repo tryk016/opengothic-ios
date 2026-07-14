@@ -512,10 +512,28 @@ Open — needs attention before touch is truly playable:
       apply-patches) that needs real CI + on-device iteration; it is the top
       blocker for real touch playability and was deliberately **not** attempted
       autonomously.
-- [ ] **World-load-under-3.5 GB memory test still pending** — only the menu
-      (~490 MB, ~1 GB free) has been measured; a full new-game world load
-      under real memory pressure was blocked by the orientation/input bug above
-      and is the next thing to finish once these fixes are on-device.
+- [x] **World-load-under-3.5 GB memory test — DONE (temp `-nomenu`, reverted):
+      3.5 GB is OVER THE EDGE.** Khorinis (`newworld.zen`) loads and renders, but
+      peaks **~1.84 GB PSS (~1.26 GB of it GPU/GL textures)**, drops free RAM to
+      **~280 MB**, exhausts zram swap, and the OS evicts *every* background app to
+      keep the game alive — then it **SIGSEGVs reproducibly ~1.5–2.5 min in-world**
+      (spontaneous, not resume-triggered; memory-pressure hypothesis). **Likely
+      tunable**: the GPU texture footprint has no mobile downscaling, and Gothic.ini
+      (draw-distance / `zVidResizeableTexMaxSize` etc.) is never loaded.
+
+Still open (found this session):
+- [ ] **In-world SIGSEGV under memory pressure** (~1.5–2.5 min into Khorinis on
+      3.5 GB) — the concrete blocker for playable gameplay on the target device.
+      Needs memory tuning (texture downscale / lower draw distance) and a real
+      crash backtrace to confirm the faulting site.
+- [ ] **Android crash log is blind** — `/sdcard/OpenGothic/crash.log` records the
+      signal but no stack, because `crashlog.cpp` disables Bionic `backtrace()` at
+      minSdk 26. Wire a real unwinder (libunwindstack / `_Unwind_Backtrace`) so
+      on-device crashes are diagnosable.
+- [ ] **Gothic.ini not loaded** — engine logs `no "Gothic.ini" file in path`; it
+      looks in the CWD (`/sdcard/OpenGothic/`), not `<gpath>/system/Gothic.ini`.
+      Place/symlink it in the CWD (or fix the lookup) so user config *and* the
+      memory-tuning settings above actually apply.
 
 ## M2 (deferred, not part of M1 — captured for later milestones)
 
