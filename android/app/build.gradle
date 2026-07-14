@@ -20,7 +20,8 @@ android {
         targetSdk 34
         versionCode project.hasProperty('buildNum') ? project.buildNum.toInteger() : 1
         versionName "1.0.${project.hasProperty('buildNum') ? project.buildNum : '0'}"
-        ndk { abiFilters 'arm64-v8a' }
+        // arm64-v8a = real devices (Helio G99 etc.); x86_64 = fast desktop emulator.
+        ndk { abiFilters 'arm64-v8a', 'x86_64' }
         externalNativeBuild {
             cmake {
                 arguments '-DANDROID_STL=c++_shared', '-DANDROID=ON'
