@@ -133,8 +133,13 @@ extern "C" void android_main(struct android_app* app) {
     // (validated by checking <gpath>/Data and <gpath>/_work/Data both
     // exist). Game data is staged on-device at /sdcard/OpenGothic/Gothic2/
     // (Data/, _work/, system/), matching the chdir() above one level up.
-    const char* argv[] = {"opengothic", "-g", "/sdcard/OpenGothic/Gothic2"};
-    int argc = 3;
+    // TEMP TEST (revert before this is a real build): "-nomenu" makes MainWindow
+    // auto-start a new game in the default world (newworld.zen / Khorinis) —
+    // see mainwindow.cpp doStartMenu() branch — so the world-load-under-3.5GB
+    // memory test can run WITHOUT the menu, whose touch is unusable on
+    // portrait-native panels until the preTransform rotation fix lands.
+    const char* argv[] = {"opengothic", "-g", "/sdcard/OpenGothic/Gothic2", "-nomenu"};
+    int argc = 4;
     CommandLine cmd{argc,argv};
 
     Tempest::ApiFlags flg = cmd.isValidationMode() ? Tempest::ApiFlags::Validation : Tempest::ApiFlags::NoFlags;
