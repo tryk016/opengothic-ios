@@ -6,11 +6,16 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.view.WindowManager
 import com.google.androidgamesdk.GameActivity
 
 class MainActivity : GameActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A game gets no touch input during cutscenes/loading, so the display would
+        // hit its screen-off timeout and doze. That destroys the Vulkan surface and
+        // stalls the engine mid-frame. Keep the screen awake while we are foreground.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         ensureAllFilesAccess()
     }
 
