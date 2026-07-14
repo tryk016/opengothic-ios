@@ -79,16 +79,16 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 | Camera | Right stick | Right stick |
 | Draw bow / aim; melee block | LT | L2 |
 | Draw melee; attack / shoot / cast | RT | R2 |
-| Walk; melee left attack | LB | L1 |
-| Look back; melee right attack | RB | R1 |
+| Walk; melee left attack; previous Journal/Statistics page | LB | L1 |
+| Look back; melee right attack; next Journal/Statistics page | RB | R1 |
 | Sneak | L3 | L3 |
 | Target lock | R3 | R3 |
 | Edit Items ring (inventory) | R3 | R3 |
 | Items ring | D-pad ↑ | D-pad ↑ |
 | Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
-| Status / previous combat target | D-pad ← | D-pad ← |
-| Quest log / next combat target | D-pad → | D-pad → |
-| Inventory (tap) / Map (hold) | View | Share / Create |
+| Quest log / previous combat target | D-pad ← | D-pad ← |
+| Map / next combat target | D-pad → | D-pad → |
+| Inventory | View | Share / Create |
 | Game menu | Menu | Options |
 | Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
 
@@ -107,12 +107,15 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
   synthetically so it can still be stowed. The Weapons / Magic ring remains automatic and uses equipped gear
   plus all active spell-book slots 3–10.
 - **Contextual combat:** LT blocks in melee and aims a bow; RT attacks, shoots or casts. LB/RB become
-  left/right melee attacks and otherwise provide walk/look-back. Outside combat, D-pad ←/→ opens
-  character status/the quest log; while target lock is active it selects the previous/next target.
+  left/right melee attacks and otherwise provide walk/look-back. Outside target lock, D-pad ← opens
+  the quest journal and D-pad → opens the map; while target lock is active they select the previous/next target.
+- **Journal and Statistics:** D-pad ← opens the Journal. On its category screen, D-pad selects a
+  category, A enters it and B closes the page. In a quest list, D-pad ↑/↓ selects a quest, A opens its
+  text and B returns one level. LB/RB switches directly between the Journal and Statistics pages.
 - **Inventory:** LB/RB jumps to the previous/next sorted item category; R3 opens Items-ring assignment
   for the highlighted player item; the sticks and D-pad retain normal grid navigation.
-- **System buttons:** tap View for the inventory or hold it for ~0.6 s for the map. Menu opens the game
-  menu. Quick save/load remains available to the engine through its keyboard commands, but is not
+- **System buttons:** View opens the inventory and Menu opens the game menu. Quick save/load remains
+  available to the engine through its keyboard commands, but is not
   assigned to the controller.
 - **Left-stick response:** the vertical axis keeps Gothic's animation-driven movement with
   press/release hysteresis; the horizontal axis turns proportionally to the deflection. A sloped axial
@@ -126,7 +129,8 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 **On-screen virtual gamepad (no controller):** a full pad is drawn during play — move pad + camera area,
 A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. It mirrors the physical
 pad's contextual mapping and two D-pad quick-rings. Menus and dialogues get on-screen D-pad +
-OK/Back/Skip. While a ring is open, only corner controls remain: D-pad ↑/↓ switches the two panels and
+OK/Back/Skip; the Journal and Statistics pages additionally show LB/RB page controls. While a ring is
+open, only corner controls remain: D-pad ↑/↓ switches the two panels and
 B cancels; drag anywhere else and release to use the selected sector.
 
 ### iOS configuration

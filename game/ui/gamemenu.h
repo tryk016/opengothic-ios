@@ -31,6 +31,8 @@ class GameMenu : public Tempest::Widget {
     void setPlayer(const Npc& pl);
 
     void onKeyboard(KeyCodec::Action k);
+    bool onModalKeyboard(KeyCodec::Action k);
+    bool hasModalDialog() const;
     void onTick();
     void processMusicTheme();
 
@@ -78,6 +80,8 @@ class GameMenu : public Tempest::Widget {
 
     Item                                  hItems[zenkit::IMenu::item_count];
     Item*                                 ctrlInput = nullptr;
+    ListViewDialog*                       questListDialog = nullptr;
+    ListContentDialog*                    questContentDialog = nullptr;
     uint32_t                              curItem=0;
     bool                                  exitFlag=false;
     bool                                  closeFlag=false;

@@ -3,8 +3,8 @@
 #include <cstdint>
 
 // Shared reducer for the physical and on-screen controller system buttons.
-// View uses an unambiguous tap/hold split; Menu fires immediately.  A held
-// button carried from another UI context is suppressed until it is released.
+// Both buttons fire on their initial press. A held button carried from another
+// UI context is suppressed until it is released.
 class PadSystemGesture final {
   public:
     enum class Button : uint8_t {
@@ -15,11 +15,8 @@ class PadSystemGesture final {
     enum class Effect : uint8_t {
       None,
       Inventory,
-      Map,
       GameMenu,
       };
-
-    static constexpr uint64_t HoldMs = 600;
 
     constexpr PadSystemGesture() = default;
 
@@ -32,7 +29,7 @@ class PadSystemGesture final {
       return state(button).down;
       }
 
-    constexpr Effect onButton(Button button, bool pressed, uint64_t now) {
+    constexpr Effect onButton(Button button, bool pressed, uint64_t) {
       State& current = state(button);
       if(pressed) {
         if(current.down)
@@ -40,13 +37,8 @@ class PadSystemGesture final {
         current.down = true;
         if(current.phase==Phase::Suppressed)
           return Effect::None;
-        current.phase = Phase::Pending;
-        current.since = now;
-        if(button==Button::Menu) {
-          current.phase = Phase::Consumed;
-          return Effect::GameMenu;
-          }
-        return Effect::None;
+        current.phase = Phase::Consumed;
+        return button==Button::View ? Effect::Inventory : Effect::GameMenu;
         }
 
       if(!current.down) {
@@ -56,26 +48,17 @@ class PadSystemGesture final {
         }
 
       current.down = false;
-      const Phase phase = current.phase;
       current.phase = Phase::Idle;
-      if(phase!=Phase::Pending)
-        return Effect::None;
-      return now-current.since>=HoldMs ? Effect::Map : Effect::Inventory;
+      return Effect::None;
       }
 
-    constexpr Effect tick(uint64_t now) {
-      if(view.down && view.phase==Phase::Pending &&
-         now-view.since>=HoldMs) {
-        view.phase = Phase::Consumed;
-        return Effect::Map;
-        }
+    constexpr Effect tick(uint64_t) {
       return Effect::None;
       }
 
   private:
     enum class Phase : uint8_t {
       Idle,
-      Pending,
       Consumed,
       Suppressed,
       };
@@ -83,13 +66,11 @@ class PadSystemGesture final {
     struct State {
       bool     down  = false;
       Phase    phase = Phase::Idle;
-      uint64_t since = 0;
       };
 
     static constexpr void reset(State& value, bool held) {
       value.down  = held;
       value.phase = held ? Phase::Suppressed : Phase::Idle;
-      value.since = 0;
       }
 
     constexpr State& state(Button button) {
@@ -109,13 +90,13 @@ constexpr bool padSystemGestureCompileTests() {
   using E = PadSystemGesture::Effect;
   PadSystemGesture g;
 
-  if(g.onButton(B::View,true,0)!=E::None ||
-     g.onButton(B::View,false,1)!=E::Inventory)
+  if(g.onButton(B::View,true,0)!=E::Inventory ||
+     g.onButton(B::View,false,1)!=E::None)
     return false;
 
   g.reset();
-  if(g.onButton(B::View,true,100)!=E::None ||
-     g.tick(699)!=E::None || g.tick(700)!=E::Map ||
+  if(g.onButton(B::View,true,100)!=E::Inventory ||
+     g.tick(700)!=E::None ||
      g.onButton(B::View,false,701)!=E::None)
     return false;
 
@@ -130,8 +111,8 @@ constexpr bool padSystemGestureCompileTests() {
   if(g.onButton(B::View,false,2000)!=E::None ||
      g.onButton(B::Menu,false,2000)!=E::None)
     return false;
-  if(g.onButton(B::View,true,2100)!=E::None ||
-     g.onButton(B::View,false,2101)!=E::Inventory)
+  if(g.onButton(B::View,true,2100)!=E::Inventory ||
+     g.onButton(B::View,false,2101)!=E::None)
     return false;
   return true;
   }

@@ -65,11 +65,11 @@ std::array<TouchInput::Btn,16> TouchInput::layout() const {
     // stick clicks
     { m,         H-H/3-m-s-m, s, G::L3, K::Key,  A::Sneak         },
     { bx,        by-2*(s+m),  s, G::R3, K::Lock, A::ActionGeneric },
-    // d-pad: two separate rings and status/focus navigation
+    // d-pad: two separate rings plus journal/map or target navigation
     { dcx,       dcy-s, s, G::DPadUp,    K::ItemRing,   A::Idle },
     { dcx,       dcy+s, s, G::DPadDown,  K::WeaponsRing,A::Idle },
-    { dcx-s,     dcy,   s, G::DPadLeft,  K::StatusOrFocus,A::Idle },
-    { dcx+s,     dcy,   s, G::DPadRight, K::LogOrFocus, A::Idle },
+    { dcx-s,     dcy,   s, G::DPadLeft,  K::JournalOrFocus,A::Idle },
+    { dcx+s,     dcy,   s, G::DPadRight, K::MapOrFocus, A::Idle },
     // system
     { W/2-(s+m), m, s, G::View, K::SystemView, A::Inventory },
     { W/2+m,     m, s, G::Menu, K::SystemMenu, A::Escape    },
@@ -105,6 +105,14 @@ std::array<TouchInput::MBtn,4> TouchInput::dialogLayout() const {
     { cx,          by-s,        s, E::K_Down   },
     { W-2*(s+m),   by-s,        s, E::K_Return },
     { W-(s+m),     by-s,        s, E::K_ESCAPE },
+  }};
+  }
+
+std::array<TouchInput::PageBtn,2> TouchInput::characterPageLayout() const {
+  const int s = h()/9, m = h()/40;
+  return {{
+    { w()/2-s-m, m, s, PadGlyph::LB, -1 },
+    { w()/2+m,   m, s, PadGlyph::RB,  1 },
   }};
   }
 
@@ -147,7 +155,6 @@ bool TouchInput::dispatchSystemEffect(PadSystemGesture::Effect effect) {
     return true;
   switch(effect) {
     case E::Inventory:  owner.uiAction(A::Inventory);   break;
-    case E::Map:        owner.padOpenMap();             break;
     case E::GameMenu:   owner.uiAction(A::Escape);      break;
     case E::None:                                        break;
     }
@@ -209,6 +216,9 @@ void TouchInput::paintEvent(PaintEvent& e) {
     case PadCtx::Menu:
       for(auto& b:menuLayout())
         PadGlyph::draw(p, fnt, glyphOfKey(b.key), b.x, b.y, b.s);
+      if(owner.padCharacterPageActive())
+        for(auto& b:characterPageLayout())
+          PadGlyph::draw(p, fnt, b.glyph, b.x, b.y, b.s);
       break;
     case PadCtx::Inventory: {
       for(auto& b:menuLayout())
@@ -315,13 +325,13 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
           case TAct::ItemRing:
             releaseWorldTouches(); owner.padOpenItemRing(); return;
           case TAct::Lock:       ctrl.toggleTargetLock();   return;
-          case TAct::StatusOrFocus:
+          case TAct::JournalOrFocus:
             if(ctrl.isTargetLocked()) ctrl.focusLeft();
-            else owner.uiAction(A::Status);
-            return;
-          case TAct::LogOrFocus:
-            if(ctrl.isTargetLocked()) ctrl.focusRight();
             else owner.uiAction(A::Log);
+            return;
+          case TAct::MapOrFocus:
+            if(ctrl.isTargetLocked()) ctrl.focusRight();
+            else owner.padOpenMap();
             return;
           case TAct::SystemView:
             if(viewId<0) {
@@ -382,6 +392,13 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
         return;
         }
       }
+    }
+  if(ctx==PadCtx::Menu && owner.padCharacterPageActive()) {
+    for(auto& b:characterPageLayout())
+      if(pos.x>=b.x && pos.x<b.x+b.s && pos.y>=b.y && pos.y<b.y+b.s) {
+        owner.padCycleCharacterPage(b.direction);
+        return;
+        }
     }
   if(ctx==PadCtx::Menu || ctx==PadCtx::Inventory) {
     tap(menuLayout());

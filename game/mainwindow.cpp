@@ -708,6 +708,20 @@ void MainWindow::padPaintRing(PaintEvent& e)  {
     }
   }
 void MainWindow::padOpenMap()                 { gamepad.openMap(); }
+bool MainWindow::padCharacterPageActive() const {
+  return rootMenu.isActive(KeyCodec::Log) || rootMenu.isActive(KeyCodec::Status);
+  }
+bool MainWindow::padCharacterNavigationActive() const {
+  return rootMenu.isRootMenu(KeyCodec::Log) || rootMenu.isRootMenu(KeyCodec::Status);
+  }
+void MainWindow::padCycleCharacterPage(int direction) {
+  if(direction==0)
+    return;
+  if(rootMenu.isActive(KeyCodec::Log))
+    uiAction(KeyCodec::Status);
+  else if(rootMenu.isActive(KeyCodec::Status))
+    uiAction(KeyCodec::Log);
+  }
 void MainWindow::padInventoryCategory(int d)  { inventory.moveCategory(d); }
 std::optional<size_t> MainWindow::padInventorySelectedItem() {
   return inventory.selectedPlayerItemClass();

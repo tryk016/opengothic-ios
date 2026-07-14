@@ -7,7 +7,6 @@
 
 #include <algorithm>
 #include <array>
-#include <cstdio>
 #include <initializer_list>
 #include <iterator>
 #include <limits>
@@ -44,10 +43,7 @@ struct Loc {
   const char* camera;
   const char* targetLock;
   const char* inventory;
-  const char* map;
   const char* gameMenu;
-  const char* tap;
-  const char* hold;
   };
 
 // GthFont maps one byte to one glyph in the game codepage, not UTF-8. PL uses
@@ -57,15 +53,15 @@ const Loc& loc(ScriptLang language) {
   static const Loc en = {
     "Controller layout",
     "Draw bow / Block / Aim",
-    "Left attack / Walk",
+    "Left attack / Walk / Previous page",
     "Move / Turn",
     "Sneak",
     "Item quick-ring",
-    "Status / Previous target",
-    "Quest log / Next target",
+    "Quest log / Previous target",
+    "Map / Next target",
     "Weapons / Magic ring",
     "Draw melee / Attack / Shoot / Cast",
-    "Right attack / Look back",
+    "Right attack / Look back / Next page",
     "Draw / sheathe weapon",
     "Melee special",
     "Jump / Climb",
@@ -73,23 +69,20 @@ const Loc& loc(ScriptLang language) {
     "Camera",
     "Target lock / Edit item ring",
     "Inventory",
-    "Map",
     "Game menu",
-    "tap",
-    "hold",
     };
   static const Loc de = {
     "Controller-Belegung",
     "Bogen ziehen / Blocken / Zielen",
-    "Linker Angriff / Gehen",
+    "Linker Angriff / Gehen / Vorige Seite",
     "Bewegen / Drehen",
     "Schleichen",
     "Gegenstands-Rad",
-    "Status / Vorheriges Ziel",
-    "Tagebuch / N\xE4" "chstes Ziel",
+    "Tagebuch / Vorheriges Ziel",
+    "Karte / N\xE4" "chstes Ziel",
     "Waffen- / Magie-Rad",
     "Nahkampf / Angriff / Schuss / Zauber",
-    "Rechter Angriff / Zur\xFC" "ckblick",
+    "Rechter Angriff / Zur\xFC" "ckblick / N\xE4" "chste Seite",
     "Waffe ziehen / wegstecken",
     "Nahkampf-Spezialangriff",
     "Springen / Klettern",
@@ -97,23 +90,20 @@ const Loc& loc(ScriptLang language) {
     "Kamera",
     "Ziel fixieren / Gegenstands-Rad belegen",
     "Inventar",
-    "Karte",
     "Spielermen\xFC",
-    "kurz",
-    "halten",
     };
   static const Loc pl = {
     "Uk\xB3" "ad kontrolera",
     "Dobycie \xB3uku / Blok / Celowanie",
-    "Atak w lewo / Ch\xF3" "d",
+    "Atak w lewo / Ch\xF3" "d / Poprzednia strona",
     "Ruch / skr\xEAt",
     "Skradanie",
     "Ko\xB3o przedmiot\xF3w",
-    "Statystyki / Poprzedni cel",
-    "Dziennik zada\xF1 / Nast\xEApny cel",
+    "Dziennik zada\xF1 / Poprzedni cel",
+    "Mapa / Nast\xEApny cel",
     "Ko\xB3o broni / Magii",
     "Bro\xF1 bia\xB3" "a / Atak / Strza\xB3 / Czar",
-    "Atak w prawo / Spojrzenie wstecz",
+    "Atak w prawo / Spojrzenie wstecz / Nast\xEApna strona",
     "Dob\xB9" "d\x9F / schowaj bro\xF1",
     "Specjalny atak wr\xEA" "cz",
     "Skok / wspinaczka",
@@ -121,10 +111,7 @@ const Loc& loc(ScriptLang language) {
     "Kamera",
     "Blokada celu / Edycja ko\xB3" "a przedmiot\xF3w",
     "Ekwipunek",
-    "Mapa",
     "Menu gry",
-    "kr\xF3tko",
-    "przytrzymaj",
     };
   switch(language) {
     case ScriptLang::DE: return de;
@@ -468,9 +455,6 @@ void PadDiagram::draw(Painter& p, const GthFont& fnt, int w, int h, float scale,
     vline(axp, topBandY+topBlockH+2, ayp);
     dot(axp,ayp);
     };
-  char viewLabel[192] = {};
-  std::snprintf(viewLabel,sizeof(viewLabel),"%s: %s / %s: %s",
-                L.tap,L.inventory,L.hold,L.map);
-  topLbl(PadGlyph::View, viewLabel, true,  0.433f,0.438f);
+  topLbl(PadGlyph::View, L.inventory, true,  0.433f,0.438f);
   topLbl(PadGlyph::Menu, L.gameMenu, false, 0.571f,0.433f);
   }

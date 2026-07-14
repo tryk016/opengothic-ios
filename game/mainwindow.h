@@ -68,6 +68,9 @@ class MainWindow : public Tempest::Window {
     void padRingCancel();
     void padPaintRing(Tempest::PaintEvent& e);
     void padOpenMap();
+    bool padCharacterPageActive() const;
+    bool padCharacterNavigationActive() const;
+    void padCycleCharacterPage(int direction);
     void padInventoryCategory(int direction);
     std::optional<size_t> padInventorySelectedItem();
     bool padVideoActive() const;               // an intro/cutscene bink is playing

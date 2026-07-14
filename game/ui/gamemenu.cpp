@@ -134,7 +134,9 @@ struct GameMenu::ListViewDialog : Dialog {
 
     ListContentDialog dlg(*next);
     dlg.resize(owner.owner.size());
+    owner.questContentDialog = &dlg;
     dlg.exec();
+    owner.questContentDialog = nullptr;
     next->visible = vis;
     owner.curItem = prev;
     }
@@ -796,6 +798,38 @@ void GameMenu::onKeyboard(KeyCodec::Action key) {
     }
   }
 
+bool GameMenu::onModalKeyboard(KeyCodec::Action key) {
+  // Controller/touch events are synthesized directly by MainWindow and do not
+  // pass through Tempest's system overlay dispatcher. Route them explicitly to
+  // the quest dialogs so input cannot leak into MENU_LOG underneath.
+  if(questContentDialog!=nullptr) {
+    if(key==KeyCodec::Forward)
+      questContentDialog->onMove(-1);
+    else if(key==KeyCodec::Back)
+      questContentDialog->onMove(1);
+    else if(key==KeyCodec::Escape)
+      questContentDialog->close();
+    return true;
+    }
+
+  if(questListDialog!=nullptr) {
+    if(key==KeyCodec::Forward)
+      questListDialog->onMove(-1);
+    else if(key==KeyCodec::Back)
+      questListDialog->onMove(1);
+    else if(key==KeyCodec::ActionGeneric)
+      questListDialog->showQuest();
+    else if(key==KeyCodec::Escape)
+      questListDialog->close();
+    return true;
+    }
+  return false;
+  }
+
+bool GameMenu::hasModalDialog() const {
+  return questListDialog!=nullptr || questContentDialog!=nullptr;
+  }
+
 void GameMenu::onTick() {
   update();
 
@@ -1148,7 +1182,9 @@ void GameMenu::execCommands(std::string str, bool isClick, KeyCodec::Action hint
             return;
             }
           dlg.resize(owner.size());
+          questListDialog = &dlg;
           dlg.exec();
+          questListDialog = nullptr;
           curItem = prev;
           }
         }

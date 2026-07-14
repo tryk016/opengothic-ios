@@ -22,6 +22,8 @@ class MenuRoot : public Tempest::Widget {
     void popMenu();
     void closeAll();
     bool isActive() const;
+    bool isActive(KeyCodec::Action rootMenu) const;
+    bool isRootMenu(KeyCodec::Action rootMenu) const;
     void setPlayer(const Npc& pl);
     void processMusicTheme();
 

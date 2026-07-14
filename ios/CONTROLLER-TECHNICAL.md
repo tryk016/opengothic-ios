@@ -42,20 +42,35 @@ before app resume from leaking into gameplay.
 | Y / Triangle | Draw/sheathe the last weapon |
 | LT / L2 | Unarmed: draw bow; melee: block; bow/crossbow: aim |
 | RT / R2 | Unarmed: draw melee; armed: attack/shoot/cast |
-| LB / L1 | Melee: left attack; otherwise temporary walk |
-| RB / R1 | Melee: right attack; otherwise look back |
+| LB / L1 | Melee: left attack; otherwise temporary walk; Journal/Statistics: previous page |
+| RB / R1 | Melee: right attack; otherwise look back; Journal/Statistics: next page |
 | L3 | Toggle sneak |
 | R3 | World: toggle native target lock; Inventory: edit the highlighted item binding |
 | D-pad Up | Open/switch to the Items ring |
 | D-pad Down | Open/switch to the Weapons/Magic ring |
-| D-pad Left | Status, or previous target while locked |
-| D-pad Right | Quest log, or next target while locked |
-| View | Tap: Inventory; hold 600 ms: scripted Map |
+| D-pad Left | Quest journal, or previous target while locked |
+| D-pad Right | Scripted Map, or next target while locked |
+| View | Inventory |
 | Menu | Game menu |
 | L3 + R3 | Hold about 2 seconds: nearest-waypoint unstuck teleport |
 
 Controller quick-save/load shortcuts and the first-person binding are deliberately
 not assigned. Engine keyboard F5/F9 remains available when enabled.
+
+## Journal and Statistics pages
+
+`MENU_LOG` and `MENU_STATUS` remain separate script-defined menus for Gothic 1,
+Gothic 2 and mod compatibility. `MenuRoot::isActive(Action)` identifies only the
+root page (not a pushed child or an active quest dialog), and `MainWindow` cycles
+between those two existing pages for LB/RB. No `MENU.DAT` layout is replaced.
+The left stick is intentionally ignored throughout both character pages; their
+navigation belongs exclusively to the D-pad.
+
+The quest category and quest-text windows are Tempest modal overlays. Synthetic
+controller/touch events normally bypass the system overlay dispatcher, so
+`GameMenu::onModalKeyboard()` explicitly gives the active quest window exclusive
+ownership: D-pad Up/Down moves or scrolls, A enters the selected quest and B closes
+exactly one level. Input must never fall through to the category menu underneath.
 
 ## Combat semantics
 
@@ -197,7 +212,7 @@ starting an unintended turn or step.
 - `game/ui/quickring.h`, `game/ui/quickring.cpp` - contents, radial selection and draw.
 - `game/ui/touchinput.h`, `game/ui/touchinput.cpp` - virtual-pad parity.
 - `game/ui/inventorymenu.h`, `game/ui/inventorymenu.cpp` - category jumps.
-- `game/ui/padsystemgesture.h` - View tap/hold and Menu reducer with constexpr tests.
+- `game/ui/padsystemgesture.h` - View/Menu press reducer with constexpr tests.
 - `game/ui/paddiagram.cpp` - localized EN/DE/PL in-game diagram.
 - `assets/controller/OpenGothic_Controller_Layout.svg` - README diagram.
 
@@ -218,8 +233,11 @@ starting an unintended turn or step.
 - Verify touch panel switching/cancel, and opening a menu/loading transition with a
   touch ring active.
 - Test LB/RB category wrap on player inventory, chest and trade pages.
-- Test View tap versus 600 ms hold, right-stick vertical look, `invertY=1`, left-stick
+- Test View and Menu single-press actions, right-stick vertical look, `invertY=1`, left-stick
   cross-axis guard, disconnect/reconnect and app background/resume.
+- Open every Journal category; verify D-pad navigation, A entering category/quest,
+  B returning one level, and LB/RB switching Journal/Statistics only at the root.
+  Repeat with both a physical controller and the on-screen LB/RB controls.
 
 Update this file whenever controller semantics, ring geometry or input ownership
 changes; update both user-facing diagrams in the same commit.

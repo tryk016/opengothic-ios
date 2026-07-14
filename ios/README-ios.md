@@ -122,16 +122,16 @@ are documented in [`CONTROLLER-TECHNICAL.md`](CONTROLLER-TECHNICAL.md).
 | Camera | Right stick | Right stick |
 | Draw bow / aim; melee block | LT | L2 |
 | Draw melee; attack / shoot / cast | RT | R2 |
-| Walk; melee left attack | LB | L1 |
-| Look back; melee right attack | RB | R1 |
+| Walk; melee left attack; previous Journal/Statistics page | LB | L1 |
+| Look back; melee right attack; next Journal/Statistics page | RB | R1 |
 | Sneak | L3 | L3 |
 | Target lock | R3 | R3 |
 | Edit Items ring (inventory) | R3 | R3 |
 | Items ring | D-pad ↑ | D-pad ↑ |
 | Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
-| Status / previous combat target | D-pad ← | D-pad ← |
-| Quest log / next combat target | D-pad → | D-pad → |
-| Inventory (tap) / Map (hold) | View | Share / Create |
+| Quest log / previous combat target | D-pad ← | D-pad ← |
+| Map / next combat target | D-pad → | D-pad → |
+| Inventory | View | Share / Create |
 | Game menu | Menu | Options |
 | Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
 
@@ -159,13 +159,18 @@ Notes on feel and on-screen input:
   locked, **D-pad ◀ / ▶** steps to the previous / next target.
 - **Contextual combat:** LT blocks in melee and aims a bow; RT attacks, shoots
   or casts. LB/RB become left/right melee attacks and otherwise provide
-  walk/look-back. Outside target lock, D-pad ◀/▶ opens status/the quest log;
+  walk/look-back. Outside target lock, D-pad ◀ opens the quest journal and
+  D-pad ▶ opens the map;
   while target lock is active it selects the previous/next target.
+- **Journal and Statistics:** D-pad ◀ opens the Journal. D-pad selects a
+  category and A enters it; inside a category D-pad ↑/↓ selects a quest and A
+  opens its text. B always returns exactly one level. LB/RB switches between
+  the Journal and Statistics pages.
 - **Inventory:** LB/RB jumps to the previous/next sorted item category; R3
   opens Items-ring assignment for the highlighted player item; the sticks and
   D-pad retain normal grid navigation.
-- **System buttons:** tap View for inventory or hold it for ~0.6 s for the map.
-  Menu opens the game menu. Quick save/load remains available through the
+- **System buttons:** View opens inventory and Menu opens the game menu. Quick
+  save/load remains available through the
   engine's keyboard commands, but is not assigned to the controller.
 - **Left-stick response:** forward/back keeps Gothic's animation-driven motion
   but uses separate press/release thresholds; horizontal turning is scaled by
@@ -174,7 +179,8 @@ Notes on feel and on-screen input:
 - **On-screen virtual gamepad:** with no controller, a full pad is drawn during
   play (buttons, sticks, D-pad, move + camera area). It mirrors the physical
   pad's contextual mapping and two D-pad quick-rings. It **auto-hides the moment
-  a controller connects**. While a ring is open, the corner D-pad ↑/↓ glyphs
+  a controller connects**. Journal/Statistics also shows touch LB/RB page
+  controls. While a ring is open, the corner D-pad ↑/↓ glyphs
   switch panels, B cancels, and a drag/release elsewhere selects and uses a slot.
 - A **lock-on reticle** brackets the pinned target (gamepad only). The former
   transient controls-hint bar is disabled; the complete mapping lives in
