@@ -91,13 +91,20 @@ class WorldView {
   private:
     const World&  owner;
     std::pair<Tempest::Vec3, Tempest::Vec3> aabb;
+    struct CtorLog { CtorLog(const char* s); }; // TEMP diag
     SceneGlobals  sGlobal;
+    CtorLog       lg0_{"[loadstage] TEMP after SceneGlobals"}; // TEMP
     Sky           gSky;
+    CtorLog       lg1_{"[loadstage] TEMP after Sky"}; // TEMP
     LightGroup    gLights;
+    CtorLog       lg2_{"[loadstage] TEMP after LightGroup"}; // TEMP
     VisualObjects visuals;
+    CtorLog       lg3_{"[loadstage] TEMP after VisualObjects"}; // TEMP
 
     MeshObjects   objGroup;
+    CtorLog       lg4_{"[loadstage] TEMP after MeshObjects"}; // TEMP
     PfxObjects    pfxGroup;
+    CtorLog       lg5_{"[loadstage] TEMP after PfxObjects"}; // TEMP
     Landscape     land;
 
     bool needToUpdateCmd(uint8_t frameId) const;

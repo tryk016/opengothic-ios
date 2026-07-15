@@ -1,12 +1,15 @@
 #include "worldview.h"
 
 #include <Tempest/Application>
+#include <Tempest/Log>
 
 #include "graphics/mesh/submesh/packedmesh.h"
 #include "world/world.h"
 #include "gothic.h"
 
 using namespace Tempest;
+
+WorldView::CtorLog::CtorLog(const char* s) { Tempest::Log::i(s); } // TEMP diag
 
 WorldView::WorldView(const World& world, const PackedMesh& wmesh)
     : owner(world),aabb(wmesh.bbox()),gSky(sGlobal,world),gLights(sGlobal),visuals(sGlobal,wmesh.bbox()),
