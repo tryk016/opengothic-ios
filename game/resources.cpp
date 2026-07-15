@@ -914,10 +914,16 @@ std::vector<const Texture2d*> Resources::loadTextureAnim(std::string_view name) 
         return ret;
       }
    auto t = loadTexture(buf);
-    if(t==nullptr) {
+    // On Android loadTexture never returns null -- it returns the 1x1 `fallback`
+    // for a missing texture so a null image view can't crash Mali's bindless
+    // descriptor path (see implLoadTexture). That means this animation-frame loop
+    // cannot use t==nullptr as its "no more frames" terminator (it would spin
+    // forever), so treat the fallback as "not found" too. On desktop loadTexture
+    // returns null and never the fallback, so this is a no-op there.
+    if(t==nullptr || t==&fallback) {
       string_frm buf2(buf,".TGA");
       t = loadTexture(buf2);
-      if(t==nullptr)
+      if(t==nullptr || t==&fallback)
         return ret;
       }
     ret.push_back(t);
