@@ -110,14 +110,16 @@ Gothic::Gothic() {
   wrldDef = CommandLine::inst().wrldDef;
 
   baseIniFile.reset(new IniFile(nestedPath({u"system",u"Gothic.ini"},Dir::FT_File)));
-#if defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   const bool hasUserIni = FileUtil::exists(std::u16string(u"Gothic.ini"));
 #endif
   iniFile.reset(new IniFile(u"Gothic.ini"));
-#if defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   if(!hasUserIni) {
     // Keep the copied PC system/Gothic.ini untouched. This small writable
-    // overlay gives a fresh iOS install its device profile immediately.
+    // overlay gives a fresh mobile install (iOS/Android) its device profile
+    // immediately: half-res upscale, no SSAO, small shadow maps. On Android it
+    // is written to the chdir'd CWD (/sdcard/OpenGothic/Gothic.ini).
     iniFile->set("GAME",     "useQuickSaveKeys",  1);
     iniFile->set("INTERNAL", "vidResIndex",       2);
     iniFile->set("ENGINE",   "zCloudShadowScale", 0);
