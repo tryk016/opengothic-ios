@@ -102,6 +102,16 @@ void DrawBuckets::updateBindlessArrays() {
   morphId.resize(roundup(morphId.size()));
   morph  .resize(roundup(morph.size()));
 
+#if defined(__ANDROID__)
+  // Mali (Valhall) lacks VK_EXT_robustness2 (nullDescriptor): a null image view
+  // in a bindless descriptor array crashes the driver during rendering. Replace
+  // the null padding slots created by roundup() above (and any textureless
+  // material) with the fallback texture so every slot has a valid view.
+  for(auto& t:tex)
+    if(t==nullptr)
+      t = &Resources::fallbackTexture();
+#endif
+
   Resources::recycle(std::move(desc.tex));
   Resources::recycle(std::move(desc.vbo));
   Resources::recycle(std::move(desc.ibo));
