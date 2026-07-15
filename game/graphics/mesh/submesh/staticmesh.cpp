@@ -5,19 +5,29 @@
 #include "graphics/mesh/submesh/packedmesh.h"
 #include "gothic.h"
 
+#include <Tempest/Log>
+#include <chrono>
+
 StaticMesh::StaticMesh(const PackedMesh& mesh) {
+  Tempest::Log::i("[loadstage] TEMP StaticMesh: verts=",mesh.vertices.size()," inds=",mesh.indices.size()," subs=",mesh.subMeshes.size()); // TEMP
   const Vertex* vert=mesh.vertices.data();
   vbo  = Resources::vbo<Vertex>  (vert,mesh.vertices.size());
   ibo  = Resources::ibo<uint32_t>(mesh.indices.data(),mesh.indices.size());
   ibo8 = Resources::ssbo(mesh.indices8.data(),mesh.indices8.size());
+  Tempest::Log::i("[loadstage] TEMP StaticMesh: buffers uploaded, loading materials..."); // TEMP
 
   sub.resize(mesh.subMeshes.size());
   for(size_t i=0;i<mesh.subMeshes.size();++i) {
+    auto t0 = std::chrono::steady_clock::now(); // TEMP
     sub[i].texName   = mesh.subMeshes[i].material.texture;
     sub[i].material  = Resources::loadMaterial(mesh.subMeshes[i].material,mesh.isUsingAlphaTest);
+    auto ms = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count(); // TEMP
+    if(ms>100 || (i%128)==0) // TEMP
+      Tempest::Log::i("[loadstage] TEMP StaticMesh mat i=",i,"/",mesh.subMeshes.size()," tex=",sub[i].texName," ms=",int(ms)); // TEMP
     sub[i].iboOffset = mesh.subMeshes[i].iboOffset;
     sub[i].iboLength = mesh.subMeshes[i].iboLength;
     }
+  Tempest::Log::i("[loadstage] TEMP StaticMesh: all ",mesh.subMeshes.size()," materials loaded"); // TEMP
   bbox.assign(mesh.bbox());
 
   if(Gothic::options().doRayQuery) {
