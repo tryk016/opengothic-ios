@@ -29,10 +29,12 @@
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
 #include "utils/memoryinfo.h"
 #endif
+#include "utils/systemmsg.h"
 #include "ui/padglyph.h"
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <memory>
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
 #include <chrono>
@@ -79,8 +81,8 @@ double memoryMiB(uint64_t bytes, bool valid) {
 #endif
 
 MainWindow::MainWindow(Device& device)
-  : Window(Maximized),device(device),swapchain(device,hwnd()),
-    atlas(device),renderer(swapchain),
+  : Window(Maximized),device(device),
+    atlas(device),renderer(device,hwnd()),
     rootMenu(keycodec),inventory(keycodec),
     dialogs(inventory),document(keycodec),
     console(*this),player(dialogs,inventory),
@@ -105,7 +107,6 @@ MainWindow::MainWindow(Device& device)
   if(!CommandLine::inst().isWindowMode())
     setFullscreen(true);
 
-  //renderer.resetSwapchain();
   setupUi();
 
   barBack    = Resources::loadTexture("BAR_BACK.TGA");
@@ -181,7 +182,7 @@ MainWindow::~MainWindow() {
 #endif
   GameMusic::inst().stopMusic();
   Gothic::inst().cancelLoading();
-  device.waitIdle();
+  renderer.waitIdle();
   takeWidget(&dialogs);
   takeWidget(&inventory);
   takeWidget(&chapter);
@@ -388,12 +389,11 @@ void MainWindow::paintEvent(PaintEvent& event) {
   }
 
 void MainWindow::resizeEvent(SizeEvent&) {
-  for(auto& i:fence)
-    i.wait();
-  swapchain.reset();
-  renderer.resetSwapchain();
-  if(auto camera = Gothic::inst().camera())
-    camera->setViewport(swapchain.w(),swapchain.h());
+  renderer.resize();
+  if(auto camera = Gothic::inst().camera()) {
+    const auto size = renderer.drawableSize();
+    camera->setViewport(uint32_t(size.w),uint32_t(size.h));
+    }
 
   const bool fs = SystemApi::isFullscreen(hwnd());
   auto rect = SystemApi::windowClientRect(hwnd());
@@ -500,8 +500,10 @@ void MainWindow::onSettings() {
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
   // settingsSetI() emits onSettingsChanged immediately, so rebuilding the
   // projection here makes the stock Draw distance choice live in-game.
-  if(auto* camera = Gothic::inst().camera())
-    camera->setViewport(swapchain.w(),swapchain.h());
+  if(auto* camera = Gothic::inst().camera()) {
+    const auto size = renderer.drawableSize();
+    camera->setViewport(uint32_t(size.w),uint32_t(size.h));
+    }
 #endif
   }
 
@@ -571,8 +573,7 @@ void MainWindow::keyDownEvent(KeyEvent &event) {
   player.onKeyPressed(act,event.key,mapping);
 
   if(event.key==Event::K_F11) {
-    auto tex = renderer.screenshoot(cmdId);
-    auto pm  = device.readPixels(textureCast<const Texture2d&>(tex));
+    auto pm = renderer.screenshot();
     pm.save("dbg.png");
     }
   event.accept();
@@ -1563,45 +1564,35 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
   pendingSave.name        = std::string(name);
   pendingSave.stage       = PendingSave::Stage::CaptureRequested;
   Gothic::inst().setLoadingProgress(0);
+  if(!renderer.failureReason().empty()) {
+    if(!rendererFailureSettled) {
+      rendererFailureSettled = renderer.waitIdle();
+      if(!rendererFailureSettled) {
+        update();
+        return;
+        }
+      }
+    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    try {
+      Log::e("[save] RendererIOS is stopped; saving with a CPU placeholder");
+      }
+    catch(...) {
+      }
+    return;
+    }
   update();
   return;
 #endif
 
-  auto tex  = renderer.screenshoot(cmdId);
-  auto lres = Attachment();
-
-  static int32_t kThumbW = 800;
-  const  int32_t kThumbH = tex.w()>0 ? int32_t((tex.h() * kThumbW) / tex.w()) : 0;
-  if(kThumbW>0 && kThumbH>0 && kThumbW<tex.w() && kThumbH<tex.h()) {
-    lres = device.attachment(Tempest::TextureFormat::RGBA8, uint32_t(kThumbW), uint32_t(kThumbH));
-    }
-
-  if(!lres.isEmpty()) {
-    // reduce size of the save entry preview screenshot for faster save & load
-    CommandBuffer cmd;
-    {
-    auto enc = cmd.startEncoding(device);
-    enc.setDebugMarker("Downscale screenhoot");
-    enc.setFramebuffer({{lres, Vec4(), Tempest::Preserve}});
-    enc.setPushData(IVec2(lres.w(), lres.h()));
-    enc.setBinding(0, tex, Sampler::nearest());
-    enc.setPipeline(Shaders::inst().downscale);
-    enc.draw(nullptr, 0, 3);
-    }
-    auto sync = device.submit(cmd);
-    sync.wait();
-    }
-
-  auto& thumb = lres.isEmpty() ? tex : lres;
-  auto  pm    = device.readPixels(textureCast<const Texture2d&>(thumb));
-
-  Gothic::inst().startSave(std::move(textureCast<Texture2d&>(tex)),[slot=std::string(slot),name=std::string(name),pm](std::unique_ptr<GameSession>&& game){
+  auto screen = std::make_shared<Pixmap>(renderer.screenshot());
+  Gothic::inst().startSave(Texture2d(),
+    [slot=std::string(slot),name=std::string(name),screen=std::move(screen)](std::unique_ptr<GameSession>&& game){
     if(!game)
       return std::move(game);
 
     Tempest::WFile f(slot);
     Serialize      s(f);
-    game->save(s,name,pm);
+    game->save(s,name,*screen);
 
     // no print yet, because threading
     // gothic.print("Game saved");
@@ -1613,13 +1604,21 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
 
 #if defined(__IOS__)
 void MainWindow::startPendingSave(Pixmap&& preview) {
-  auto screen = std::make_shared<Pixmap>(std::move(preview));
-  auto slot   = std::move(pendingSave.slot);
-  auto name   = std::move(pendingSave.name);
+  pendingSave.preview = std::move(preview);
+  pendingSave.stage   = PendingSave::Stage::ReadyCpu;
+  startPendingSave();
+  }
 
-  pendingSave.preview     = Attachment();
-  pendingSave.frameId     = 0;
-  pendingSave.stage       = PendingSave::Stage::None;
+void MainWindow::startPendingSave() {
+  if(pendingSave.stage!=PendingSave::Stage::ReadyCpu)
+    return;
+
+  // Copying here gives the pending request a strong exception guarantee: if
+  // allocating the callback state fails, the CPU preview and destination stay
+  // available for the next frame's retry.
+  auto screen = std::make_shared<Pixmap>(pendingSave.preview);
+  auto slot   = pendingSave.slot;
+  auto name   = pendingSave.name;
 
   Gothic::inst().startSave(Texture2d(),
     [slot=std::move(slot),name=std::move(name),screen=std::move(screen)](std::unique_ptr<GameSession>&& game){
@@ -1630,28 +1629,59 @@ void MainWindow::startPendingSave(Pixmap&& preview) {
       game->save(s,name,*screen);
       return std::move(game);
       });
+  // Keep the request intact until startSave has accepted the callback. If an
+  // allocation/thread-start failure escapes, the next frame can retry the same
+  // slot instead of silently losing it or saving to an empty path.
+  pendingSave.preview = Pixmap();
+  pendingSave.slot.clear();
+  pendingSave.name.clear();
+  pendingSave.stage = PendingSave::Stage::None;
   update();
   }
 
 void MainWindow::processPendingSave() {
+  if(pendingSave.stage==PendingSave::Stage::ReadyCpu) {
+    if(!renderer.failureReason().empty() && !rendererFailureSettled)
+      return;
+    startPendingSave();
+    return;
+    }
   if(pendingSave.stage!=PendingSave::Stage::AwaitingGpu)
     return;
-  if(!fence[pendingSave.frameId].wait(0))
-    return;
 
+  Pixmap preview;
   try {
-    auto preview = device.readPixels(textureCast<const Texture2d&>(pendingSave.preview));
-    startPendingSave(std::move(preview));
+    if(!renderer.savePreviewReady())
+      return;
+    // savePreviewReady() can be the call that discovers a terminal Metal
+    // error. Defer callbacks that may release world/UI owners until the common
+    // fatal path has settled every older slot.
+    if(!renderer.failureReason().empty() && !rendererFailureSettled)
+      return;
+    preview = renderer.takeSavePreview();
     }
   catch(const std::exception& e) {
-    Log::e("[save] preview readback failed; using placeholder: ",e.what());
-    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    if(!renderer.failureReason().empty() && !rendererFailureSettled)
+      return;
+    preview = Pixmap(4,4,TextureFormat::RGBA8);
+    try {
+      Log::e("[save] preview readback failed; using placeholder: ",e.what());
+      }
+    catch(...) {
+      }
     }
   catch(...) {
-    Log::e("[save] preview readback failed; using placeholder: ",
-           ExceptionDump::describe(std::current_exception()));
-    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    if(!renderer.failureReason().empty() && !rendererFailureSettled)
+      return;
+    preview = Pixmap(4,4,TextureFormat::RGBA8);
+    try {
+      Log::e("[save] preview readback failed; using placeholder: ",
+             ExceptionDump::describe(std::current_exception()));
+      }
+    catch(...) {
+      }
     }
+  startPendingSave(std::move(preview));
   }
 #endif
 
@@ -1694,12 +1724,10 @@ void MainWindow::onWorldLoaded() {
   inventory.onWorldChanged();
   dialogs  .onWorldChanged();
 
-  device.waitIdle();
-  for(auto& c:commands)
-    c = device.commandBuffer();
-
-  if(auto c = Gothic::inst().camera())
-    c->setViewport(uint32_t(w()),uint32_t(h()));
+  if(auto c = Gothic::inst().camera()) {
+    const auto size = renderer.drawableSize();
+    c->setViewport(uint32_t(size.w),uint32_t(size.h));
+    }
 
   renderer.onWorldChanged();
 
@@ -1767,6 +1795,68 @@ void MainWindow::setFullscreen(bool fs) {
   SystemApi::setAsFullscreen(hwnd(),fs);
   }
 
+bool MainWindow::rendererOperational() {
+  const auto reason = renderer.failureReason();
+  if(reason.empty())
+    return true;
+  if(!rendererFailureReported) {
+    rendererFailureReported = true;
+    std::array<char,513> message = {};
+    const size_t length = std::min(reason.size(),message.size()-1u);
+    std::memcpy(message.data(),reason.data(),length);
+    try {
+      SystemMsg::fatal("GPU rendering stopped",message.data());
+      }
+    catch(...) {
+      }
+    try {
+      Log::e("RendererIOS stopped the frame loop: ",message.data());
+      }
+    catch(...) {
+      }
+    }
+  if(!rendererFailureSettled) {
+    // A fatal fence is terminal, but older slots may still reference world,
+    // inventory, or video resources. Settle them before save/load callbacks
+    // can release those owners.
+    rendererFailureSettled = renderer.waitIdle();
+    }
+
+  if(!rendererFailureSettled)
+    return false;
+
+#if defined(__IOS__)
+  if(pendingSave.stage==PendingSave::Stage::CaptureRequested) {
+    startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
+    try {
+      Log::e("[save] RendererIOS stopped before capture; using a CPU placeholder");
+      }
+    catch(...) {
+      }
+    }
+  else if(pendingSave.stage==PendingSave::Stage::AwaitingGpu ||
+          pendingSave.stage==PendingSave::Stage::ReadyCpu) {
+    processPendingSave();
+    }
+#endif
+  pumpLoadingAfterRendererFailure();
+  return false;
+  }
+
+void MainWindow::pumpLoadingAfterRendererFailure() {
+  const auto state = Gothic::inst().checkLoading();
+  if(state!=Gothic::LoadState::Finalize &&
+     state!=Gothic::LoadState::FailedLoad &&
+     state!=Gothic::LoadState::FailedSave)
+    return;
+
+  Gothic::inst().finishLoading();
+  if(state==Gothic::LoadState::FailedLoad)
+    rootMenu.setMainMenu();
+  if(state==Gothic::LoadState::FailedSave)
+    Gothic::inst().onPrint("unable to write savegame file");
+  }
+
 void MainWindow::render(){
   try {
     static uint64_t time=Application::tickCount();
@@ -1776,6 +1866,8 @@ void MainWindow::render(){
     // regular frame may therefore be read back safely once its fence signals.
     processPendingSave();
 #endif
+    if(!rendererOperational())
+      return;
 
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     processMemoryEvents();
@@ -1817,8 +1909,10 @@ void MainWindow::render(){
 #endif
     tickCamera(dt);
 
-    auto& sync = fence[cmdId];
-    if(!sync.wait(0)) {
+    auto frame = renderer.beginFrame();
+    if(!frame.has_value()) {
+      if(!rendererOperational())
+        return;
       // GPU rendering is not done, pass to next frame
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
       perfWindow.fenceMisses++;
@@ -1827,8 +1921,6 @@ void MainWindow::render(){
       std::this_thread::yield();
       return;
       }
-    Resources::resetRecycled(cmdId);
-
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     const uint64_t poseRefreshStart = perfNowUs();
 #endif
@@ -1839,7 +1931,7 @@ void MainWindow::render(){
 #endif
 
     if(video.isActive()) {
-      video.paint(device,cmdId);
+      renderer.prepareVideo(*frame,video);
       uiLayer.clear();
       PaintEvent p(uiLayer,atlas,this->w(),this->h());
       video.paintEvent(p);
@@ -1854,58 +1946,23 @@ void MainWindow::render(){
 #endif
       inventory.paintNumOverlay(p);
       }
-    uiMesh [cmdId].update(device,uiLayer);
-    numMesh[cmdId].update(device,numOverlay);
 
 #if defined(__IOS__)
-    bool captureSavePreview = false;
-    if(pendingSave.stage==PendingSave::Stage::CaptureRequested) {
-      try {
-        constexpr uint32_t thumbW = 800;
-        const uint32_t srcW = std::max<uint32_t>(1,swapchain.w());
-        const uint32_t srcH = std::max<uint32_t>(1,swapchain.h());
-        const uint32_t w = std::min(thumbW,srcW);
-        const uint32_t h = std::max<uint32_t>(1,uint32_t((uint64_t(srcH)*w)/srcW));
-        pendingSave.preview = device.attachment(TextureFormat::RGBA8,w,h);
-        captureSavePreview = !pendingSave.preview.isEmpty();
-        if(!captureSavePreview) {
-          Log::e("[save] preview allocation returned an empty image; using placeholder");
-          startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
-          }
-        }
-      catch(const std::exception& e) {
-        Log::e("[save] preview allocation failed; using placeholder: ",e.what());
-        startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
-        }
-      catch(...) {
-        Log::e("[save] preview allocation failed; using placeholder: ",
-               ExceptionDump::describe(std::current_exception()));
-        startPendingSave(Pixmap(4,4,TextureFormat::RGBA8));
-        }
-      }
+    const bool captureSavePreview = pendingSave.stage==PendingSave::Stage::CaptureRequested;
+#else
+    constexpr bool captureSavePreview = false;
 #endif
 
-    CommandBuffer& cmd = commands[cmdId];
-    {
-    auto enc = cmd.startEncoding(device);
-    renderer.draw(enc,cmdId,swapchain.currentImage(),uiMesh[cmdId],numMesh[cmdId],inventory,video);
+    [[maybe_unused]] const auto result = renderer.submitFrame(
+      std::move(*frame),
+      RendererIOS::FrameInput{uiLayer,numOverlay,inventory,video.isActive(),captureSavePreview});
 #if defined(__IOS__)
-    if(captureSavePreview)
-      renderer.drawSavePreview(enc,pendingSave.preview);
-#endif
-    }
-    sync = device.submit(cmd);
-#if defined(__IOS__)
-    if(captureSavePreview) {
-      pendingSave.frameId = cmdId;
+    if(captureSavePreview && result.savePreviewQueued)
       pendingSave.stage   = PendingSave::Stage::AwaitingGpu;
-      }
 #endif
-    device.present(swapchain);
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     submitPerfFrame(perfNowUs());
 #endif
-    cmdId = (cmdId+1u)%Resources::MaxFramesInFlight;
 
 #if defined(__IOS__)
     // UIKit and the game fibers share the main thread. Sleeping here also blocks
@@ -1945,26 +2002,61 @@ void MainWindow::render(){
 #endif
     }
   catch(const Tempest::SwapchainSuboptimal&) {
-    Log::e("swapchain is outdated - reset renderer");
-    device.waitIdle();
-    swapchain.reset();
-    renderer.resetSwapchain();
+    try {
+      Log::e("swapchain is outdated - reset renderer");
+      }
+    catch(...) {
+      }
+    try {
+      renderer.resize();
+      if(auto* camera = Gothic::inst().camera()) {
+        const auto size = renderer.drawableSize();
+        camera->setViewport(uint32_t(size.w),uint32_t(size.h));
+        }
+      }
+    catch(const std::exception& e) {
+      try {
+        Log::e("swapchain reset failed: ",e.what());
+        }
+      catch(...) {
+        }
+      try { renderer.waitIdle(); } catch(...) {}
+      }
+    catch(...) {
+      try {
+        Log::e("swapchain reset failed with a non-std/ObjC exception: ",
+               ExceptionDump::describe(std::current_exception()));
+        }
+      catch(...) {
+        }
+      try { renderer.waitIdle(); } catch(...) {}
+      }
     }
   catch(const std::exception& e) {
     // A stray exception in the frame loop (e.g. during save/load finalize)
     // must not abort the whole app via std::terminate. Log the cause and try
     // to recover the device instead of crashing to the home screen.
-    Log::e("unhandled exception in render loop: ", e.what());
-    try { device.waitIdle(); } catch(...) {}
+    try {
+      Log::e("unhandled exception in render loop: ", e.what());
+      }
+    catch(...) {
+      }
+    if(renderer.failureReason().empty())
+      renderer.waitIdle();
     }
   catch(...) {
     // Objective-C / Metal exceptions are NOT std::exception; on the Apple ABI
     // they still unwind through C++ and terminate the app if unhandled. Catch
     // them here too (e.g. a Metal validation NSException on the saving screen)
     // and log their identity, so the device log names the throw site.
-    Log::e("unhandled non-std/ObjC exception in render loop: ",
-           ExceptionDump::describe(std::current_exception()));
-    try { device.waitIdle(); } catch(...) {}
+    try {
+      Log::e("unhandled non-std/ObjC exception in render loop: ",
+             ExceptionDump::describe(std::current_exception()));
+      }
+    catch(...) {
+      }
+    if(renderer.failureReason().empty())
+      renderer.waitIdle();
     }
   }
 

@@ -55,6 +55,8 @@ elseif(IOS)
          "Mark SideStore test builds as requesting Increased Memory Limit" OFF)
   option(OPENGOTHIC_PERF_DIAGNOSTICS
          "Enable low-frequency performance and memory telemetry" OFF)
+  option(OPENGOTHIC_RENDERER_IOS_DIAGNOSTICS
+         "Enable RendererIOS lifecycle markers and validation diagnostics" OFF)
   option(OPENGOTHIC_NPC_ANIMATION_CULLING
          "Skip full skeletal pose updates for distant offscreen NPCs" OFF)
   option(OPENGOTHIC_NPC_DIALOG_CULLING
@@ -96,6 +98,15 @@ elseif(IOS)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_PERF_DIAGNOSTICS=1)
   endif()
+  if(OPENGOTHIC_RENDERER_IOS_DIAGNOSTICS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_RENDERER_IOS_DIAGNOSTICS=1)
+  endif()
+  if(NOT DEFINED OPENGOTHIC_RENDERER_IOS_BUILD_SHA)
+    set(OPENGOTHIC_RENDERER_IOS_BUILD_SHA "local")
+  endif()
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+    OPENGOTHIC_RENDERER_IOS_BUILD_SHA="${OPENGOTHIC_RENDERER_IOS_BUILD_SHA}")
   if(OPENGOTHIC_NPC_ANIMATION_CULLING)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_NPC_ANIMATION_CULLING=1)
@@ -162,6 +173,9 @@ endif()
 file(GLOB_RECURSE OPENGOTHIC_SOURCES
     "game/*.h"
     "game/*.cpp")
+
+list(REMOVE_ITEM OPENGOTHIC_SOURCES
+     "${CMAKE_CURRENT_SOURCE_DIR}/game/graphics/renderer.cpp")
 
 target_sources(${PROJECT_NAME} PRIVATE ${OPENGOTHIC_SOURCES} ${ObjCSOURCES} icon.rc)
 

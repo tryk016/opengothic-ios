@@ -1,0 +1,60 @@
+name: RendererIOS validation
+
+on:
+  push:
+    branches: [ 'codex/renderer-ios' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renderer-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: iOS Release diagnostics ${{ matrix.diagnostics }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        diagnostics: [ 'OFF', 'ON' ]
+
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build prerequisites
+        run: brew install cmake glslang
+
+      - name: Apply Tempest patches
+        run: bash ios/patches/apply-patches.sh
+
+      - name: Configure RendererIOS
+        run: |
+          cmake -S . -B build-renderer-ios -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 \
+            -DOPENGOTHIC_IOS_VERSION="1.0.${{ github.run_number }}" \
+            -DOPENGOTHIC_RENDERER_IOS_DIAGNOSTICS="${{ matrix.diagnostics }}" \
+            -DOPENGOTHIC_RENDERER_IOS_BUILD_SHA="${GITHUB_SHA}"
+
+      - name: Assert legacy renderer is not in the target
+        run: |
+          if grep -Eq '(^|[^[:alnum:]_])renderer\.cpp([^[:alnum:]_]|$)' build-renderer-ios/Gothic2Notr.xcodeproj/project.pbxproj; then
+            echo 'legacy game/graphics/renderer.cpp is still present in the RendererIOS target'
+            exit 1
+          fi
+          grep -Eq '(^|[^[:alnum:]_])rendererios\.cpp([^[:alnum:]_]|$)' build-renderer-ios/Gothic2Notr.xcodeproj/project.pbxproj
+
+      - name: Build iOS Release
+        run: |
+          cmake --build build-renderer-ios --config Release -- \
+            -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY=""

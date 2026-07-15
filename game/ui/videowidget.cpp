@@ -5,9 +5,10 @@
 #include <Tempest/Log>
 #include <Tempest/Application>
 #include <Tempest/Platform>
-#include <Tempest/Fence>
 
 #include <cstddef>
+#include <optional>
+#include <stdexcept>
 
 #include "bink/video.h"
 #include "graphics/shaders.h"
@@ -50,15 +51,19 @@ struct VideoWidget::Sound : Tempest::SoundProducer {
 struct VideoWidget::SoundContext {
   SoundContext(Context& ctx, SoundDevice& dev, uint16_t sampleRate, bool isMono):
     ctx(ctx), sampleRate(sampleRate), numChannels(isMono ? 1 : 2) {
-    snd = dev.load(std::unique_ptr<VideoWidget::Sound>(new VideoWidget::Sound(*this,sampleRate,isMono)));
+    snd.emplace(dev.load(std::unique_ptr<VideoWidget::Sound>(new VideoWidget::Sound(*this,sampleRate,isMono))));
     }
 
   ~SoundContext() {
-    snd = SoundEffect();
+    // Stop the OpenAL callback while syncSamples/samples are still alive.
+    // optional::reset destroys the existing effect without allocating the
+    // empty SoundEffect::Impl used by SoundEffect's default constructor.
+    snd.reset();
     }
 
   void play() {
-    snd.play();
+    if(snd)
+      snd->play();
     }
 
   uint64_t tickCount() const {
@@ -74,7 +79,7 @@ struct VideoWidget::SoundContext {
     }
 
   Context&             ctx;
-  Tempest::SoundEffect snd;
+  std::optional<Tempest::SoundEffect> snd;
   std::mutex           syncSamples;
   std::vector<float>   samples;
 
@@ -111,21 +116,11 @@ struct VideoWidget::Context {
     for(size_t i=0; i<vid.audioCount(); ++i)
       sndCtx[i]->play();
 
-    for(size_t i=0; i<Resources::MaxFramesInFlight; ++i) {
-      cmd[i] = Resources::device().commandBuffer();
-      }
-
     frameTime = Application::tickCount();
     }
 
-  ~Context() {
-    for(auto& i:sync)
-      i.wait();
-    }
-
-  void advance(Tempest::Device& device, uint8_t fId) {
+  const Bink::Frame& decodeAndPace() {
     auto& f = vid.nextFrame();
-    yuvToRgba(f, device, fId);
     for(size_t i=0; i<vid.audioCount(); ++i)
       sndCtx[i]->pushSamples(f.audio(uint8_t(i)).samples);
 
@@ -136,8 +131,8 @@ struct VideoWidget::Context {
 
     if(destTick > tick) {
       Application::sleep(uint32_t(destTick-tick));
-      return;
       }
+    return f;
     }
 
   uint64_t tickSound() const {
@@ -149,12 +144,16 @@ struct VideoWidget::Context {
     return tickSnd;
     }
 
-  void yuvToRgba(const Bink::Frame& f, Tempest::Device& device, uint8_t fId) {
+  void prepareGpu(const Bink::Frame& f, Tempest::Device& device, uint8_t fId) {
+    if(fId>=Resources::MaxFramesInFlight)
+      throw std::out_of_range("VideoWidget frame slot is out of range");
+
     if(uint32_t(frameImg.w())!=f.width() || uint32_t(frameImg.h())!=f.height()) {
       Resources::recycle(std::move(frameImg));
       frameImg = device.attachment(Tempest::RGBA8, f.width(), f.height());
       }
-    sync[fId].wait();
+    if(frameImg.isEmpty())
+      throw std::runtime_error("unable to allocate the Bink render target");
 
     // alignment for ssbo offsets
     auto alignBuf = [](size_t size, size_t align) { return (size+align-1) & ~(align-1); };
@@ -174,28 +173,44 @@ struct VideoWidget::Context {
       Resources::recycle(std::move(stage));
       stage = device.ssbo(BufferHeap::Upload, Uninitialized, size);
       }
+    if(stage.byteSize()!=size)
+      throw std::runtime_error("unable to allocate the Bink upload buffer");
     stage.update(planeY.data(), 0,           (f.height())  *planeY.stride());
     stage.update(planeU.data(), sizeY,       (f.height()/2)*planeU.stride());
     stage.update(planeV.data(), sizeY+sizeU, (f.height()/2)*planeV.stride());
 
-    {
-      auto cmd = this->cmd[fId].startEncoding(device);
-      cmd.setFramebuffer({{frameImg, Vec4(0), Tempest::Preserve}});
-
-      struct Push { uint32_t strideY; uint32_t strideU; uint32_t strideV; } push = {};
-      push.strideY = planeY.stride();
-      push.strideU = planeU.stride();
-      push.strideV = planeV.stride();
-
-      cmd.setDebugMarker("Bink");
-      cmd.setPushData(push);
-      cmd.setBinding(0, stage, 0);
-      cmd.setBinding(1, stage, sizeY);
-      cmd.setBinding(2, stage, sizeY + sizeU);
-      cmd.setPipeline(Shaders::inst().bink);
-      cmd.draw(nullptr, 0, 3);
+    auto& out    = prepared[fId];
+    out.strideY  = planeY.stride();
+    out.strideU  = planeU.stride();
+    out.strideV  = planeV.stride();
+    out.offsetU  = sizeY;
+    out.offsetV  = sizeY + sizeU;
+    out.valid    = true;
     }
-    sync[fId] = device.submit(this->cmd[fId]);
+
+  void encodePrepared(Tempest::Encoder<Tempest::CommandBuffer>& encoder, uint8_t fId) {
+    if(fId>=Resources::MaxFramesInFlight)
+      throw std::out_of_range("VideoWidget frame slot is out of range");
+
+    auto& in = prepared[fId];
+    if(!in.valid)
+      return;
+
+    encoder.setFramebuffer({{frameImg, Vec4(0), Tempest::Preserve}});
+
+    struct Push { uint32_t strideY; uint32_t strideU; uint32_t strideV; } push = {};
+    push.strideY = in.strideY;
+    push.strideU = in.strideU;
+    push.strideV = in.strideV;
+
+    encoder.setDebugMarker("Bink");
+    encoder.setPushData(push);
+    encoder.setBinding(0, staging[fId], 0);
+    encoder.setBinding(1, staging[fId], in.offsetU);
+    encoder.setBinding(2, staging[fId], in.offsetV);
+    encoder.setPipeline(Shaders::inst().bink);
+    encoder.draw(nullptr, 0, 3);
+    in.valid = false;
     }
 
   [[deprecated]]
@@ -240,9 +255,16 @@ struct VideoWidget::Context {
   uint64_t                      frameTime = 0;
 
   Tempest::Attachment           frameImg;
-  Tempest::CommandBuffer        cmd    [Resources::MaxFramesInFlight];
   Tempest::StorageBuffer        staging[Resources::MaxFramesInFlight];
-  Tempest::Fence                sync   [Resources::MaxFramesInFlight];
+
+  struct PreparedGpuFrame final {
+    size_t   offsetU = 0;
+    size_t   offsetV = 0;
+    uint32_t strideY = 0;
+    uint32_t strideU = 0;
+    uint32_t strideV = 0;
+    bool     valid   = false;
+    } prepared[Resources::MaxFramesInFlight];
 
   Tempest::SoundDevice          sndDev;
   std::vector<std::unique_ptr<SoundContext>> sndCtx;
@@ -305,7 +327,7 @@ void VideoWidget::tick() {
     }
 
   try {
-    ctx.reset(new Context(std::move(read)));
+    ctx = std::make_shared<Context>(std::move(read));
     if(!active) {
       active       = true;
       restoreMusic = GameMusic::inst().isEnabled();
@@ -313,7 +335,11 @@ void VideoWidget::tick() {
       }
     }
   catch(...){
-    Log::e("unable to play video: \"",filename,"\"");
+    try {
+      Log::e("unable to play video: \"",filename,"\"");
+      }
+    catch(...) {
+      }
     stopVideo();
     }
   }
@@ -343,6 +369,7 @@ void VideoWidget::skip() {
 
 void VideoWidget::stopVideo() {
   ctx.reset();
+  frame = nullptr;
   if(!hasPendingVideo) {
     if(restoreMusic && !GameMusic::inst().isEnabled())
       GameMusic::inst().setEnabled(true);
@@ -351,21 +378,76 @@ void VideoWidget::stopVideo() {
   update();
   }
 
-void VideoWidget::paint(Tempest::Device& device, uint8_t fId) {
-  if(ctx==nullptr)
-    return;
+VideoWidget::PreparedFrame VideoWidget::prepareFrame(Tempest::Device& device, uint8_t fId) {
+  auto context = ctx;
+  if(context==nullptr)
+    return {};
+  if(fId>=Resources::MaxFramesInFlight)
+    throw std::out_of_range("VideoWidget frame slot is out of range");
+  // A canceled ticket or a recoverable decode error must never replay an
+  // upload prepared for an older use of this slot.
+  context->prepared[fId].valid = false;
+
+  const Bink::Frame* decoded = nullptr;
   try {
-    ctx->advance(device, fId);
-    frame = &textureCast<Texture2d&>(ctx->frameImg);
-    update();
+    decoded = &context->decodeAndPace();
     }
   catch(const Bink::VideoDecodingException& e) { // video exception is recoverable
-    Log::e("video decoding error. frame: ",ctx->vid.currentFrame(),", what: \"", e.what(), "\"");
+    try {
+      Log::e("video decoding error. frame: ",context->vid.currentFrame(),", what: \"",e.what(),"\"");
+      }
+    catch(...) {
+      }
+    // paintEvent intentionally keeps showing the last decoded image after a
+    // recoverable Bink error. Retain its Context until the main frame fence,
+    // even though there is no new YUV upload to encode for this slot.
+    if(ctx==context && frame!=nullptr)
+      return PreparedFrame(std::move(context));
+    return {};
+    }
+  catch(const std::exception& e) {
+    try {
+      Log::e("video decoding error. frame: ",context->vid.currentFrame(),", what: \"",e.what(),"\"");
+      }
+    catch(...) {
+      }
+    if(ctx==context)
+      stopVideo();
+    return {};
     }
   catch(...) {
-    Log::e("video decoding error. frame: ",ctx->vid.currentFrame());
-    ctx.reset();
+    try {
+      Log::e("video decoding error. frame: ",context->vid.currentFrame());
+      }
+    catch(...) {
+      }
+    if(ctx==context)
+      stopVideo();
+    return {};
     }
+
+  if(decoded==nullptr)
+    return {};
+
+  // Application::sleep may yield to input handling. If the user skipped the
+  // clip (or the next clip replaced it) while pacing, do not prepare a frame
+  // that is no longer visible; the local shared_ptr still makes this check safe.
+  if(ctx!=context)
+    return {};
+
+  // Allocation and upload errors are GPU preparation failures. Deliberately
+  // let them escape so RendererIOS can enter its one-shot fatal state.
+  context->prepareGpu(*decoded,device,fId);
+  frame = &textureCast<Texture2d&>(context->frameImg);
+  update();
+  return PreparedFrame(std::move(context));
+  }
+
+void VideoWidget::encodePrepared(Tempest::Encoder<Tempest::CommandBuffer>& encoder,
+                                 uint8_t fId, const PreparedFrame& frame) {
+  if(!frame)
+    return;
+  frame.context->encodePrepared(encoder,fId);
   }
 
 void VideoWidget::paintEvent(PaintEvent& e) {

@@ -4,12 +4,8 @@
 #include "resources.h"
 
 #include <Tempest/Window>
-#include <Tempest/CommandBuffer>
-#include <Tempest/Fence>
 #include <Tempest/VulkanApi>
 #include <Tempest/Device>
-#include <Tempest/VertexBuffer>
-#include <Tempest/UniformBuffer>
 #include <Tempest/VectorImage>
 #include <Tempest/Event>
 #include <Tempest/Pixmap>
@@ -17,7 +13,6 @@
 #include <Tempest/Font>
 #include <Tempest/TextureAtlas>
 #include <Tempest/Timer>
-#include <Tempest/Swapchain>
 
 #include <vector>
 #include <optional>
@@ -27,7 +22,7 @@
 #include "world/world.h"
 #include "world/focus.h"
 #include "game/playercontrol.h"
-#include "graphics/renderer.h"
+#include "graphics/rendererios.h"
 #include "ui/dialogmenu.h"
 #include "ui/inventorymenu.h"
 #include "ui/chapterscreen.h"
@@ -112,6 +107,7 @@ class MainWindow : public Tempest::Window {
 #if defined(__IOS__)
     void processPendingSave();
     void startPendingSave(Tempest::Pixmap&& preview);
+    void startPendingSave();
 #endif
 
     void onVideo(std::string_view fname);
@@ -122,6 +118,8 @@ class MainWindow : public Tempest::Window {
     void setGameImpl(std::unique_ptr<GameSession>&& w);
     void clearInput();
     void setFullscreen(bool fs);
+    bool rendererOperational();
+    void pumpLoadingAfterRendererFailure();
 
     void processMouse(Tempest::MouseEvent& event, bool enable);
     void tickMouse(uint64_t dt);
@@ -158,18 +156,11 @@ class MainWindow : public Tempest::Window {
       };
 
     Tempest::Device&      device;
-    Tempest::Swapchain    swapchain;
     Tempest::TextureAtlas atlas;
     Tempest::Font         font;
-    Renderer              renderer;
+    RendererIOS           renderer;
 
     Tempest::VectorImage  uiLayer, numOverlay;
-    Tempest::VectorImage::Mesh uiMesh [Resources::MaxFramesInFlight];
-    Tempest::VectorImage::Mesh numMesh[Resources::MaxFramesInFlight];
-
-    Tempest::Fence         fence   [Resources::MaxFramesInFlight];
-    Tempest::CommandBuffer commands[Resources::MaxFramesInFlight];
-    uint8_t                cmdId = 0;
 
     Tempest::Texture2d        background;
     const Tempest::Texture2d* loadBox=nullptr;
@@ -190,13 +181,13 @@ class MainWindow : public Tempest::Window {
         None,
         CaptureRequested,
         AwaitingGpu,
+        ReadyCpu,
         };
 
       Stage               stage = Stage::None;
       std::string         slot;
       std::string         name;
-      Tempest::Attachment preview;
-      uint8_t             frameId = 0;
+      Tempest::Pixmap     preview;
 
       bool active() const { return stage!=Stage::None; }
       } pendingSave;
@@ -222,6 +213,8 @@ class MainWindow : public Tempest::Window {
     int                       lastPlayerHp = -1;  // for damage haptics
 #endif
     RuntimeMode               runtimeMode = R_Normal;
+    bool                      rendererFailureReported = false;
+    bool                      rendererFailureSettled  = false;
     SafeArea::Insets          safeArea;           // display cutouts, px; zero off-iOS
 
     Tempest::Widget*          uiKeyUp=nullptr;
