@@ -133,8 +133,11 @@ extern "C" void android_main(struct android_app* app) {
     // (validated by checking <gpath>/Data and <gpath>/_work/Data both
     // exist). Game data is staged on-device at /sdcard/OpenGothic/Gothic2/
     // (Data/, _work/, system/), matching the chdir() above one level up.
-    const char* argv[] = {"opengothic", "-g", "/sdcard/OpenGothic/Gothic2"};
-    int argc = 3;
+    // TEMP TEST (revert once memory tuning is verified): "-nomenu" auto-loads
+    // Khorinis so world-load memory can be measured without the menu, whose
+    // touch is unusable on portrait-native panels until the preTransform fix.
+    const char* argv[] = {"opengothic", "-g", "/sdcard/OpenGothic/Gothic2", "-nomenu"};
+    int argc = 4;
     CommandLine cmd{argc,argv};
 
     Tempest::ApiFlags flg = cmd.isValidationMode() ? Tempest::ApiFlags::Validation : Tempest::ApiFlags::NoFlags;
