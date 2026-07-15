@@ -81,8 +81,7 @@ double memoryMiB(uint64_t bytes, bool valid) {
 #endif
 
 MainWindow::MainWindow(Device& device)
-  : Window(Maximized),device(device),
-    atlas(device),renderer(device,hwnd()),
+  : Window(Maximized),atlas(device),renderer(device,hwnd()),
     rootMenu(keycodec),inventory(keycodec),
     dialogs(inventory),document(keycodec),
     console(*this),player(dialogs,inventory),

@@ -155,7 +155,6 @@ class MainWindow : public Tempest::Window {
       R_Step,
       };
 
-    Tempest::Device&      device;
     Tempest::TextureAtlas atlas;
     Tempest::Font         font;
     RendererIOS           renderer;
