@@ -78,17 +78,25 @@ World::World(GameSession& game, std::string_view file, bool startup, std::functi
     world.load(buf.get(), version().game == 1 ? zenkit::GameVersion::GOTHIC_1
                                               : zenkit::GameVersion::GOTHIC_2);
 
+    Tempest::Log::i("[loadstage] TEMP: zen parsed");
     loadProgress(20);
     auto& worldMesh = world.world_mesh;
 
     auto wdynamicFut = std::async(std::launch::async, [&]() {
       Workers::setThreadName("Loading: BVH thread");
-      return std::unique_ptr<DynamicWorld>(new DynamicWorld(*this,worldMesh));
+      Tempest::Log::i("[loadstage] TEMP: DynamicWorld(BVH) start");
+      auto r = std::unique_ptr<DynamicWorld>(new DynamicWorld(*this,worldMesh));
+      Tempest::Log::i("[loadstage] TEMP: DynamicWorld(BVH) done");
+      return r;
       });
     auto wviewFut = std::async(std::launch::async, [&]() {
       Workers::setThreadName("Loading: PackedMesh thread");
+      Tempest::Log::i("[loadstage] TEMP: PackedMesh start");
       PackedMesh vmesh(worldMesh,PackedMesh::PK_VisualLnd);
-      return std::unique_ptr<WorldView>(new WorldView(*this,vmesh));
+      Tempest::Log::i("[loadstage] TEMP: PackedMesh done -> WorldView");
+      auto r = std::unique_ptr<WorldView>(new WorldView(*this,vmesh));
+      Tempest::Log::i("[loadstage] TEMP: WorldView done");
+      return r;
       });
 
     loadProgress(30);
@@ -102,18 +110,23 @@ World::World(GameSession& game, std::string_view file, bool startup, std::functi
     }
     loadProgress(50);
 
+    Tempest::Log::i("[loadstage] TEMP: bsp done, waiting WorldView(PackedMesh)...");
     wview = wviewFut.get();
     loadProgress(60);
 
+    Tempest::Log::i("[loadstage] TEMP: waiting DynamicWorld(BVH)...");
     wdynamic = wdynamicFut.get();
     loadProgress(70);
 
+    Tempest::Log::i("[loadstage] TEMP: loading vobs + waynet...");
     globFx.reset(new GlobalEffects(*this));
     wmatrix.reset(new WayMatrix(*this, *world.way_net));
     for(auto& vob:world.world_vobs)
       wobj.addRoot(vob,startup);
 
+    Tempest::Log::i("[loadstage] TEMP: building waynet index...");
     wmatrix->buildIndex();
+    Tempest::Log::i("[loadstage] TEMP: World load COMPLETE (100)");
     loadProgress(100);
     }
   catch(...) {
