@@ -360,8 +360,18 @@ Tempest::Texture2d* Resources::implLoadTexture(std::string_view cname, bool forc
   //TODO: __cpp_lib_generic_unordered_lookup
   std::string name = std::string(cname);
   auto it=texCache.find(name);
-  if(it!=texCache.end())
+  if(it!=texCache.end()) {
+#if defined(__ANDROID__)
+    // Mali has no VK_EXT_robustness2 (nullDescriptor): a null texture pointer in
+    // a bindless descriptor array makes vkUpdateDescriptorSets crash inside the
+    // driver (VDescriptorArray::populate). Never hand back null on Android --
+    // substitute the 1x1 fallback so every descriptor slot stays valid.
+    Texture2d* c = it->second.get();
+    return c!=nullptr ? c : &fallback;
+#else
     return it->second.get();
+#endif
+    }
 
   auto tex = implLoadTextureUncached(cname, forceMips);
   if(!tex.isEmpty()) {
@@ -371,7 +381,11 @@ Tempest::Texture2d* Resources::implLoadTexture(std::string_view cname, bool forc
     return ret;
     }
   texCache[std::move(name)] = nullptr;
+#if defined(__ANDROID__)
+  return &fallback; // see note above: no null textures in bindless arrays on Mali
+#else
   return nullptr;
+#endif
   }
 
 Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMips) {
