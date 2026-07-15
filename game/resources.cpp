@@ -920,10 +920,10 @@ std::vector<const Texture2d*> Resources::loadTextureAnim(std::string_view name) 
     // cannot use t==nullptr as its "no more frames" terminator (it would spin
     // forever), so treat the fallback as "not found" too. On desktop loadTexture
     // returns null and never the fallback, so this is a no-op there.
-    if(t==nullptr || t==&fallback) {
+    if(t==nullptr || t==&inst->fallback) {
       string_frm buf2(buf,".TGA");
       t = loadTexture(buf2);
-      if(t==nullptr || t==&fallback)
+      if(t==nullptr || t==&inst->fallback)
         return ret;
       }
     ret.push_back(t);
