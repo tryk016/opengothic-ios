@@ -380,6 +380,7 @@ Tempest::Texture2d* Resources::implLoadTexture(std::string_view cname, bool forc
     texCache[std::move(name)] = std::move(t);
     return ret;
     }
+  Log::e("[texfail] fallback for \"", cname, "\""); // TEMP diag
   texCache[std::move(name)] = nullptr;
 #if defined(__ANDROID__)
   return &fallback; // see note above: no null textures in bindless arrays on Mali
@@ -429,8 +430,8 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
           mw = 1;
         if(mh==0)
           mh = 1;
-        auto rgba = tex.as_rgba8(lvl);
         try {
+          auto rgba = tex.as_rgba8(lvl);
           Tempest::Pixmap pm(mw, mh, TextureFormat::RGBA8);
           size_t n = pm.dataSize();
           if(rgba.size()<n)
@@ -438,7 +439,11 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
           std::memcpy(pm.data(), rgba.data(), n);
           return dev.texture(pm, forceMips || mips>1);
           }
+        catch(std::exception& e) {
+          Log::e("[texfail] DXT path threw: \"", name, "\" fmt=", int(tex.format()), " lvl=", lvl, " mips=", mips, " mw=", mw, " mh=", mh, " what=", e.what()); // TEMP diag
+          }
         catch(...) {
+          Log::e("[texfail] DXT path threw(...): \"", name, "\" lvl=", lvl, " mips=", mips); // TEMP diag
           }
 #else
         auto dds = zenkit::to_dds(tex);
