@@ -395,43 +395,53 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
          tex.format() == zenkit::TextureFormat::DXT4 ||
          tex.format() == zenkit::TextureFormat::DXT5) {
 #if defined(__ANDROID__)
-        // Mali has no BC/S3TC support, so Tempest (device.cpp) would decompress
-        // this DXT texture to RGBA8 at full resolution -- 4-8x larger, which is
-        // what pushes a loaded world past the ~3.5GB shared RAM of budget Android
-        // devices. Decompress a mip-capped level instead (drop high-res mips of
-        // large textures) so the uncompressed working set stays affordable.
-        // Interim mobile texture cap; a DXT->ETC2/ASTC transcoder is the proper
-        // long-term fix that would keep full resolution.
-        const uint32_t cap  = 256;
-        uint32_t       mips = tex.mipmaps();
-        if(mips==0)
-          mips = 1;
-        uint32_t lvl = 0;
-        while(lvl+1<mips && (tex.mipmap_width(lvl)>cap || tex.mipmap_height(lvl)>cap))
-          ++lvl;
-        uint32_t mw = tex.mipmap_width(lvl);
-        uint32_t mh = tex.mipmap_height(lvl);
-        if(mw==0)
-          mw = 1;
-        if(mh==0)
-          mh = 1;
-        try {
-          auto rgba = tex.as_rgba8(lvl);
-          Tempest::Pixmap pm(mw, mh, TextureFormat::RGBA8);
-          size_t n = pm.dataSize();
-          if(rgba.size()<n)
-            n = rgba.size();
-          std::memcpy(pm.data(), rgba.data(), n);
-          return dev.texture(pm, forceMips || mips>1);
+        // Mali has no BC/S3TC, so the shared path below makes Tempest
+        // (device.cpp) decompress this DXT texture to RGBA8 at full resolution
+        // -- 4-8x the memory. [INTERNAL] androidTexCap trades that memory for
+        // texture detail: instead of mip 0, decompress the largest mip whose
+        // width and height are both <= the cap. It is read from Gothic.ini so
+        // it can be tuned on-device without a rebuild (our build loop is CI +
+        // adb install, so a hardcoded constant costs ~8 min per experiment).
+        //   0 / absent (default) = no cap, full resolution
+        //   256 / 512 / 1024     = progressively lower detail, less memory
+        // A DXT->ASTC transcoder is the proper fix -- compressed AND full-res --
+        // and would help iOS too (Apple GPUs also lack BC).
+        static const uint32_t cap = []() -> uint32_t {
+          const int v = Gothic::settingsGetI("INTERNAL","androidTexCap");
+          return v>0 ? uint32_t(v) : 0;
+          }();
+        if(cap!=0) {
+          uint32_t mips = tex.mipmaps();
+          if(mips==0)
+            mips = 1;
+          uint32_t lvl = 0;
+          while(lvl+1<mips && (tex.mipmap_width(lvl)>cap || tex.mipmap_height(lvl)>cap))
+            ++lvl;
+          uint32_t mw = tex.mipmap_width(lvl);
+          uint32_t mh = tex.mipmap_height(lvl);
+          if(mw==0)
+            mw = 1;
+          if(mh==0)
+            mh = 1;
+          try {
+            auto rgba = tex.as_rgba8(lvl);
+            Tempest::Pixmap pm(mw, mh, TextureFormat::RGBA8);
+            size_t n = pm.dataSize();
+            if(rgba.size()<n)
+              n = rgba.size();
+            std::memcpy(pm.data(), rgba.data(), n);
+            return dev.texture(pm, forceMips || mips>1);
+            }
+          catch(...) {
+            // Mip-capped decode failed -- fall through to the full-resolution
+            // path rather than giving up (which would show the red fallback).
+            }
           }
-        catch(...) {
-          }
-#else
+#endif
         auto dds = zenkit::to_dds(tex);
         auto ddsRead = zenkit::Read::from(dds);
 
         return implLoadTextureUncached(name, *ddsRead, forceMips);
-#endif
         } else {
         auto rgba = tex.as_rgba8(0);
 
