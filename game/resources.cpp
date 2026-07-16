@@ -360,18 +360,8 @@ Tempest::Texture2d* Resources::implLoadTexture(std::string_view cname, bool forc
   //TODO: __cpp_lib_generic_unordered_lookup
   std::string name = std::string(cname);
   auto it=texCache.find(name);
-  if(it!=texCache.end()) {
-#if defined(__ANDROID__)
-    // Mali has no VK_EXT_robustness2 (nullDescriptor): a null texture pointer in
-    // a bindless descriptor array makes vkUpdateDescriptorSets crash inside the
-    // driver (VDescriptorArray::populate). Never hand back null on Android --
-    // substitute the 1x1 fallback so every descriptor slot stays valid.
-    Texture2d* c = it->second.get();
-    return c!=nullptr ? c : &fallback;
-#else
+  if(it!=texCache.end())
     return it->second.get();
-#endif
-    }
 
   auto tex = implLoadTextureUncached(cname, forceMips);
   if(!tex.isEmpty()) {
@@ -380,13 +370,8 @@ Tempest::Texture2d* Resources::implLoadTexture(std::string_view cname, bool forc
     texCache[std::move(name)] = std::move(t);
     return ret;
     }
-  Log::e("[texfail] fallback for \"", cname, "\""); // TEMP diag
   texCache[std::move(name)] = nullptr;
-#if defined(__ANDROID__)
-  return &fallback; // see note above: no null textures in bindless arrays on Mali
-#else
   return nullptr;
-#endif
   }
 
 Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMips) {
@@ -439,11 +424,7 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
           std::memcpy(pm.data(), rgba.data(), n);
           return dev.texture(pm, forceMips || mips>1);
           }
-        catch(std::exception& e) {
-          Log::e("[texfail] DXT path threw: \"", name, "\" fmt=", int(tex.format()), " lvl=", lvl, " mips=", mips, " mw=", mw, " mh=", mh, " what=", e.what()); // TEMP diag
-          }
         catch(...) {
-          Log::e("[texfail] DXT path threw(...): \"", name, "\" lvl=", lvl, " mips=", mips); // TEMP diag
           }
 #else
         auto dds = zenkit::to_dds(tex);
@@ -919,16 +900,10 @@ std::vector<const Texture2d*> Resources::loadTextureAnim(std::string_view name) 
         return ret;
       }
    auto t = loadTexture(buf);
-    // On Android loadTexture never returns null -- it returns the 1x1 `fallback`
-    // for a missing texture so a null image view can't crash Mali's bindless
-    // descriptor path (see implLoadTexture). That means this animation-frame loop
-    // cannot use t==nullptr as its "no more frames" terminator (it would spin
-    // forever), so treat the fallback as "not found" too. On desktop loadTexture
-    // returns null and never the fallback, so this is a no-op there.
-    if(t==nullptr || t==&inst->fallback) {
+    if(t==nullptr) {
       string_frm buf2(buf,".TGA");
       t = loadTexture(buf2);
-      if(t==nullptr || t==&inst->fallback)
+      if(t==nullptr)
         return ret;
       }
     ret.push_back(t);
