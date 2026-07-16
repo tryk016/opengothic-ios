@@ -252,6 +252,50 @@ Dopiero gdy Faza 1 przejdzie: §5.2 + §5.3 + §5.4 + §5.5.
 w buildzie iOS. §5.2 (`resources.cpp`) i cały cache działają bez zmian dzięki gatingowi
 po możliwościach GPU.
 
+## 6a. WYNIK FAZY 1 (2026-07-16) — ✅ WSZYSTKIE CZTERY RYZYKA ZALICZONE → IDZIEMY W FAZĘ 2
+
+Zmierzone na Tab A9 (Helio G99 / Mali-G57 MC2), commity `8c07a4bd` + `c1597c00` + `cc417ca2`.
+
+| # | Ryzyko | Kryterium | Wynik |
+|---|---|---|---|
+| 1 | Chirurgia na współdzielonym enumie rozwali backendy | CI zielone, patche zaaplikowane, zero regresji | ✅ 3 patche `patched:`, build success, **GPU 1.38 GB i PSS 2.00 GB identyczne jak przed zmianą**, pid żyje, zero `signal 11` |
+| 2 | Mali nie próbkuje ASTC 4×4 | `ASTC4x4=1, DXT1=0` | ✅ **`[astcdiag] caps: DXT1=0 DXT5=0 ASTC4x4=1`** |
+| 3 | astcenc nie zbuduje się na arm64 (NDK) | APK linkuje | ✅ `astcenc-neon-static` kompiluje się i linkuje |
+| 4 | Kodowanie za wolne | ekstrapolacja na 345 Mpx | ✅ **129 s jednowątkowo / ~22 s na 6 rdzeniach** |
+
+**Benchmark (dosłowny odczyt):**
+```
+[astcdiag] astcenc 512x512 PRE_FAST 1-thread: 98.321 ms => 2.666 Mpx/s
+           | Khorinis 345 Mpx => 129.4 s single-threaded (~21.6 s over 6 cores)
+           | out=256 KiB vs rgba8=1024 KiB
+```
+
+**Wnioski:**
+
+- **Szacunek §5.3 („~1–3 min") potwierdzony pomiarem.** Nawet **pesymistyczny** wariant (ładowanie
+  tekstur całkowicie szeregowe, bez skalowania na rdzenie) to **~2,2 min jednorazowo przy pierwszym
+  loadzie**. To akceptowalne i zgodne z decyzją o wariancie B. Wariant offline (§9) **nie jest
+  potrzebny** — zostaje jako plan awaryjny bez zastosowania.
+- **Kompresja 4× potwierdzona empirycznie:** `out=256 KiB vs rgba8=1024 KiB`. Czyli przewidywane
+  **1.38 GB → ~350 MB** to zmierzony fakt, nie arytmetyka na papierze.
+- **Ryzyko #1 okazało się niższe, niż zakładano:** Tempest **nie używa `-Werror`** (tylko wyciszenia
+  `-Wno-*` dla zależności trzecich), więc brakujący case w switchu to ostrzeżenie, nie błąd.
+  `-Werror` dotyczy wyłącznie targetu gry, a `game/` nie ma żadnego switcha po `TextureFormat`.
+- **Sondowanie możliwości działa „za darmo"**, dokładnie jak przewidziano: generyczna pętla
+  [vdevice.cpp:678](lib/Tempest/Engine/gapi/vulkan/vdevice.cpp:678) zaczęła raportować ASTC4x4
+  bez jednego dodatkowego patcha.
+- **Korekta o Adreno** (patrz §4): Adreno **też nie ma BC**, więc transcoder pomaga obu urządzeniom
+  jedną ścieżką.
+
+**Koszt bramy: 3 cykle CI (~25 min)** — zamiast tygodnia budowania cache'u, loadera i enkodera na
+fundamencie, który mógł nie istnieć. Jeden cykl spalił błąd arności `astcenc_context_alloc`
+(4 argumenty w 5.6.0, nie 3) — ale ten sam czerwony build **udowodnił ryzyko #3**, bo pokazał
+`astcenc-neon-static` kompilujący się na aarch64.
+
+**Do wykonania przed Fazą 2:** cofnąć tymczasową diagnostykę z `main_android.cpp`
+(log `[astcdiag]` + `astcBenchmark()` + `#include <astcenc.h>`), **zostawiając** sekcję `(f)` w
+`apply-patches.sh`, submoduł astcenc i konfigurację CMake — to jest fundament Fazy 2.
+
 ## 7. Ryzyka
 
 | Ryzyko | Skala | Mitygacja |

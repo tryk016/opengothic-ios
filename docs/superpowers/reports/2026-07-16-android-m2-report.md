@@ -158,8 +158,25 @@ powstanie cache, loader czy enkoder:
 |---|---|---|
 | 1 | Chirurgia na współdzielonym enumie rozwali backendy | ✅ patche OK, CI zielone, **GPU 1,38 GB identyczne jak przed** = nic nie przesunięte, zero crashy |
 | 2 | Mali nie próbkuje ASTC 4×4 | ✅ **`DXT1=0 DXT5=0 ASTC4x4=1`** |
-| 3 | astcenc nie zbuduje się na arm64 | ✅ `astcenc-neon-static` kompiluje się pod NDK |
-| 4 | Kodowanie za wolne | ⏳ w toku |
+| 3 | astcenc nie zbuduje się na arm64 | ✅ `astcenc-neon-static` kompiluje się i linkuje pod NDK |
+| 4 | Kodowanie za wolne | ✅ **129 s jednowątkowo / ~22 s na 6 rdzeniach** |
+
+**BRAMA ZALICZONA W CAŁOŚCI → Faza 2 (kodowanie na urządzeniu) ma zielone światło.**
+
+```
+[astcdiag] astcenc 512x512 PRE_FAST 1-thread: 98.321 ms => 2.666 Mpx/s
+           | Khorinis 345 Mpx => 129.4 s single-threaded (~21.6 s over 6 cores)
+           | out=256 KiB vs rgba8=1024 KiB
+```
+
+Nawet **pesymistycznie** (ładowanie tekstur całkowicie szeregowe) to **~2,2 min jednorazowo** przy
+pierwszym loadzie — mieści się w szacunku „1–3 min" z projektu. Wariant offline (spec §9) okazał się
+niepotrzebny. **Kompresja 4× potwierdzona empirycznie** (`256 KiB` vs `1024 KiB`), więc
+1,38 GB → ~350 MB to zmierzony fakt, nie arytmetyka.
+
+**Koszt bramy: 3 cykle CI (~25 min).** Jeden spalił błąd arności `astcenc_context_alloc` (4 argumenty
+w 5.6.0, nie 3) — ale ten sam czerwony build **udowodnił ryzyko #3**, pokazując
+`astcenc-neon-static` kompilujący się na aarch64. Czerwony build bywa lepszym dowodem niż zielony.
 
 ### Odkrycia Fazy 1
 
@@ -239,9 +256,10 @@ build Zadania 2 od razu pokazał, że **astcenc się kompiluje**, a padło tylko
 
 ## Co dalej
 
-1. **Faza 1, ryzyko #4** — odczyt benchmarku astcenc → decyzja: kodowanie na urządzeniu vs wariant
-   offline (spec §9).
-2. **Faza 2** — cache + loader + kodowanie (jeśli #4 przejdzie).
+1. **Cofnąć diagnostykę Fazy 1** z `main_android.cpp` (log `[astcdiag]`, `astcBenchmark()`,
+   `#include <astcenc.h>`) — **zostawiając** sekcję `(f)` w `apply-patches.sh`, submoduł astcenc
+   i konfigurację CMake. To jest fundament Fazy 2.
+2. **Faza 2** — cache + loader + kodowanie na urządzeniu (brama zaliczona, zielone światło).
 3. **Faza 3** — iOS: powielić patche w `ios/patches/apply-patches.sh` + case w Metalu.
    `resources.cpp` i cache działają bez zmian dzięki gatingowi po możliwościach GPU.
 4. **Rebase na `master`** — 9 commitów zaległości. PR #893 umarł właśnie na konfliktach; nie zwlekać.
