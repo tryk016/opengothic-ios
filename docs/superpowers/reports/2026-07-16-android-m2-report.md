@@ -126,20 +126,51 @@ bo systemowe `gfxinfo` nie widzi natywnego Vulkana renderującego do SurfaceView
 **Pełna jakość** (`vidResIndex=0`, `modelDetail=1.0`, bez capa), komnata Xardasa:
 **16,2 FPS** (klatka 61,8 ms, zakres 48–82 ms).
 
-Rozkład kosztów — **te trzy rzeczy płacą różnymi zasobami**, co jest kluczowe przy strojeniu:
+### Krzywa rozdzielczości — pełna, kontrolowana (2026-07-16)
+
+Każdy punkt: ta sama scena (komnata Xardasa, zweryfikowana zrzutem), ta sama termika
+(CPU/GPU 56°C, `mStatus=0`, rdzenie na nominalnych 2,0/2,2 GHz — **brak throttlingu**),
+zmieniana **tylko** jedna wartość, ten sam APK.
+
+| `vidResIndex` | Piksele | FPS | Ostrość |
+|---|---|---|---|
+| **0** (pełna) | 1340×800 | **16,2** / **15,9** (re-test) | **najostrzej** ✅ |
+| 1 (75%) | ~1005×600 | **14,0** ❌ | średnio |
+| 2 (half) | 670×400 | **15,8** | **najbardziej miękko** |
+
+**`vidResIndex=2` renderuje 4× mniej pikseli i daje ten sam FPS co pełna rozdzielczość.**
+To dowód nie do obejścia: **w tej scenie NIE jesteśmy ograniczeni fill-ratem, tylko CPU/geometrią.**
+Dołek przy `=1` tłumaczy się passem upscalingu Lanczosa: przy `=2` oszczędność 4× pikseli pokrywa
+jego koszt, przy `=1` oszczędność 1,78× już nie; przy `=0` upscalingu **nie ma wcale** (i mimo to
+włącza się tam CMAA2 — a i tak wygrywa).
+
+**Praktycznie: `vidResIndex=0` wygrywa na obu osiach naraz** — ostrzejszy obraz *i* najlepszy FPS.
+
+> **⚠️ KOREKTA (2026-07-16):** ta sekcja twierdziła wcześniej „**Zabójcą FPS jest `vidResIndex`**,
+> nie tekstury… kandydat na kompromis: `vidResIndex=1`". **Obalone pomiarem.** Gdybyśmy byli
+> fill-limited, mniej pikseli **musiałoby** dać więcej FPS — dało mniej. Zalecany przeze mnie
+> „kompromis" `vidResIndex=1` okazał się **najgorszym** z trzech ustawień. Czwarty raz w tej sesji,
+> gdy pomiar obalił moje twierdzenie.
+
+> **⚠️ ZASTRZEŻENIE — to pomiar sceny WEWNĘTRZNEJ.** Komnata Xardasa jest mała i zamknięta: mało
+> terenu, brak nieba, krótki zasięg — czyli dokładnie ten typ sceny, gdzie *spodziewasz się* bycia
+> CPU-bound. **Na zewnątrz w Khorinis fill może dominować i `vidResIndex` mógłby tam pomagać.
+> NIEZMIERZONE.** Dlatego domyślny profil mobilny w `gothic.cpp` (który wpisuje `vidResIndex=2`)
+> **celowo NIE został zmieniony** — zmiana domyślnej dla wszystkich na podstawie jednej sceny
+> wewnętrznej byłaby tym samym nadmiernym uogólnieniem, które ten dokument piętnuje gdzie indziej.
+
+**Rozkład kosztów — te trzy rzeczy płacą różnymi zasobami:**
 
 | Ustawienie | Daje | Kosztuje |
 |---|---|---|
-| `androidTexCap=0` | ostre twarze/pancerze | **pamięć** (+500 MB), ~0 FPS |
-| `vidResIndex=0` | ostrość całego obrazu | **FPS** — 4× więcej pikseli |
-| `modelDetail=1.0` | gładsze sylwetki | trochę FPS (geometria) |
-
-Zabójcą FPS jest `vidResIndex`, nie tekstury. Kandydat na kompromis: `vidResIndex=1` (75%) +
-pełne tekstury — ostrość twarzy zostaje, render schodzi z 4× do ~2,25× pikseli.
+| `androidTexCap=0` | ostre twarze/pancerze | **pamięć** (~+500 MB), ~0 FPS |
+| `vidResIndex` | ostrość całego obrazu | **~nic w tej scenie** (patrz krzywa) |
+| `modelDetail`, `sightValue` | geometria/detal | **FPS** — to są prawdziwe pokrętła |
 
 **Uwaga metodologiczna:** próba porównania FPS cap-512 vs bez-capa była **nieważna** — zrzut ujawnił,
 że jeden pomiar wypadł na ekranie tytułowym (prawie czarnym), a drugi w pełnej scenie 3D. Liczby
-FPS mają sens tylko przy tej samej scenie.
+FPS mają sens tylko przy tej samej scenie. Stąd rygor powyżej: zrzut + termika przy **każdym** punkcie,
+oraz re-test bazy (15,9 vs 16,2 = powtarzalność ~2%), żeby odróżnić realny efekt od dryfu.
 
 ## Transcoder DXT→ASTC — Faza 1 (brama decyzyjna)
 
@@ -325,7 +356,11 @@ build Zadania 2 od razu pokazał, że **astcenc się kompiluje**, a padło tylko
    `resources.cpp` i cache działają bez zmian dzięki gatingowi po możliwościach GPU.
 4. **Rebase na `master`** — 9 commitów zaległości. PR #893 umarł właśnie na konfliktach; nie zwlekać.
    Jeden konflikt do pogodzenia w bloku mobilnym `gothic.cpp`.
-5. **Strojenie FPS** — `vidResIndex=1` jako kandydat; `sightValue=2` (60k z 300k) jest bardzo niski.
+5. **Strojenie FPS** — `vidResIndex` **odpada** (zmierzone: rozdzielczość nie rusza FPS w scenie
+   wewnętrznej; `=0` jest najlepszy na obu osiach). Prawdziwe pokrętła to `modelDetail` i `sightValue`,
+   bo jesteśmy CPU/geometrią-bound. **Najpierw jednak zmierzyć scenę ZEWNĘTRZNĄ** — tam fill może
+   dominować i wnioski mogą być inne. Ciekawostka spójna z diagnozą: przy CPU-bound **podniesienie**
+   `sightValue` (dziś 2, czyli 60k z 300k) kosztowałoby FPS, a nie dało.
 6. **Licznik FPS na ekranie** — `[GAME] showFpsCounter=1` nie odpala; `doFrate()` czyta ustawienie
    w `setupSettings()` (gothic.cpp:946, wołane z konstruktora), podejrzenie: kolejność ładowania
    `Gothic.ini`. Wymaga rebuilda z logiem.
