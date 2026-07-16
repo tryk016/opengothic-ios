@@ -4,6 +4,35 @@
 
 **Goal:** Prove or kill the on-device DXT→ASTC transcoder in ~2 CI cycles by validating four independent kill-risks, before any cache or loader logic exists.
 
+> ## ⚠️ EXECUTED 2026-07-16 — read this before following the steps below
+>
+> This plan was executed. Tasks 1 and 2 are **done**; the steps below are kept as the historical
+> record. Five things were wrong or missing in the plan as written — corrected in the real commits
+> (`8c07a4bd`, `c1597c00`, `cc417ca2`) but **not** rewritten into the step text, so that the gap
+> between plan and reality stays visible:
+>
+> 1. **`astcenc_context_alloc` takes 4 args in 5.6.0, not 3.** The plan's benchmark used
+>    `astcenc_context_alloc(&config, 1, &ctx)`; the real signature ([astcenc.h:761](../../../lib/astcenc/Source/astcenc.h))
+>    has a 4th `const astcenc_context* parent_context` (pass `nullptr`). **This cost one CI cycle.**
+>    `astcenc_compress_image`'s 6-arg signature was fine.
+> 2. **The CMake snippet only enabled NEON — it would have broken the x86_64 build.**
+>    `abiFilters` is `'arm64-v8a', 'x86_64'` (android/app/build.gradle:24) and NEON does not exist on
+>    x86_64. The ISA must be selected per `ANDROID_ABI`: `astcenc-neon-static` / `astcenc-sse4.1-static`.
+> 3. **`ASTCENC_WERROR` defaults to ON** — astcenc turns its own warnings into errors, which under the
+>    NDK's clang can fail our build. Must be forced OFF. The plan did not list it.
+> 4. **`Tempest::Log` has no `bool` overload** (explicit ones exist for int8..uint64/float/double).
+>    `bool→int` is a promotion so it would compile, but the caps log now uses explicit `int()` casts
+>    rather than resting on overload-resolution ranking.
+> 5. **Pinned tag is 5.6.0, not 5.3.0** (latest stable at execution time).
+>
+> **Verified as written:** the target name guess `astcenc-neon-static` was correct
+> (`astc${CODEC}-${ISA}-static`, Source/cmake_core.cmake:18), the header is at `Source/astcenc.h`,
+> all seven perl patches applied exactly once, and every option name matched.
+>
+> **Results:** see §"Faza 1 — wynik" in
+> [the design doc](../specs/2026-07-16-astc-transcoder-design.md) and the
+> [work report](../reports/2026-07-16-android-m2-report.md).
+
 **Architecture:** Add `ASTC4x4` to Tempest's shared `TextureFormat` enum via idempotent perl patches, link astcenc for arm64, and log two facts at startup: whether the GPU samples ASTC4x4, and how fast astcenc encodes. Nothing in the resource-loading path changes, so a failure is a clean revert.
 
 **Tech Stack:** C++17, Tempest (Vulkan), astcenc (ARM, Apache-2.0), Android NDK/CMake/Gradle, GitHub Actions, adb.

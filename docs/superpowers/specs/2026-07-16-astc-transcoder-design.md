@@ -88,11 +88,24 @@ Resources::implLoadTextureUncached(name)          [Android lub iOS]
 
 **Gating przez możliwości GPU, nie przez `#if`.** Warunek to `!hasSamplerFormat(DXT1)`:
 
-- Mali → brak BC → używa cache ASTC
+- Mali → brak BC → używa cache ASTC — **zmierzone: `DXT1=0 DXT5=0 ASTC4x4=1`**
 - **Apple GPU → brak BC → używa tego samego cache ASTC** (iOS działa za darmo)
-- Adreno → **ma** BC → ignoruje cache, zostaje przy natywnym DXT (4 bpp, lepsze niż ASTC 8 bpp)
+- Adreno → **również brak BC** → także używa cache ASTC — **zmierzone: `DXT1=0 DXT5=0 ASTC4x4=1`**
 
 To jest powód, dla którego projekt jest platform-neutralny: **jeden cache, oba porty**.
+
+> **⚠️ KOREKTA (2026-07-16, Faza 1).** Wcześniejsza wersja tego dokumentu twierdziła, że
+> „Adreno **ma** BC → ignoruje cache, zostaje przy natywnym DXT". **To było błędne** — była to
+> *interpretacja* wcześniejszego pomiaru (GPU 69 MB na A23 vs 263 MB na Mali), a nie pomiar
+> możliwości. Bezpośredni odczyt `hasSamplerFormat` na Adreno 619 daje **`DXT1=0`**, dokładnie jak
+> na Mali. Jest to zgodne z realiami mobilnych GPU: **BC/S3TC praktycznie nie istnieje w Vulkanie na
+> mobilkach** — i Mali, i Adreno stoją na ETC2/ASTC. Tamte 69 MB pochodziło najpewniej z pomiaru
+> w menu, nie w załadowanym świecie.
+>
+> **Skutek jest korzystny:** ASTC pomaga **wszystkim** testowanym urządzeniom, ścieżka jest jedna
+> zamiast dwóch, a gating `!hasSamplerFormat(DXT1)` pozostaje poprawny bez zmian — po prostu włącza
+> się szerzej, niż zakładano. Ryzyko „Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp)" z §7
+> **nie istnieje**: alternatywą na Adreno nie jest DXT 4 bpp, tylko RGBA8 32 bpp.
 
 ## 5. Komponenty
 
@@ -252,7 +265,7 @@ po możliwościach GPU.
 | Przerwane kodowanie zostawia obcięty plik = trwale zepsuta tekstura | średnia | zapis atomowy (tmp + rename), §5.4 |
 | Cache rozjeżdża się z danymi gry / zmianą parametrów astcenc | niska | rozmiar wpisu VDF + wersja enkodera w nagłówku |
 | APK rośnie o astcenc | niska | ~1–2 MB, pomijalne |
-| Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp) | niska | gating `!hasSamplerFormat(DXT1)` — Adreno w ogóle nie wchodzi w tę ścieżkę |
+| ~~Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp)~~ | **nie istnieje** | Zmierzone: Adreno **też nie ma BC** (`DXT1=0`), więc jego alternatywą jest RGBA8 32 bpp, nie DXT 4 bpp. ASTC jest dla niego czystym zyskiem. Patrz korekta w §4. |
 
 ## 8. Co to daje iOS
 
