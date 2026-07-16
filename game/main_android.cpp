@@ -71,7 +71,9 @@ void astcBenchmark() {
     }
 
   astcenc_context* ctx = nullptr;
-  st = astcenc_context_alloc(&config, 1, &ctx);
+  // 4th arg is an optional parent context to inherit read-only tables from
+  // (astcenc.h:761); nullptr = standalone root context.
+  st = astcenc_context_alloc(&config, 1, &ctx, nullptr);
   if(st!=ASTCENC_SUCCESS) {
     Log::e("[astcdiag] context_alloc failed: ", astcenc_get_error_string(st));
     return;
