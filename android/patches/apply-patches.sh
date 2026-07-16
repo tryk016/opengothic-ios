@@ -136,6 +136,46 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# (c2) vswapchain.cpp — TEMP swapchain/orientation diagnostics.
+#      The device panel is portrait-native, so currentTransform is a 90/270
+#      rotation while the app is locked to landscape. We pass currentTransform
+#      straight into preTransform (which DECLARES "the app already pre-rotated"
+#      -- it does not), so the content is presented rotated. Before changing
+#      any of that, dump the numbers that decide which fix is even legal:
+#      if minImageExtent==maxImageExtent==currentExtent then imageExtent is
+#      fixed and we cannot simply ask for a landscape-shaped image.
+#      Revert once the orientation fix lands.
+# --------------------------------------------------------------------------
+
+if grep -q '#include <Tempest/Log>' "$SW"; then
+  echo "skip: vswapchain.cpp Log include (already patched)"
+else
+  perl -0777 -pi -e \
+    's/(#include <Tempest\/Platform>\r?\n)/${1}#include <Tempest\/Log>\n/' \
+    "$SW"
+  if grep -q '#include <Tempest/Log>' "$SW"; then
+    echo "patched: vswapchain.cpp Log include"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp Log include (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+if grep -q 'swapdiag' "$SW"; then
+  echo "skip: vswapchain.cpp swapdiag (already patched)"
+else
+  perl -0777 -pi -e \
+    's/(  createInfo\.clipped\s+= VK_FALSE;\r?\n)/${1}\n#if defined(__ANDROID__)\n  {\n  const auto\& cap = swapChainSupport.capabilities;\n  Log::i("[swapdiag] currentTransform=", int(cap.currentTransform),\n         " supportedTransforms=", int(cap.supportedTransforms),\n         " currentExtent=",   cap.currentExtent.width,   "x", cap.currentExtent.height,\n         " minImageExtent=",  cap.minImageExtent.width,  "x", cap.minImageExtent.height,\n         " maxImageExtent=",  cap.maxImageExtent.width,  "x", cap.maxImageExtent.height,\n         " rectIn=",          rect.w,                    "x", rect.h,\n         " chosenExtent=",    extent.width,              "x", extent.height,\n         " preTransform=",    int(createInfo.preTransform));\n  }\n#endif\n/' \
+    "$SW"
+  if grep -q 'swapdiag' "$SW"; then
+    echo "patched: vswapchain.cpp swapdiag"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp swapdiag (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+# --------------------------------------------------------------------------
 # (d) Tempest CMakeLists.txt — Android Vulkan lib + game-activity link.
 # --------------------------------------------------------------------------
 
