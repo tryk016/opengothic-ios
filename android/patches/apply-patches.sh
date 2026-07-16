@@ -176,6 +176,70 @@ else
 fi
 
 # --------------------------------------------------------------------------
+# (c3) vswapchain.cpp — Android orientation fix.
+#
+# Measured on the target (Mali-G57, portrait-native 800x1340 panel, app locked
+# to landscape):
+#   currentTransform=2 (ROTATE_90)   supportedTransforms=511 (IDENTITY available)
+#   currentExtent=1340x800 (LANDSCAPE)   rectIn=1340x800   chosenExtent=1340x800
+#   minImageExtent=1x1   maxImageExtent=4096x4096  (extent is NOT fixed)
+#
+# So the surface, the swapchain extent, the UI layout and the touch coordinates
+# are ALL already in one consistent landscape space; the engine renders a
+# correct landscape frame. The only thing wrong is the DECLARATION:
+# preTransform=currentTransform tells the presentation engine "the app already
+# pre-rotated this image by 90". It did not -- so the compositor skips its own
+# rotation and the landscape frame is presented sideways on the portrait panel.
+#
+# Fix: declare IDENTITY and let the compositor rotate. Costs one composition
+# pass, but needs NO projection/viewport/UI/touch remapping (the alternative,
+# true app-side pre-rotation, would). Touch then lines up for free, because it
+# already matches the un-rotated layout.
+# --------------------------------------------------------------------------
+
+if grep -q 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW"; then
+  echo "skip: vswapchain.cpp preTransform identity (already patched)"
+else
+  perl -0777 -pi -e \
+    's/(  createInfo\.preTransform   = swapChainSupport\.capabilities\.currentTransform;\r?\n)/#if defined(__ANDROID__)\n  \/\/ Portrait-native panel => currentTransform is ROTATE_90 while the window is\n  \/\/ landscape. We do NOT pre-rotate our rendering, so declaring currentTransform\n  \/\/ here would make the compositor skip its rotation and present the frame\n  \/\/ sideways. Declare IDENTITY instead and let the compositor rotate.\n  \/\/ NOTE: this deliberately makes preTransform!=currentTransform, so every\n  \/\/ acquire\/present is flagged VK_SUBOPTIMAL_KHR -- handled below.\n  createInfo.preTransform   = (swapChainSupport.capabilities.supportedTransforms \& VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)!=0\n                                ? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR\n                                : swapChainSupport.capabilities.currentTransform;\n#else\n${1}#endif\n/' \
+    "$SW"
+  if grep -q 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW"; then
+    echo "patched: vswapchain.cpp preTransform identity"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp preTransform (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+if grep -q 'android-suboptimal-acquire' "$SW"; then
+  echo "skip: vswapchain.cpp suboptimal acquire (already patched)"
+else
+  perl -0777 -pi -e \
+    's/(void VSwapchain::acquireNextImage\(\) \{\r?\n  VkResult code = implAcquireNextImage\(\);\r?\n)/${1}\n#if defined(__ANDROID__)\n  \/\/ android-suboptimal-acquire: we create the swapchain with preTransform=IDENTITY\n  \/\/ while the surface reports ROTATE_90 (see createSwapchain), so the driver flags\n  \/\/ every acquire SUBOPTIMAL -- permanently, and by our own choice. Recreating on it\n  \/\/ would rebuild an identically-suboptimal swapchain forever (a hang). Real surface\n  \/\/ changes still arrive as VK_ERROR_OUT_OF_DATE_KHR, and window init\/term\/resize is\n  \/\/ driven explicitly by AndroidApi, so SUBOPTIMAL carries no actionable signal here.\n  if(code==VK_SUBOPTIMAL_KHR)\n    code = VK_SUCCESS;\n#endif\n/' \
+    "$SW"
+  if grep -q 'android-suboptimal-acquire' "$SW"; then
+    echo "patched: vswapchain.cpp suboptimal acquire"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp acquireNextImage (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+if grep -q 'android-suboptimal-present' "$SW"; then
+  echo "skip: vswapchain.cpp suboptimal present (already patched)"
+else
+  perl -0777 -pi -e \
+    's/(  VkResult code = device\.presentQueue->present\(presentInfo\);\r?\n)/${1}#if defined(__ANDROID__)\n  \/\/ android-suboptimal-present: see android-suboptimal-acquire above -- the\n  \/\/ preTransform=IDENTITY mismatch is deliberate and permanent.\n  if(code==VK_SUBOPTIMAL_KHR)\n    code = VK_SUCCESS;\n#endif\n/' \
+    "$SW"
+  if grep -q 'android-suboptimal-present' "$SW"; then
+    echo "patched: vswapchain.cpp suboptimal present"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp present (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+# --------------------------------------------------------------------------
 # (d) Tempest CMakeLists.txt — Android Vulkan lib + game-activity link.
 # --------------------------------------------------------------------------
 
