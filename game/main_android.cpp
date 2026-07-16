@@ -10,7 +10,11 @@
 #include <zenkit/Logger.hh>
 #include <dmusic.h>
 
+#include <astcenc.h>  // TEMP Phase-1 decision gate (astcBenchmark below)
+
 #include <cstring>
+#include <chrono>
+#include <vector>
 #include <unistd.h>   // ::chdir
 
 #include "system/api/androidapi.h"   // setAndroidApp
@@ -47,6 +51,73 @@ std::string_view selectDevice(const Tempest::AbstractGraphicsApi& api) {
     return p.name;
     }
   return "";
+  }
+
+// TEMP Phase-1 decision gate: measure real astcenc throughput on this CPU.
+// The job size is known from measurement rather than guessed: the 1.38GB of
+// RGBA8 that Mali currently holds / 4 bytes-per-pixel = ~345 Mpixels for all of
+// Khorinis including mips. This turns the design's "~1-3 min" estimate into a
+// fact, and decides on-device encoding vs the offline fallback.
+// See docs/superpowers/specs/2026-07-16-astc-transcoder-design.md §5.3/§6.
+// Revert once Phase 1 concludes.
+void astcBenchmark() {
+  const unsigned int dimX = 512, dimY = 512;
+
+  astcenc_config config = {};
+  astcenc_error  st = astcenc_config_init(ASTCENC_PRF_LDR, 4, 4, 1, ASTCENC_PRE_FAST, 0, &config);
+  if(st!=ASTCENC_SUCCESS) {
+    Log::e("[astcdiag] config_init failed: ", astcenc_get_error_string(st));
+    return;
+    }
+
+  astcenc_context* ctx = nullptr;
+  st = astcenc_context_alloc(&config, 1, &ctx);
+  if(st!=ASTCENC_SUCCESS) {
+    Log::e("[astcdiag] context_alloc failed: ", astcenc_get_error_string(st));
+    return;
+    }
+
+  // Structured, non-trivial content: a flat image would encode unrealistically
+  // fast and pure noise unrealistically slow.
+  std::vector<uint8_t> src(size_t(dimX)*size_t(dimY)*4);
+  for(size_t i=0; i<src.size(); i+=4) {
+    const uint32_t p = uint32_t(i/4);
+    const uint32_t x = p % dimX;
+    const uint32_t y = p / dimX;
+    src[i+0] = uint8_t(x ^ y);
+    src[i+1] = uint8_t(x + y);
+    src[i+2] = uint8_t(x*3 + y*5);
+    src[i+3] = 255;
+    }
+
+  uint8_t*      slice = src.data();
+  astcenc_image image = {};
+  image.dim_x     = dimX;
+  image.dim_y     = dimY;
+  image.dim_z     = 1;
+  image.data_type = ASTCENC_TYPE_U8;
+  image.data      = reinterpret_cast<void**>(&slice);
+
+  const astcenc_swizzle swz{ASTCENC_SWZ_R, ASTCENC_SWZ_G, ASTCENC_SWZ_B, ASTCENC_SWZ_A};
+  const size_t blocks = size_t((dimX+3)/4) * size_t((dimY+3)/4);
+  std::vector<uint8_t> dst(blocks*16);   // ASTC 4x4 = 16 bytes per block
+
+  const auto t0 = std::chrono::steady_clock::now();
+  st = astcenc_compress_image(ctx, &image, &swz, dst.data(), dst.size(), 0);
+  const double ms = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-t0).count();
+  astcenc_context_free(ctx);
+
+  if(st!=ASTCENC_SUCCESS) {
+    Log::e("[astcdiag] compress failed: ", astcenc_get_error_string(st));
+    return;
+    }
+
+  const double mpx       = double(dimX)*double(dimY)/1e6;
+  const double mpxPerSec = (ms>0.0) ? mpx/(ms/1000.0) : 0.0;
+  const double khorinisS = (mpxPerSec>0.0) ? 345.0/mpxPerSec : -1.0;
+  Log::i("[astcdiag] astcenc 512x512 PRE_FAST 1-thread: ", ms, " ms => ", mpxPerSec, " Mpx/s"
+         " | Khorinis 345 Mpx => ", khorinisS, " s single-threaded (~", khorinisS/6.0, " s over 6 cores)"
+         " | out=", uint32_t(dst.size()/1024), " KiB vs rgba8=", uint32_t(src.size()/1024), " KiB");
   }
 }
 
@@ -158,6 +229,7 @@ extern "C" void android_main(struct android_app* app) {
     Tempest::Log::i("[astcdiag] caps: DXT1=",   int(device.properties().hasSamplerFormat(Tempest::TextureFormat::DXT1)),
                     " DXT5=",                   int(device.properties().hasSamplerFormat(Tempest::TextureFormat::DXT5)),
                     " ASTC4x4=",                int(device.properties().hasSamplerFormat(Tempest::TextureFormat::ASTC4x4)));
+    astcBenchmark(); // TEMP Phase-1 decision gate
 
     Resources         resources{device};
     Gothic            gothic;

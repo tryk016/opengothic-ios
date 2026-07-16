@@ -211,6 +211,41 @@ set(ZK_ENABLE_DEPRECATION      OFF CACHE INTERNAL "")
 add_subdirectory(lib/ZenKit)
 target_link_libraries(${PROJECT_NAME} zenkit)
 
+# astcenc — DXT->ASTC transcoding for GPUs without BC/S3TC (Mali, Apple).
+# Those GPUs make Tempest decompress every DXT texture to RGBA8 (4-8x memory);
+# ASTC keeps them compressed at full resolution. Android-only for now: desktop
+# and Adreno sample DXT natively and never enter that path.
+# See docs/superpowers/specs/2026-07-16-astc-transcoder-design.md
+if(ANDROID)
+  set(ASTCENC_CLI            OFF CACHE INTERNAL "") # library only, no command-line tool
+  set(ASTCENC_SHAREDLIB      OFF CACHE INTERNAL "")
+  set(ASTCENC_UNITTEST       OFF CACHE INTERNAL "")
+  set(ASTCENC_DECOMPRESSOR   OFF CACHE INTERNAL "") # we encode, so build the full codec
+  set(ASTCENC_DIAGNOSTICS    OFF CACHE INTERNAL "")
+  set(ASTCENC_WERROR         OFF CACHE INTERNAL "") # astcenc defaults this ON; don't let its
+                                                    # warnings under the NDK's clang fail our build
+  set(ASTCENC_ISA_NATIVE     OFF CACHE INTERNAL "")
+  set(ASTCENC_ISA_NONE       OFF CACHE INTERNAL "")
+
+  # Exactly one ISA must be enabled, and it must match the ABI being built:
+  # abiFilters is 'arm64-v8a', 'x86_64' (android/app/build.gradle), and NEON
+  # does not exist on x86_64. The target name follows astcenc's own
+  # astc${CODEC}-${ISA}-static scheme (Source/cmake_core.cmake:18).
+  if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(ASTCENC_ISA_NEON     ON  CACHE INTERNAL "")
+    set(ASTCENC_LIB astcenc-neon-static)
+  elseif(ANDROID_ABI STREQUAL "x86_64")
+    set(ASTCENC_ISA_SSE41    ON  CACHE INTERNAL "")
+    set(ASTCENC_LIB astcenc-sse4.1-static)
+  else()
+    message(FATAL_ERROR "astcenc: unhandled ANDROID_ABI '${ANDROID_ABI}'")
+  endif()
+
+  add_subdirectory(lib/astcenc)
+  target_include_directories(${PROJECT_NAME} PRIVATE lib/astcenc/Source)
+  target_link_libraries(${PROJECT_NAME} ${ASTCENC_LIB})
+endif()
+
 # dmusic
 set(DM_BUILD_STATIC            ON  CACHE INTERNAL "")
 set(DM_ENABLE_ASAN             OFF CACHE INTERNAL "")
