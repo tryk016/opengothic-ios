@@ -145,6 +145,20 @@ extern "C" void android_main(struct android_app* app) {
     Tempest::Device   device{api,gpuName};
     CrashLog::setGpu(device.properties().name);
 
+    // TEMP Phase-1 decision gate: does this GPU sample ASTC4x4, and does it
+    // really lack BC? Mali decompressing DXT->RGBA8 is what costs 1.38GB of GPU
+    // memory here, and ASTC is the only fix that keeps full resolution. Drives
+    // the transcoder go/no-go -- see
+    // docs/superpowers/specs/2026-07-16-astc-transcoder-design.md §6.
+    // Revert once Phase 1 concludes.
+    // NOTE: explicit int() casts -- Tempest::Log has explicit write() overloads
+    // for the integer types but none for bool, so a raw bool would rely on the
+    // bool->int promotion out-ranking every other overload. Don't make the build
+    // depend on that.
+    Tempest::Log::i("[astcdiag] caps: DXT1=",   int(device.properties().hasSamplerFormat(Tempest::TextureFormat::DXT1)),
+                    " DXT5=",                   int(device.properties().hasSamplerFormat(Tempest::TextureFormat::DXT5)),
+                    " ASTC4x4=",                int(device.properties().hasSamplerFormat(Tempest::TextureFormat::ASTC4x4)));
+
     Resources         resources{device};
     Gothic            gothic;
     GameMusic         music;

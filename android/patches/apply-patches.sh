@@ -13,10 +13,13 @@ SYS="$ROOT/lib/Tempest/Engine/system/systemapi.cpp"
 VK="$ROOT/lib/Tempest/Engine/gapi/vulkanapi.cpp"
 SW="$ROOT/lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp"
 CM="$ROOT/lib/Tempest/Engine/CMakeLists.txt"
+AGA="$ROOT/lib/Tempest/Engine/gapi/abstractgraphicsapi.h"
+PM="$ROOT/lib/Tempest/Engine/formats/pixmap.cpp"
+VD="$ROOT/lib/Tempest/Engine/gapi/vulkan/vdevice.h"
 API_H="$ROOT/lib/Tempest/Engine/system/api/androidapi.h"
 API_CPP="$ROOT/lib/Tempest/Engine/system/api/androidapi.cpp"
 
-for f in "$SYS" "$VK" "$SW" "$CM"; do
+for f in "$SYS" "$VK" "$SW" "$CM" "$AGA" "$PM" "$VD"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: not found: $f" >&2
     exit 1
@@ -195,6 +198,73 @@ else
     echo "patched: vswapchain.cpp suboptimal present"
   else
     echo "ERROR: failed to patch vswapchain.cpp present (pattern not found)" >&2
+    exit 1
+  fi
+fi
+
+# --------------------------------------------------------------------------
+# (f) ASTC4x4 texture format support.
+#
+# Mali (and every Apple GPU) lacks BC/S3TC, so device.cpp:199 decompresses every
+# DXT texture to RGBA8 -- measured 1.38GB GPU on a 3.5GB device, vs 69MB on an
+# Adreno that samples DXT natively. ASTC keeps textures compressed at FULL
+# resolution (4x smaller than RGBA8), which a mip-cap fundamentally cannot do:
+# measured cap=512 saves only 60MB (Gothic2 textures are mostly <=512px) while
+# cap=256 saves 500MB but is visibly blocky.
+#
+# ASTC 4x4 specifically, because it is 16 bytes per 4x4 block -- exactly the
+# shape pixmap.cpp and metal/mttexture.cpp already hardcode for DXT3/DXT5 -- so
+# NO block-math generalization is needed. 6x6 would compress better but would
+# require surgery in the Vulkan AND Metal backends.
+#
+# The enum entry MUST go last (after RGBA16F, before Last): pixmap.cpp:68 does
+# kfrm[uint8_t(frm)-uint8_t(DXT1)] positional arithmetic, which inserting a
+# value between DXT1..DXT5 would corrupt.
+#
+# Nothing more is needed for capability detection: vdevice.cpp:678 probes
+# formats generically (for i<Last: nativeFormat(i) -> vkGetPhysicalDeviceFormatProperties,
+# and isCompressedFormat(i) -> smpFormat |= 1ull<<i), so hasSamplerFormat(ASTC4x4)
+# starts reporting the real driver answer as soon as these patches land.
+#
+# See docs/superpowers/specs/2026-07-16-astc-transcoder-design.md
+# --------------------------------------------------------------------------
+
+if grep -q 'ASTC4x4' "$AGA"; then
+  echo "skip: abstractgraphicsapi.h ASTC4x4 (already patched)"
+else
+  perl -0777 -pi -e 's/(    RGBA16F,\r?\n)(    Last)/${1}    ASTC4x4,\n${2}/' "$AGA"
+  perl -0777 -pi -e 's/(      case RGBA16F:     return "RGBA16F";\r?\n)(      case Last:)/${1}      case ASTC4x4:     return "ASTC4x4";\n${2}/' "$AGA"
+  perl -0777 -pi -e 's/(    return f==TextureFormat::DXT1 \|\| f==TextureFormat::DXT3 \|\| f==TextureFormat::DXT5;)/    return f==TextureFormat::DXT1 || f==TextureFormat::DXT3 || f==TextureFormat::DXT5 || f==TextureFormat::ASTC4x4;/' "$AGA"
+  if [ "$(grep -c 'ASTC4x4' "$AGA")" = "3" ]; then
+    echo "patched: abstractgraphicsapi.h ASTC4x4 (enum + formatName + isCompressedFormat)"
+  else
+    echo "ERROR: failed to patch abstractgraphicsapi.h ASTC4x4 (expected 3 hits, got $(grep -c 'ASTC4x4' "$AGA"))" >&2
+    exit 1
+  fi
+fi
+
+if grep -q 'ASTC4x4' "$PM"; then
+  echo "skip: pixmap.cpp ASTC4x4 (already patched)"
+else
+  perl -0777 -pi -e 's/(    return frm==TextureFormat::DXT1 \|\|\r?\n           frm==TextureFormat::DXT3 \|\|\r?\n           frm==TextureFormat::DXT5;)/    return frm==TextureFormat::DXT1 ||\n           frm==TextureFormat::DXT3 ||\n           frm==TextureFormat::DXT5 ||\n           frm==TextureFormat::ASTC4x4;/' "$PM"
+  perl -0777 -pi -e 's/(    case TextureFormat::DXT5:        return 16;\r?\n)/${1}    case TextureFormat::ASTC4x4:     return 16;\n/' "$PM"
+  perl -0777 -pi -e 's/(    case TextureFormat::DXT5:        return 4;\r?\n)/${1}    case TextureFormat::ASTC4x4:     return 4;\n/' "$PM"
+  if [ "$(grep -c 'ASTC4x4' "$PM")" = "3" ]; then
+    echo "patched: pixmap.cpp ASTC4x4 (isCompressed + blockSize=16 + componentCount=4)"
+  else
+    echo "ERROR: failed to patch pixmap.cpp ASTC4x4 (expected 3 hits, got $(grep -c 'ASTC4x4' "$PM"))" >&2
+    exit 1
+  fi
+fi
+
+if grep -q 'VK_FORMAT_ASTC_4x4_UNORM_BLOCK' "$VD"; then
+  echo "skip: vdevice.h ASTC4x4 (already patched)"
+else
+  perl -0777 -pi -e 's/(    case TextureFormat::RGBA16F:\r?\n      return VK_FORMAT_R16G16B16A16_SFLOAT;\r?\n)(    \})/${1}    case TextureFormat::ASTC4x4:\n      return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;\n${2}/' "$VD"
+  if grep -q 'VK_FORMAT_ASTC_4x4_UNORM_BLOCK' "$VD"; then
+    echo "patched: vdevice.h ASTC4x4 -> VK_FORMAT_ASTC_4x4_UNORM_BLOCK"
+  else
+    echo "ERROR: failed to patch vdevice.h ASTC4x4 (pattern not found)" >&2
     exit 1
   fi
 fi
