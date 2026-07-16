@@ -31,16 +31,33 @@ DXT1 0.5→4 B/px = **8×**, DXT5 1→4 B/px = **4×**.
 | `androidTexCap=512` | 1.30 GB | 1.92 GB | 378 MB | dobrze ✅ |
 | bez capa (pełne) | **1.38 GB** | **1.96 GB** | **288 MB** | dobrze ✅ |
 
-Dla porównania **Galaxy A23 / Adreno 619** (ma BC → tekstury zostają skompresowane): **GPU 69 MB**.
-Ta różnica (69 MB vs 1.38 GB) jest całym problemem.
+**Problemem jest 1.38 GB na urządzeniu z 3.5 GB** — przy pełnych teksturach zostaje **288 MB
+wolnego RAM-u**, czyli system utrzymuje grę przy życiu wyrzucając wszystko z tła.
+
+> **Uwaga o `GL mtrack`:** to licznik **CAŁKOWITEJ** śledzonej pamięci GPU — zawiera też render
+> targety, bufory geometrii i swapchain, nie tylko teksele. Kolumna nadaje się do porównywania
+> konfiguracji między sobą (co robimy tutaj), ale **nie jest podsumą tekstur** — patrz zastrzeżenia
+> w §5.3 i §6a.
+
+> **⚠️ USUNIĘTE (2026-07-16):** ta sekcja podawała wcześniej „dla porównania Adreno 619 (**ma BC** →
+> tekstury zostają skompresowane): GPU 69 MB. Ta różnica (69 MB vs 1.38 GB) jest **całym problemem**".
+> **Obie części były błędne.** Adreno **nie ma BC** (zmierzone `DXT1=0`, patrz §4), a 69 MB pochodziło
+> najpewniej z pomiaru w menu, nie w załadowanym świecie — więc nie było porównywalne z 1.38 GB.
+> Cała rama §1 wisiała na liczbie, którą §4 unieważnia. Właściwa rama to po prostu 1.38 GB na 3.5 GB.
 
 ### Dlaczego mip-cap to ślepa uliczka (zmierzone, nie szacowane)
 
-`androidTexCap=512` oszczędza **tylko 60 MB**, bo tekstury Gothica 2 (gra z 2003) są w większości
-≤512 px — cap 512 prawie niczego nie tyka. Żeby cap cokolwiek dał, trzeba zejść do 256, a wtedy
-zgniata *dominującą* grupę 512-tek (+420 MB różnicy między 256 a 512) i **widać klocki**.
+`androidTexCap=512` oszczędza **tylko ~80 MB** (1.38 → 1.30 GB, ~6% całości), bo tekstury Gothica 2
+(gra z 2003) są w większości ≤512 px — cap 512 prawie niczego nie tyka. Żeby cap cokolwiek dał,
+trzeba zejść do 256, a wtedy zgniata *dominującą* grupę 512-tek (+420 MB różnicy między 256 a 512)
+i **widać klocki**.
 **Nie ma złotego środka**: 1.38 GB nie bierze się z kilku wielkich tekstur, tylko z dekompresji
 setek średnich do RGBA8. Cap umie tylko wymieniać rozdzielczość na pamięć.
+
+> **⚠️ KOREKTA (2026-07-16):** wcześniej pisało tu „oszczędza **tylko 60 MB**". Z tabeli powyżej
+> wychodzi **1.38 − 1.30 = 0.08 GB = ~80 MB**. Liczba była zaniżona — i to akurat **liczba nośna
+> całego argumentu** za transcoderem, myląca w kierunku dla siebie wygodnym. Wniosek się nie zmienia
+> (~6% oszczędności za widoczne klocki to zły interes), ale liczba musi być prawdziwa.
 
 **ASTC atakuje prawdziwą przyczynę**: trzyma tekstury skompresowane w **pełnej rozdzielczości**.
 
@@ -52,8 +69,15 @@ Tekstury kosztują pamięć, nie fill rate. Nie mylić tych dwóch problemów.
 
 ## 3. Kluczowa decyzja: ASTC 4×4 (nie 6×6)
 
-ASTC 4×4 = **blok 4×4, 16 bajtów** = 8 bpp. RGBA8 = 32 bpp → **4× oszczędności**: 1.38 GB → **~350 MB**,
-przy **zachowaniu pełnej rozdzielczości**.
+ASTC 4×4 = **blok 4×4, 16 bajtów** = 8 bpp. RGBA8 = 32 bpp → **4× oszczędności na samych teksturach**,
+przy **zachowaniu pełnej rozdzielczości**. Realistyczne lądowanie: **1.38 GB → ~380–460 MB**
+(patrz zastrzeżenie niżej).
+
+> **⚠️ KOREKTA (2026-07-16):** wcześniej pisało „1.38 GB → **~350 MB**". To stosowało 4× do **całego**
+> licznika `GL mtrack`, a render targety, bufory geometrii i swapchain **nie kurczą się wcale** — to
+> nie są tekstury. Poprawny model: `po = (całość − N)/4 + N`, gdzie `N` = pamięć nieteksturowa.
+> Z realnych stałych renderera (render targety ~10–50 MB przy `vidResIndex=2`, shadow 512² ×2 ≈ 2 MB,
+> swapchain ~13 MB, plus nieoszacowane bufory geometrii) `N` ≈ 50–150 MB → **~380–460 MB**.
 
 6×6 (3.56 bpp) dałoby 9× (~150 MB), ale **oba backendy hardkodują bloki 4×4**:
 
@@ -73,8 +97,8 @@ płacimy tylko za tekstury, które faktycznie się ładują, i tylko raz — pot
 ```text
 Resources::implLoadTextureUncached(name)          [Android lub iOS]
   │
-  ├─ hasSamplerFormat(DXT1)?  ── tak ─► dotychczasowe zachowanie (Adreno/desktop: natywne DXT)
-  │        │ nie  (Mali, Apple GPU)
+  ├─ hasSamplerFormat(DXT1)?  ── tak ─► dotychczasowe zachowanie (desktop: natywne DXT)
+  │        │ nie  (Mali, Adreno, Apple GPU — patrz korekta w §4)
   │        ▼
   ├─ <cache>/<NAZWA>.astc istnieje?
   │        │ tak ─► wczytaj → Pixmap(ASTC4x4) → dev.texture()      ← trafienie: szybko, skompresowane
@@ -173,9 +197,19 @@ naturalnie rozkłada się na rdzenie — ale trzeba to zweryfikować, a nie zał
 tekstur jest w praktyce jednowątkowe, pierwszy load wydłuży się liniowo. astcenc przyjmuje
 `thread_count`, więc alternatywnie można oddać mu równoległość wewnętrznie.
 
-**Ile to potrwa — liczba wyprowadzona z pomiaru, nie zgadnięta.** Zmierzone 1.38 GB RGBA8
-÷ 4 B/px = **~345 Mpikseli** dla całego Khorinisu (z mipami). To jest dokładny rozmiar zadania.
-Przy `-fast` + NEON + 8 rdzeni Helio G99 spodziewamy się rzędu **1–3 min** rozłożone na pierwszy load.
+**Ile to potrwa — rząd wielkości wyprowadzony z pomiaru.** 1.38 GB RGBA8 ÷ 4 B/px = **~345 Mpikseli**
+dla całego Khorinisu (z mipami).
+
+> **⚠️ KOREKTA (2026-07-16):** wcześniej pisało tu „**To jest dokładny rozmiar zadania**". **Nie jest.**
+> `GL mtrack` to **CAŁKOWITA** pamięć GPU — zawiera render targety, bufory geometrii i swapchain,
+> z których żadne nie są tekselami DXT i żadne nie będą kodowane. Dzielenie **całości** przez 4 B/px
+> milcząco zakłada, że 100% licznika to teksele RGBA8. **~345 Mpx to GÓRNA GRANICA, nie pomiar.**
+> Kierunek błędu jest na szczęście **bezpieczny** — zawyżona baza daje zawyżony (konserwatywny) czas
+> kodowania. **Fazа 2 musi to zmierzyć wprost** (suma `w*h` po faktycznie transkodowanych łańcuchach
+> mipów), zamiast wstecznie wyprowadzać z `mtrack`.
+
+Przy `-fast` + NEON na Helio G99 (**2× Cortex-A76 + 6× Cortex-A55**) spodziewamy się rzędu
+**1–3 min** rozłożone na pierwszy load.
 **To jest szacunek i MUSI zostać zmierzony w Fazie 1** (patrz §6) — jeśli wyjdzie 10× gorzej,
 wracamy do wariantu offline (§9) zanim cokolwiek zbudujemy.
 
@@ -200,7 +234,8 @@ obciętego pliku, który przy następnym starcie wygląda jak poprawny cache.
 **Unieważnianie:** w nagłówku zapisujemy rozmiar źródłowego wpisu VDF + wersję enkodera.
 Niezgodność → koduj ponownie. Chroni przed podmianą danych gry i zmianą parametrów astcenc.
 
-**Rozmiar na dysku:** ~350 MB przy pełnym Khorinisie — pomijalne obok 3 GB danych gry.
+**Rozmiar na dysku:** **do** ~350 MB przy pełnym Khorinisie (górna granica — wynika z tej samej
+bazy ≤345 Mpx co §5.3, a ASTC 4×4 to 1 B/px) — pomijalne obok 3 GB danych gry.
 
 ### 5.5 Postęp / UX pierwszego uruchomienia
 
@@ -220,6 +255,8 @@ Wariant B ma **cztery** niezależne niewiadome, a każda potrafi go zabić. Wszy
 w **jednym cyklu CI**, zanim powstanie choćby linijka logiki cache'u.
 
 **Faza 1 — fundament + pomiar, ~1 cykl CI (8 min).**
+*(Historyczne oszacowanie. Realnie wyszły **3 cykle / ~25 min** — plan celowo rozbił to na 2 zadania,
+by rozdzielić tryby awarii, a jeden cykl spalił błąd arności `astcenc_context_alloc`. Patrz §6a.)*
 
 1. Patche Tempesta z §5.1 (enum, `formatName`, `isCompressedFormat`×2, `blockSizeForFormat`,
    `componentCount`, mapa Vulkana)
@@ -237,13 +274,22 @@ Bez cache'u, bez ładowania ASTC, bez zmian w ścieżce zasobów.
 
 **To jest brama decyzyjna.** Jeśli ASTC nie jest wspierane → projekt martwy. Jeśli astcenc nie
 buduje się na arm64 → wracamy do wariantu offline (§9). Jeśli benchmark wskazuje np. 30 min
-zamiast 1–3 min → wracamy do offline. **Wszystko to wiemy po 8 minutach, a nie po tygodniu.**
+zamiast 1–3 min → wracamy do offline. **Wszystko to wiemy po kilkunastu minutach, a nie po tygodniu.**
+*(Realnie: 3 cykle CI, ~25 min — patrz §6a.)*
 
 **Faza 2 — cache + ładowanie + kodowanie.**
 Dopiero gdy Faza 1 przejdzie: §5.2 + §5.3 + §5.4 + §5.5.
 
 **Kryteria sukcesu Fazy 2:**
-- GPU spada z **1.38 GB do ~350 MB**, wolny RAM rośnie z **288 MB do ~1.3 GB**
+- **Podsuma tekstur spada ~4×** — Faza 2 **musi zalogować podsumę samych tekstur** (suma alokacji
+  `Texture2d` w warstwie Resources/Tempest), bo to jest jedyne, co transcoder kontroluje.
+  Orientacyjnie całkowite `GL mtrack` powinno spaść z **1.38 GB do ~380–460 MB**, a wolny RAM
+  urosnąć z **288 MB do ~1.2–1.3 GB**.
+  > **⚠️ KOREKTA (2026-07-16):** wcześniej kryterium brzmiało „GPU spada do **~350 MB**" — czyli 4×
+  > od **całego** `GL mtrack`. To kryterium **było nieosiągalne z definicji**: render targety, bufory
+  > i swapchain się nie kurczą. Udany transcoder lądujący na ~420 MB zostałby oceniony jako
+  > **porażka**. Dlatego kryterium celuje teraz w podsumę tekstur i każe ją **zmierzyć**, zamiast
+  > zgadywać `N`.
 - ostrość **niezmieniona** (porównanie A/B zrzutów komnaty Xardasa — nie „wygląda ok", tylko zrzuty)
 - pierwszy load: zmierzony czas; drugi load: z powrotem do dzisiejszych ~35 s (trafienia w cache)
 - zero regresji crashy (soak jak dotąd)
@@ -258,10 +304,10 @@ Zmierzone na Tab A9 (Helio G99 / Mali-G57 MC2), commity `8c07a4bd` + `c1597c00` 
 
 | # | Ryzyko | Kryterium | Wynik |
 |---|---|---|---|
-| 1 | Chirurgia na współdzielonym enumie rozwali backendy | CI zielone, patche zaaplikowane, zero regresji | ✅ 3 patche `patched:`, build success, **GPU 1.38 GB i PSS 2.00 GB identyczne jak przed zmianą**, pid żyje, zero `signal 11` |
+| 1 | Chirurgia na współdzielonym enumie rozwali backendy | CI zielone, patche zaaplikowane, zero regresji | ✅ 3 patche `patched:`, build success, **GPU 1.38 GB bez zmian** (PSS 2.00 vs 1.96 GB przed — ~2% szumu między przebiegami, nie „identyczne"), pid żyje, zero `signal 11` |
 | 2 | Mali nie próbkuje ASTC 4×4 | `ASTC4x4=1, DXT1=0` | ✅ **`[astcdiag] caps: DXT1=0 DXT5=0 ASTC4x4=1`** |
 | 3 | astcenc nie zbuduje się na arm64 (NDK) | APK linkuje | ✅ `astcenc-neon-static` kompiluje się i linkuje |
-| 4 | Kodowanie za wolne | ekstrapolacja na 345 Mpx | ✅ **129 s jednowątkowo / ~22 s na 6 rdzeniach** |
+| 4 | Kodowanie za wolne | ekstrapolacja na ≤345 Mpx | ✅ **129 s jednowątkowo (zmierzone)** — to samo w sobie przechodzi bramę; skalowanie wielordzeniowe **nie zmierzone** |
 
 **Benchmark (dosłowny odczyt):**
 ```
@@ -272,12 +318,29 @@ Zmierzone na Tab A9 (Helio G99 / Mali-G57 MC2), commity `8c07a4bd` + `c1597c00` 
 
 **Wnioski:**
 
-- **Szacunek §5.3 („~1–3 min") potwierdzony pomiarem.** Nawet **pesymistyczny** wariant (ładowanie
-  tekstur całkowicie szeregowe, bez skalowania na rdzenie) to **~2,2 min jednorazowo przy pierwszym
-  loadzie**. To akceptowalne i zgodne z decyzją o wariancie B. Wariant offline (§9) **nie jest
-  potrzebny** — zostaje jako plan awaryjny bez zastosowania.
-- **Kompresja 4× potwierdzona empirycznie:** `out=256 KiB vs rgba8=1024 KiB`. Czyli przewidywane
-  **1.38 GB → ~350 MB** to zmierzony fakt, nie arytmetyka na papierze.
+- **Szacunek §5.3 („~1–3 min") potwierdzony pomiarem.** **Pesymistyczny** wariant (ładowanie tekstur
+  całkowicie szeregowe) to **~2,2 min jednorazowo przy pierwszym loadzie** — i **to wystarcza, by
+  przejść bramę** (reguła planu: `T` ≤ ~3 min). Wariant offline (§9) **nie jest potrzebny** — zostaje
+  jako plan awaryjny bez zastosowania.
+  > **⚠️ KOREKTA (2026-07-16):** ta sekcja podawała „✅ 129 s jednowątkowo / **~22 s na 6 rdzeniach**"
+  > jako **WYNIK**. Liczba 22 s jest **projekcją, nie pomiarem**, i to złą:
+  > **(1) zdarte zastrzeżenie** — plan specyfikował log `" s **if it scales** over 6 cores"`, a kod
+  > ([main_android.cpp:121](game/main_android.cpp:121)) zgubił „if it scales"; ja awansowałem to do
+  > rangi ✅ wyniku. **(2) „6" nie pasuje do niczego** — Helio G99 to **2× A76 + 6× A55** (8 rdzeni);
+  > §5.3 mówiło wcześniej „8 rdzeni", §6a „6". **(3) Benchmark to `thread_count=1`** na jednym kaflu
+  > 512×512, **bez przypięcia do rdzenia** (brak `sched_setaffinity`) — nie wiadomo nawet, na jakim
+  > rdzeniu biegł, więc żaden dzielnik nie jest uzasadniony. **(4) 98 ms burst na zimnym rdzeniu** nie
+  > przewiduje 1–2 min kodowania all-core na pasywnie chłodzonym tablecie (throttling), a §5.3 sam
+  > mówi, że transkodowanie jest **leniwe** — konkuruje z ładowaniem świata o te same rdzenie.
+  > Realistyczny agregat to rząd **~3×, nie 6×** → **rzędu 40–60 s, jako szacunek, nie wynik**.
+  > **Ryzyko #4 jest zaliczone na podstawie samego pomiaru 129 s** — ekstrapolacja jest zbędna.
+- **Kompresja 4× zmierzona na pojedynczej teksturze:** `out=256 KiB vs rgba8=1024 KiB`
+  (512×512: RGBA8 = 512·512·4 = 1024 KiB; ASTC 4×4 = 128·128·16 = 256 KiB). ✅
+  > **⚠️ KOREKTA (2026-07-16):** wcześniej stało tu, że „przewidywane 1.38 GB → ~350 MB to **zmierzony
+  > fakt, nie arytmetyka na papierze**". **To była arytmetyka na papierze.** Zmierzony jest stosunek
+  > 4× dla **jednej** tekstury; przeniesienie go na zbiorczy licznik `GL mtrack` **nie jest pomiarem**.
+  > To dokładnie ta klasa błędu, za którą raport krytykuje mnie w sprawie 69 MB na Adreno —
+  > „dorobiłem wyjaśnienie do liczby i uznałem je za fakt". Realne lądowanie: **~380–460 MB** (§3).
 - **Ryzyko #1 okazało się niższe, niż zakładano:** Tempest **nie używa `-Werror`** (tylko wyciszenia
   `-Wno-*` dla zależności trzecich), więc brakujący case w switchu to ostrzeżenie, nie błąd.
   `-Werror` dotyczy wyłącznie targetu gry, a `game/` nie ma żadnego switcha po `TextureFormat`.
@@ -300,7 +363,7 @@ fundamencie, który mógł nie istnieć. Jeden cykl spalił błąd arności `ast
 
 | Ryzyko | Skala | Mitygacja |
 |---|---|---|
-| Chirurgia na współdzielonym enumie przez perl rozwala inne backendy | **wysoka** | **Faza 1** — weryfikacja za 8 min |
+| Chirurgia na współdzielonym enumie przez perl rozwala inne backendy | ~~wysoka~~ → **zamknięte** | **Faza 1 zaliczona** (§6a) — realnie 3 cykle CI / ~25 min, nie 8 min jak planowano |
 | Arytmetyka pozycyjna `frm - DXT1` (pixmap.cpp:68) | wysoka | ASTC **na końcu** enuma; zabezpieczyć ścieżkę |
 | **astcenc nie buduje się / nie linkuje na arm64 (NDK)** | **wysoka** | **Faza 1** — punkt 2; fallback = wariant offline (§9) |
 | **Kodowanie dużo wolniejsze niż szacowane 1–3 min** | **wysoka** | **Faza 1** — mikro-benchmark → ekstrapolacja na 345 Mpx; fallback = offline |

@@ -24,6 +24,12 @@
 >    `bool→int` is a promotion so it would compile, but the caps log now uses explicit `int()` casts
 >    rather than resting on overload-resolution ranking.
 > 5. **Pinned tag is 5.6.0, not 5.3.0** (latest stable at execution time).
+> 6. **The plan's premise that Adreno "has BC" was WRONG — and this is the most consequential of the
+>    six.** Step 7 predicted `A23: DXT1=1 DXT5=1`; the measurement was **`DXT1=0 DXT5=0 ASTC4x4=1`**,
+>    identical to Mali. Mobile Vulkan essentially has no BC/S3TC at all — both Mali and Adreno rely on
+>    ETC2/ASTC. The CMake comment shipped in Task 2 ("desktop and Adreno sample DXT natively and never
+>    need it") is wrong for the same reason and should be corrected in `CMakeLists.txt`. Consequence is
+>    favourable: ASTC helps every tested device through one path.
 >
 > **Verified as written:** the target name guess `astcenc-neon-static` was correct
 > (`astc${CODEC}-${ISA}-static`, Source/cmake_core.cmake:18), the header is at `Source/astcenc.h`,
@@ -49,7 +55,7 @@ Spec: [`docs/superpowers/specs/2026-07-16-astc-transcoder-design.md`](../specs/2
 - **Do not touch** the `[INTERNAL] androidTexCap` escape hatch (default 0/off) or the resource-loading path.
 - Real-file reference copy for dry-runs: `E:\claude\opengothic\OpenGothic\lib\Tempest\Engine\...` (main clone, same submodule commit).
 - Scratch dir: `C:\Users\pbaran\AppData\Local\Temp\claude\E--claude-opengothic\d1bba110-13cd-455a-95fd-fc1cf3fa0a78\scratchpad`.
-- Devices: Tab A9 / Mali-G57 = `R83Y81NE23H` (target). Galaxy A23 / Adreno 619 = `R5CT92SB0YL` (control, has BC).
+- Devices: Tab A9 / Mali-G57 = `R83Y81NE23H` (target). Galaxy A23 / Adreno 619 = `R5CT92SB0YL` (control — **the plan assumed it "has BC"; Phase 1 measured `DXT1=0`, so it does NOT**. See the EXECUTED banner, item 6.)
 - adb: `C:\Users\pbaran\AppData\Local\Android\Sdk\platform-tools\adb.exe`.
 
 ### Verified facts this plan depends on
@@ -92,7 +98,7 @@ Adds `ASTC4x4` to the shared enum and logs whether the GPU can sample it. Valida
 - Consumes: nothing.
 - Produces: `Tempest::TextureFormat::ASTC4x4` (enum value, appended before `Last`); `Tempest::Detail::nativeFormat(ASTC4x4) == VK_FORMAT_ASTC_4x4_UNORM_BLOCK`; `isCompressedFormat(ASTC4x4) == true`; `Pixmap::blockSizeForFormat(ASTC4x4) == 16`; `Pixmap::componentCount(ASTC4x4) == 4`. Task 2 and Phase 2 rely on these exact names.
 
-- [ ] **Step 1: Dry-run all six Tempest patches against real copies (BEFORE editing the script)**
+- [ ] **Step 1: Dry-run all seven Tempest patches against real copies (BEFORE editing the script)**
 
 This is the test. A wrong regex costs an 8-minute CI cycle, so prove every pattern matches first.
 

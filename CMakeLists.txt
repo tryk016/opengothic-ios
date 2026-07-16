@@ -211,10 +211,12 @@ set(ZK_ENABLE_DEPRECATION      OFF CACHE INTERNAL "")
 add_subdirectory(lib/ZenKit)
 target_link_libraries(${PROJECT_NAME} zenkit)
 
-# astcenc — DXT->ASTC transcoding for GPUs without BC/S3TC (Mali, Apple).
-# Those GPUs make Tempest decompress every DXT texture to RGBA8 (4-8x memory);
-# ASTC keeps them compressed at full resolution. Android-only for now: desktop
-# and Adreno sample DXT natively and never enter that path.
+# astcenc — DXT->ASTC transcoding for GPUs without BC/S3TC.
+# Such GPUs make Tempest decompress every DXT texture to RGBA8 (4-8x memory);
+# ASTC keeps them compressed at full resolution. Android-only for now; desktop
+# samples DXT natively and never enters that path.
+# NOTE: mobile Vulkan essentially has no BC at all -- Phase 1 measured DXT1=0 on
+# BOTH Mali-G57 and Adreno 619, so this is not a Mali-specific workaround.
 # See docs/superpowers/specs/2026-07-16-astc-transcoder-design.md
 if(ANDROID)
   set(ASTCENC_CLI            OFF CACHE INTERNAL "") # library only, no command-line tool
