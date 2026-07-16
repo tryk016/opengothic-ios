@@ -1,7 +1,7 @@
 # DXT→ASTC transcoder — projekt (Android + iOS)
 
 Data: 2026-07-16
-Status: zatwierdzony kierunek (wariant A — transkodowanie offline na PC), do implementacji fazami
+Status: zatwierdzony kierunek (wariant B — transkodowanie **na urządzeniu**, leniwe + cache dyskowy), do implementacji fazami
 Dotyczy: portu Android (`android`) **oraz** portu iOS (`master`) — projekt jest celowo platform-neutralny
 
 ## 1. Problem
@@ -67,15 +67,23 @@ wymiarów bloku w Vulkanie *i* Metalu. Dlatego: **4×4**. 4× wystarcza (288 MB 
 
 ## 4. Architektura
 
+Wszystko dzieje się **na urządzeniu, bez żadnego kroku ręcznego**. Transkodowanie jest **leniwe**:
+płacimy tylko za tekstury, które faktycznie się ładują, i tylko raz — potem jest cache.
+
 ```text
-[PC / Windows]                       [urządzenie: Android lub iOS]
-tools/astc-transcode.exe             OpenGothic
-  ├─ ZenKit: czyta VDF                 ├─ Resources::implLoadTextureUncached
-  ├─ ZenKit: Texture::as_rgba8(lvl)    │    └─ if(!hasSamplerFormat(DXT))
-  │    (dekoduje DXT → RGBA8)          │         → szukaj <cache>/<NAZWA>.astc
-  ├─ astcenc: RGBA8 → ASTC 4×4         │         → znaleziony: Pixmap(ASTC4x4)  ← skompresowana!
-  │    (pełny łańcuch mipów)           │         → brak: dotychczasowe zachowanie (RGBA8)
-  └─ zapis <NAZWA>.astc  ──push──►     └─ Tempest: próbkuje ASTC natywnie
+Resources::implLoadTextureUncached(name)          [Android lub iOS]
+  │
+  ├─ hasSamplerFormat(DXT1)?  ── tak ─► dotychczasowe zachowanie (Adreno/desktop: natywne DXT)
+  │        │ nie  (Mali, Apple GPU)
+  │        ▼
+  ├─ <cache>/<NAZWA>.astc istnieje?
+  │        │ tak ─► wczytaj → Pixmap(ASTC4x4) → dev.texture()      ← trafienie: szybko, skompresowane
+  │        │ nie
+  │        ▼
+  ├─ ZenKit Texture::as_rgba8(lvl)      (dekoduje DXT → RGBA8, i tak to dziś robimy)
+  ├─ astcenc: RGBA8 → ASTC 4×4          (pełny łańcuch mipów)      ← koszt jednorazowy
+  ├─ zapisz <cache>/<NAZWA>.astc        (atomowo: tmp + rename)
+  └─ Pixmap(ASTC4x4) → dev.texture()
 ```
 
 **Gating przez możliwości GPU, nie przez `#if`.** Warunek to `!hasSamplerFormat(DXT1)`:
@@ -137,56 +145,99 @@ if(format is DXT):
 
 `androidTexCap` **zostaje** jako awaryjny zawór (gdyby komuś brakło RAM-u), ale domyślnie 0.
 
-### 5.3 tools/astc-transcode — narzędzie na PC
+### 5.3 astcenc na urządzeniu
 
-Mały program C++, **bez Tempesta i bez Vulkana** — tylko:
-- **ZenKit** (już jest submodułem): `Vfs` czyta VDF-y, `Texture::load` + `as_rgba8(lvl)` dekoduje DXT
-- **astcenc** (ARM, nowy vendored/submoduł): koduje RGBA8 → ASTC 4×4
+**astcenc** (ARM, Apache-2.0) wchodzi jako vendored/submoduł do builda Androida **i** iOS.
+Buduje się przez CMake, ma oficjalne wsparcie arm64 + NEON (`ASTCENC_ISA_NEON=ON`).
+Linkujemy **bibliotekę** (`astcenc-static`), nie CLI.
 
-Pętla: dla każdej tekstury `*-C.TEX` w VDF-ach → dla każdego poziomu mip → `as_rgba8(lvl)` →
-astcenc → zapis pliku `.astc` (standardowy nagłówek 16 B) z pełnym łańcuchem mipów.
+Wywołanie: preset **`ASTCENC_PRE_FAST`**, profil `ASTCENC_PRF_LDR` (nie sRGB — dopasować do tego,
+jak dziś traktujemy RGBA8), blok **4×4**. Kontekst astcenc tworzymy **raz** (jest kosztowny)
+i reużywamy; jest thread-safe przy użyciu `thread_index`.
+
+**Wątkowanie.** Tekstury ładują się w OpenGothicu z workerów (`Workers`), więc kodowanie
+naturalnie rozkłada się na rdzenie — ale trzeba to zweryfikować, a nie założyć: jeśli ładowanie
+tekstur jest w praktyce jednowątkowe, pierwszy load wydłuży się liniowo. astcenc przyjmuje
+`thread_count`, więc alternatywnie można oddać mu równoległość wewnętrznie.
+
+**Ile to potrwa — liczba wyprowadzona z pomiaru, nie zgadnięta.** Zmierzone 1.38 GB RGBA8
+÷ 4 B/px = **~345 Mpikseli** dla całego Khorinisu (z mipami). To jest dokładny rozmiar zadania.
+Przy `-fast` + NEON + 8 rdzeni Helio G99 spodziewamy się rzędu **1–3 min** rozłożone na pierwszy load.
+**To jest szacunek i MUSI zostać zmierzony w Fazie 1** (patrz §6) — jeśli wyjdzie 10× gorzej,
+wracamy do wariantu offline (§9) zanim cokolwiek zbudujemy.
+
+Ponieważ transkodowanie jest **leniwe**, kodujemy wyłącznie tekstury faktycznie ładowane —
+nigdy nie płacimy za zawartość VDF-ów, której gra nie użyje.
 
 **Uwaga o jakości:** DXT jest już stratny, więc DXT→RGBA→ASTC to **strata drugiej generacji**.
 Dla gry z 2003 powinno być wizualnie nieodróżnialne, ale należy to sprawdzić na zrzutach
 (porównanie A/B komnaty Xardasa), a nie zakładać.
 
-**Uwaga o czasie:** astcenc jest wolny. Na PC (x86, wielowątkowo, preset `-fast`/`-medium`)
-~2000 tekstur to minuty — akceptowalne jako krok jednorazowy. To jest **cały powód**, dla którego
-wybraliśmy wariant A zamiast kodowania na urządzeniu.
+### 5.4 Cache na dysku
 
-### 5.4 CI
+- Android: `/sdcard/OpenGothic/astc/` — przeżywa reinstalację APK (jak dane gry)
+- iOS: katalog danych aplikacji + `/astc/`
+- Ścieżka konfigurowalna: `Gothic.ini` `[INTERNAL] astcCacheDir`
 
-Nowy workflow `windows.yml` (`runs-on: windows-latest`) budujący **tylko** target `astc-transcode`
-(bez Vulkan SDK, bez Tempesta) → publikuje `astc-transcode.exe` jako asset release'u.
-Obecnie repo ma tylko `android.yml` (ubuntu) i `ios.yml` (macos) — **nie ma builda desktopowego**.
+**Format pliku:** standardowy `.astc` (nagłówek 16 B) z pełnym łańcuchem mipów.
 
-### 5.5 Workflow użytkownika
+**Zapis atomowy:** `tmp` + `rename`, żeby zabicie procesu w trakcie kodowania nie zostawiło
+obciętego pliku, który przy następnym starcie wygląda jak poprawny cache.
 
-1. Pobierz `astc-transcode.exe` z release'u
-2. `astc-transcode.exe -g "C:\...\Gothic II" -o astc-cache`
-3. `adb push astc-cache /sdcard/OpenGothic/astc` (iOS: przez ten sam kanał co dane gry)
-4. Gra sama wykryje cache i użyje go, jeśli GPU nie ma BC
+**Unieważnianie:** w nagłówku zapisujemy rozmiar źródłowego wpisu VDF + wersję enkodera.
+Niezgodność → koduj ponownie. Chroni przed podmianą danych gry i zmianą parametrów astcenc.
+
+**Rozmiar na dysku:** ~350 MB przy pełnym Khorinisie — pomijalne obok 3 GB danych gry.
+
+### 5.5 Postęp / UX pierwszego uruchomienia
+
+Pierwszy load jest dłuższy o czas kodowania. Istniejący ekran „WCZYTYWANIE" ma już pasek postępu,
+więc **prawdopodobnie nie potrzeba nowego UI** — kodowanie wlicza się w normalny postęp ładowania.
+Do zweryfikowania po zmierzeniu realnego czasu; jeśli okaże się długie, dodać komunikat
+w rodzaju „przygotowywanie tekstur (jednorazowo)".
+
+### 5.6 Workflow użytkownika
+
+**Żaden.** Instalujesz APK, uruchamiasz, grasz. Pierwszy load raz dłuższy, potem cache.
+To jest cały powód wyboru wariantu B.
 
 ## 6. Fazowanie (de-ryzykowanie)
 
-**Faza 1 — fundament, ~1 cykl CI (8 min).**
-Same patche Tempesta z 5.1 + log przy starcie: `hasSamplerFormat(ASTC4x4)` oraz `hasSamplerFormat(DXT1)`.
-Bez narzędzia, bez cache'u, bez enkodera.
+Wariant B ma **cztery** niezależne niewiadome, a każda potrafi go zabić. Wszystkie są sprawdzalne
+w **jednym cyklu CI**, zanim powstanie choćby linijka logiki cache'u.
 
-**Kryterium sukcesu:** logcat na Tab A9 pokazuje `ASTC4x4=true, DXT1=false`, gra działa jak dziś
-(zero regresji). To weryfikuje **najbardziej kruchą część** (chirurgia na współdzielonym enumie
-przez perl + realne wsparcie ASTC na Mali) zanim cokolwiek na niej zbudujemy.
+**Faza 1 — fundament + pomiar, ~1 cykl CI (8 min).**
 
-Jeśli Faza 1 padnie → wiemy po 8 minutach, a nie po zbudowaniu narzędzia i enkodera.
+1. Patche Tempesta z §5.1 (enum, `formatName`, `isCompressedFormat`×2, `blockSizeForFormat`,
+   `componentCount`, mapa Vulkana)
+2. astcenc podpięty do builda Androida (arm64 + NEON) — **sam fakt, że się linkuje**
+3. Log przy starcie: `hasSamplerFormat(DXT1)` i `hasSamplerFormat(ASTC4x4)`
+4. **Mikro-benchmark:** zakoduj jedną teksturę 512×512 przez astcenc, zaloguj ms
 
-**Faza 2 — narzędzie + cache + ładowanie.**
-Dopiero gdy Faza 1 potwierdzi grunt: 5.2 + 5.3 + 5.4, weryfikacja A/B jakości i pomiar pamięci.
+Bez cache'u, bez ładowania ASTC, bez zmian w ścieżce zasobów.
 
-**Kryterium sukcesu Fazy 2:** GPU spada z 1.38 GB do ~350 MB przy **niezmienionej ostrości**
-(porównanie zrzutów), wolny RAM rośnie z 288 MB do ~1.3 GB, brak regresji crashy.
+**Kryteria sukcesu:**
+- logcat na Tab A9: `DXT1=false, ASTC4x4=true` → Mali faktycznie próbkuje ASTC 4×4
+- APK się buduje i linkuje z astcenc na arm64 → enkoder jest wykonalny na urządzeniu
+- benchmark daje Mpx/s → ekstrapolacja na 345 Mpx = **realny czas pierwszego loadu**
+- gra działa jak dziś, zero regresji → chirurgia na współdzielonym enumie nikogo nie rozwaliła
 
-**Faza 3 (opcjonalna, później).** Kodowanie na urządzeniu (astcenc na arm64 + cache + UI postępu),
-gdyby kiedyś potrzebne było zero kroków na PC. Fundament z Fazy 1 jest wtedy już gotowy.
+**To jest brama decyzyjna.** Jeśli ASTC nie jest wspierane → projekt martwy. Jeśli astcenc nie
+buduje się na arm64 → wracamy do wariantu offline (§9). Jeśli benchmark wskazuje np. 30 min
+zamiast 1–3 min → wracamy do offline. **Wszystko to wiemy po 8 minutach, a nie po tygodniu.**
+
+**Faza 2 — cache + ładowanie + kodowanie.**
+Dopiero gdy Faza 1 przejdzie: §5.2 + §5.3 + §5.4 + §5.5.
+
+**Kryteria sukcesu Fazy 2:**
+- GPU spada z **1.38 GB do ~350 MB**, wolny RAM rośnie z **288 MB do ~1.3 GB**
+- ostrość **niezmieniona** (porównanie A/B zrzutów komnaty Xardasa — nie „wygląda ok", tylko zrzuty)
+- pierwszy load: zmierzony czas; drugi load: z powrotem do dzisiejszych ~35 s (trafienia w cache)
+- zero regresji crashy (soak jak dotąd)
+
+**Faza 3 — iOS.** Powielić patche w `ios/patches/apply-patches.sh` + case w Metalu + astcenc
+w buildzie iOS. §5.2 (`resources.cpp`) i cały cache działają bez zmian dzięki gatingowi
+po możliwościach GPU.
 
 ## 7. Ryzyka
 
@@ -194,17 +245,22 @@ gdyby kiedyś potrzebne było zero kroków na PC. Fundament z Fazy 1 jest wtedy 
 |---|---|---|
 | Chirurgia na współdzielonym enumie przez perl rozwala inne backendy | **wysoka** | **Faza 1** — weryfikacja za 8 min |
 | Arytmetyka pozycyjna `frm - DXT1` (pixmap.cpp:68) | wysoka | ASTC **na końcu** enuma; zabezpieczyć ścieżkę |
+| **astcenc nie buduje się / nie linkuje na arm64 (NDK)** | **wysoka** | **Faza 1** — punkt 2; fallback = wariant offline (§9) |
+| **Kodowanie dużo wolniejsze niż szacowane 1–3 min** | **wysoka** | **Faza 1** — mikro-benchmark → ekstrapolacja na 345 Mpx; fallback = offline |
+| Ładowanie tekstur jednowątkowe → pierwszy load bardzo długi | średnia | zweryfikować `Workers`; ewentualnie oddać `thread_count` astcenc |
 | Podwójna strata (DXT→RGBA→ASTC) widoczna | średnia | porównanie A/B zrzutów, nie założenie |
-| astcenc wolny / duży cache na dysku | niska | krok jednorazowy na PC; ~350 MB plików |
-| Cache rozjeżdża się z danymi gry | niska | narzędzie uruchamiane ręcznie; ewentualnie hash w nagłówku |
-| Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp) | niska | gating `!hasSamplerFormat(DXT1)` — Adreno pomija cache |
+| Przerwane kodowanie zostawia obcięty plik = trwale zepsuta tekstura | średnia | zapis atomowy (tmp + rename), §5.4 |
+| Cache rozjeżdża się z danymi gry / zmianą parametrów astcenc | niska | rozmiar wpisu VDF + wersja enkodera w nagłówku |
+| APK rośnie o astcenc | niska | ~1–2 MB, pomijalne |
+| Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp) | niska | gating `!hasSamplerFormat(DXT1)` — Adreno w ogóle nie wchodzi w tę ścieżkę |
 
 ## 8. Co to daje iOS
 
 iOS ma **dokładnie ten sam problem** (Apple GPU nie ma BC → ta sama ścieżka device.cpp:199 → RGBA8).
 Dzięki gatingowi po możliwościach GPU, a nie po `#if`:
 
-- **Ten sam cache ASTC** działa na obu portach — narzędzie na PC uruchamiasz raz
+- **Ta sama logika transkodowania i cache'u** działa na obu portach — każde urządzenie buduje
+  sobie cache samo, przy pierwszym uruchomieniu, bez żadnego kroku ręcznego
 - **`resources.cpp` jest wspólny** — logika ładowania cache'u działa na iOS bez zmian
 - Do zrobienia po stronie iOS: powielić patche Tempesta w `ios/patches/apply-patches.sh`
   + jeden case w backendzie Metal (`MTL::PixelFormatASTC_4x4_LDR`) — backend **już zna ASTC**
@@ -219,7 +275,16 @@ Oczekiwany zysk na iOS jest tego samego rzędu co na Androidzie (~1 GB w dół).
   **i** Metalu (oba hardkodują 4×4). 4× wystarcza.
 - **ETC2** — Mali obsługuje, ale Apple GPU wolą ASTC, a ETC2 ma gorszą jakość przy alfie.
   ASTC jest wspólnym mianownikiem obu platform.
-- **Kodowanie na urządzeniu przy ładowaniu** — astcenc za wolny, zniszczyłby czasy ładowania.
-- **Mip-cap jako rozwiązanie docelowe** — zmierzone jako ślepa uliczka (§1).
+- **Kodowanie na urządzeniu przy ładowaniu, BEZ cache'u** — zapłacilibyśmy koszt kodowania przy
+  każdym starcie. Stąd cache dyskowy: płacimy raz.
+- **Transkodowanie offline na PC (wariant A)** — odrzucone świadomie, mimo że technicznie
+  najprostsze (zero astcenc na arm64, zero kosztu pierwszego startu). Powód: wymaga narzędzia
+  `.exe`, nowego workflow `windows-latest`, ręcznego kroku przy każdej zmianie danych i czyni port
+  bezużytecznym dla kogokolwiek bez tego narzędzia. **Bezobsługowość wygrywa z prostotą implementacji.**
+  **Zachowane jako plan awaryjny:** jeśli Faza 1 pokaże, że astcenc nie buduje się na arm64 albo
+  koduje absurdalnie wolno, wracamy tutaj. Projekt jest wtedy w większości wspólny — różni się
+  tylko *gdzie* biegnie enkoder; §5.1 i §5.2 zostają bez zmian.
+- **Mip-cap jako rozwiązanie docelowe** — zmierzone jako ślepa uliczka (§1). `androidTexCap`
+  zostaje wyłącznie jako awaryjny zawór, domyślnie 0.
 - **Basis Universal / UASTC** — kolejna warstwa stratności i duża zależność; astcenc jest
   bezpośredni i referencyjny.
