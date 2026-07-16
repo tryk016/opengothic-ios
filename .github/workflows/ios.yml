@@ -1,8 +1,10 @@
-name: iOS build
+name: iOS Lanczos compatibility build
 
-# Production branches build an UNSIGNED .ipa and publish it to the "latest"
-# release. Builds from master publish it as a stable release; other production
-# branches keep it marked as a prerelease. The codex/ios-performance branch and
+# Production branches build an UNSIGNED Lanczos compatibility .ipa and publish
+# it to the "latest" release. The recommended MetalFX Temporal channel is built
+# by ios-metalfx-temporal.yml. Builds from master publish this compatibility
+# variant as a stable release; other production branches keep it marked as a
+# prerelease. The codex/ios-performance branch and
 # its experiment branches instead
 # create an ad-hoc-signed, entitlement-carrying SideStore test artifact and
 # never update "latest".
@@ -132,29 +134,29 @@ jobs:
           IPA_URL="$BASE/releases/download/latest/OpenGothic-unsigned.ipa"
           cat > apps.json <<EOF
           {
-            "name": "OpenGothic iOS",
+            "name": "OpenGothic iOS — Lanczos Compatibility",
             "identifier": "opengothic.gothic2.source",
             "sourceURL": "$BASE/releases/download/latest/apps.json",
             "apps": [
               {
-                "name": "OpenGothic",
+                "name": "OpenGothic Lanczos Compatibility",
                 "bundleIdentifier": "opengothic.gothic2",
                 "developerName": "Try (engine) · iOS port",
-                "subtitle": "Unofficial iOS port of OpenGothic",
-                "localizedDescription": "Unofficial iOS port of OpenGothic — an open-source re-implementation of Gothic II: Night of the Raven. Requires your own legally-owned Gothic II game data (no assets included). Work in progress.",
+                "subtitle": "Compatibility build without MetalFX",
+                "localizedDescription": "Lanczos compatibility variant of the unofficial OpenGothic iOS port. Use it if the recommended MetalFX Temporal build crashes or shows a device-specific graphics problem. Requires your own legally-owned Gothic II game data; no game assets are included.",
                 "iconURL": "$RAW/ios/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png",
                 "tintColor": "8B0000",
                 "category": "games",
                 "version": "$VERSION",
                 "versionDate": "$DATE",
-                "versionDescription": "Automated CI build $VERSION.",
+                "versionDescription": "Lanczos compatibility build $VERSION. Defaults: 30 FPS and 1024 px shadow maps.",
                 "downloadURL": "$IPA_URL",
                 "size": $SIZE,
                 "versions": [
                   {
                     "version": "$VERSION",
                     "date": "$DATE",
-                    "localizedDescription": "Automated CI build $VERSION.",
+                    "localizedDescription": "Lanczos compatibility build $VERSION. Defaults: 30 FPS and 1024 px shadow maps.",
                     "downloadURL": "$IPA_URL",
                     "size": $SIZE
                   }
@@ -171,7 +173,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Unsigned iOS build \`1.0.${{ github.run_number }}\` (commit ${{ github.sha }}).
+          NOTES="Unsigned Lanczos compatibility iOS build \`1.0.${{ github.run_number }}\` (commit ${{ github.sha }}).
+
+          Use this build if the recommended MetalFX Temporal release crashes or shows a device-specific graphics problem. This compatibility variant uses the established Lanczos upscaler and does not enable MetalFX.
+
+          The iOS profile defaults to 30 FPS and 1024 px shadow maps. Existing explicit FPS choices remain unchanged; the legacy generated 512 px shadow setting is upgraded once.
 
           **Download:** \`OpenGothic-unsigned.ipa\` below, then sideload with your own free Apple ID via SideStore / AltStore / Sideloadly.
           **SideStore source:** add this URL in SideStore → Sources → +
@@ -184,7 +190,8 @@ jobs:
             RELEASE_STATUS=(--prerelease)
           fi
           if gh release view latest >/dev/null 2>&1; then
-            gh release edit latest "${RELEASE_STATUS[@]}" --notes "$NOTES"
+            gh release edit latest "${RELEASE_STATUS[@]}" \
+              --title "OpenGothic iOS — Lanczos Compatibility" --notes "$NOTES"
             # --clobber can hit "ReleaseAsset.name already exists" (HTTP 422)
             # when a previous upload left a stale/partial asset behind. Delete
             # explicitly first, then upload fresh; retry once for API races.
@@ -195,7 +202,7 @@ jobs:
               { sleep 10; gh release upload latest OpenGothic-unsigned.ipa apps.json --clobber; }
           else
             gh release create latest OpenGothic-unsigned.ipa apps.json \
-              --title "OpenGothic iOS — latest" "${RELEASE_STATUS[@]}" --notes "$NOTES"
+              --title "OpenGothic iOS — Lanczos Compatibility" "${RELEASE_STATUS[@]}" --notes "$NOTES"
           fi
 
       - name: Upload .ipa artifact (backup, for logged-in users)

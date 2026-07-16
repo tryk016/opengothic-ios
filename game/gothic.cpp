@@ -115,6 +115,12 @@ Gothic::Gothic() {
 #endif
   iniFile.reset(new IniFile(u"Gothic.ini"));
 #if defined(__IOS__) || defined(__ANDROID__)
+  // Shared mobile profile. The `ios*` names are kept as-is (rather than renamed
+  // to something platform-neutral) to keep this block byte-identical to master
+  // wherever possible -- every gratuitous difference here is a future merge
+  // conflict, and this file is the only one master and android both touch.
+  constexpr int iosProfileVersion = 2;
+  bool          iosProfileChanged = false;
   if(!hasUserIni) {
     // Keep the copied PC system/Gothic.ini untouched. This small writable
     // overlay gives a fresh mobile install (iOS/Android) its device profile
@@ -123,13 +129,39 @@ Gothic::Gothic() {
     iniFile->set("GAME",     "useQuickSaveKeys",  1);
     iniFile->set("INTERNAL", "vidResIndex",       2);
     iniFile->set("ENGINE",   "zCloudShadowScale", 0);
-    iniFile->set("ENGINE",   "shadowResolution", 512);
+#if defined(__ANDROID__)
+    // Budget Android GPUs are far weaker than Apple's: a Mali-G57 MC2 measures
+    // ~16 FPS at full quality, and a 1024 shadow map is 4x the fill of a 512 one.
+    iniFile->set("ENGINE",   "shadowResolution",  512);
+#else
+    iniFile->set("ENGINE",   "shadowResolution", 1024);
+#endif
+    iniFile->set("ENGINE",   "zMaxFpsMode",       1);
     iniFile->set("GAMEPAD",  "deadZone",          0.25f);
     iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
     iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
     iniFile->set("GAMEPAD",  "triggerThreshold",  0.50f);
     iniFile->set("GAMEPAD",  "lookSensitivity",   0.20f);
     iniFile->set("GAMEPAD",  "invertY",           0);
+    iosProfileChanged = true;
+    }
+  else if(iniFile->getI("INTERNAL","iosProfileVersion",0)<iosProfileVersion) {
+    // Upgrade only values that can be identified as the previous generated
+    // profile. Explicit Off/30/60 choices already have zMaxFpsMode and remain
+    // untouched; a missing choice adopts the new 30 FPS default.
+#if !defined(__ANDROID__)
+    // Android deliberately stays at 512 (see the seed above), so this upgrade
+    // must not fire there -- it would read our intended value as a stale one and
+    // quadruple the shadow fill on the weakest GPUs we support.
+    if(iniFile->getI("ENGINE","shadowResolution",-1)==512)
+      iniFile->set("ENGINE", "shadowResolution", 1024);
+#endif
+    if(!iniFile->has("ENGINE","zMaxFpsMode"))
+      iniFile->set("ENGINE", "zMaxFpsMode", 1);
+    iosProfileChanged = true;
+    }
+  if(iosProfileChanged) {
+    iniFile->set("INTERNAL", "iosProfileVersion", iosProfileVersion);
     iniFile->flush();
     }
 #else
@@ -172,7 +204,8 @@ Gothic::Gothic() {
 #if defined(__IOS__)
   // 0 = uncapped, 1 = 30 FPS, 2 = 60 FPS. The iOS game-options menu maps the
   // requested replacement choice to this runtime setting.
-  defaults->set("ENGINE",       "zMaxFpsMode", 0);
+  defaults->set("ENGINE",       "zMaxFpsMode",       1);
+  defaults->set("ENGINE",       "shadowResolution", 1024);
 #endif
 
   defaults->set("VIDEO", "zVidBrightness", 0.5f);

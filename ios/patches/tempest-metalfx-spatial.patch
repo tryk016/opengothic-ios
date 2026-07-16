@@ -1,0 +1,340 @@
+diff --git a/Engine/CMakeLists.txt b/Engine/CMakeLists.txt
+index 5f2c9d65..eea5af79 100644
+--- a/Engine/CMakeLists.txt
++++ b/Engine/CMakeLists.txt
+@@ -329,0 +330,4 @@ elseif(IOS)
++  if(OPENGOTHIC_METALFX_SPATIAL)
++    target_compile_definitions(${PROJECT_NAME} PRIVATE TEMPEST_METALFX_SPATIAL=1)
++    target_link_libraries(${PROJECT_NAME} PRIVATE "-weak_framework MetalFX")
++  endif()
+diff --git a/Engine/gapi/abstractgraphicsapi.cpp b/Engine/gapi/abstractgraphicsapi.cpp
+index a0826cd4..4c5d79d8 100644
+--- a/Engine/gapi/abstractgraphicsapi.cpp
++++ b/Engine/gapi/abstractgraphicsapi.cpp
+@@ -87,0 +88,4 @@ void AbstractGraphicsApi::CommandBuffer::setDebugMarker(std::string_view tag) {
++bool AbstractGraphicsApi::CommandBuffer::spatialUpscale(SpatialScaler&, Texture&, Texture&) {
++  return false;
++  }
++
+@@ -104,0 +109,5 @@ AbstractGraphicsApi::AccelerationStructure*
++AbstractGraphicsApi::SpatialScaler*
++  AbstractGraphicsApi::createSpatialScaler(Device*, const SpatialScalerDesc&) {
++  return nullptr;
++  }
++
+diff --git a/Engine/gapi/abstractgraphicsapi.h b/Engine/gapi/abstractgraphicsapi.h
+index 51fe4ef8..ad7de277 100644
+--- a/Engine/gapi/abstractgraphicsapi.h
++++ b/Engine/gapi/abstractgraphicsapi.h
+@@ -133,0 +134,16 @@ namespace Tempest {
++  enum class SpatialScalerColorMode : uint8_t {
++    Perceptual,
++    Linear,
++    HDR,
++    };
++
++  struct SpatialScalerDesc final {
++    TextureFormat          inputFormat  = Undefined;
++    TextureFormat          outputFormat = Undefined;
++    uint32_t               inputWidth   = 0;
++    uint32_t               inputHeight  = 0;
++    uint32_t               outputWidth  = 0;
++    uint32_t               outputHeight = 0;
++    SpatialScalerColorMode colorMode    = SpatialScalerColorMode::Perceptual;
++    };
++
+@@ -532,0 +549 @@ namespace Tempest {
++      struct SpatialScaler:NoCopy {};
+@@ -586,0 +604 @@ namespace Tempest {
++        virtual bool spatialUpscale(SpatialScaler& scaler, Texture& input, Texture& output);
+@@ -652,0 +671 @@ namespace Tempest {
++      virtual SpatialScaler* createSpatialScaler(Device* d, const SpatialScalerDesc& desc);
+diff --git a/Engine/gapi/metal/metal_cpp.mm b/Engine/gapi/metal/metal_cpp.mm
+index 7fa7137b..d4186e50 100644
+--- a/Engine/gapi/metal/metal_cpp.mm
++++ b/Engine/gapi/metal/metal_cpp.mm
+@@ -3,0 +4,3 @@
++#if defined(TEMPEST_METALFX_SPATIAL)
++#define MTLFX_PRIVATE_IMPLEMENTATION
++#endif
+@@ -6,0 +10,3 @@
++#if defined(TEMPEST_METALFX_SPATIAL)
++#include <MetalFX/MetalFX.hpp>
++#endif
+diff --git a/Engine/gapi/metal/mtcommandbuffer.cpp b/Engine/gapi/metal/mtcommandbuffer.cpp
+index 2997f449..e2837c26 100644
+--- a/Engine/gapi/metal/mtcommandbuffer.cpp
++++ b/Engine/gapi/metal/mtcommandbuffer.cpp
+@@ -12,0 +13,3 @@
++#if defined(TEMPEST_METALFX_SPATIAL)
++#include "mtspatialscaler.h"
++#endif
+@@ -798,0 +802,12 @@ void MtCommandBuffer::copy(AbstractGraphicsApi::Buffer& dest, size_t offset,
++#if defined(TEMPEST_METALFX_SPATIAL)
++bool MtCommandBuffer::spatialUpscale(AbstractGraphicsApi::SpatialScaler& scaler,
++                                     AbstractGraphicsApi::Texture& input,
++                                     AbstractGraphicsApi::Texture& output) {
++  setEncoder(E_None,nullptr);
++  auto& sx  = reinterpret_cast<MtSpatialScaler&>(scaler);
++  auto& src = reinterpret_cast<MtTexture&>(input);
++  auto& dst = reinterpret_cast<MtTexture&>(output);
++  return sx.encode(*impl,src,dst);
++  }
++#endif
++
+diff --git a/Engine/gapi/metal/mtcommandbuffer.h b/Engine/gapi/metal/mtcommandbuffer.h
+index 0d49c76c..0001ba94 100644
+--- a/Engine/gapi/metal/mtcommandbuffer.h
++++ b/Engine/gapi/metal/mtcommandbuffer.h
+@@ -22,0 +23,3 @@ class MtTopAccelerationStructure;
++#if defined(TEMPEST_METALFX_SPATIAL)
++class MtSpatialScaler;
++#endif
+@@ -68,0 +72,5 @@ class MtCommandBuffer : public AbstractGraphicsApi::CommandBuffer {
++#if defined(TEMPEST_METALFX_SPATIAL)
++    bool spatialUpscale(AbstractGraphicsApi::SpatialScaler& scaler,
++                        AbstractGraphicsApi::Texture& input,
++                        AbstractGraphicsApi::Texture& output) override;
++#endif
+diff --git a/Engine/gapi/metalapi.h b/Engine/gapi/metalapi.h
+index 98cde1a0..ae3d88cf 100644
+--- a/Engine/gapi/metalapi.h
++++ b/Engine/gapi/metalapi.h
+@@ -27,0 +28,3 @@ class MetalApi : public AbstractGraphicsApi {
++#if defined(TEMPEST_METALFX_SPATIAL)
++    SpatialScaler* createSpatialScaler(Device* d, const SpatialScalerDesc& desc) override;
++#endif
+diff --git a/Engine/graphics/device.cpp b/Engine/graphics/device.cpp
+index 2d1fb36a..0930d0e6 100644
+--- a/Engine/graphics/device.cpp
++++ b/Engine/graphics/device.cpp
+@@ -249,0 +250,4 @@ StorageImage Device::image3d(TextureFormat frm, const uint32_t w, const uint32_t
++SpatialScaler Device::spatialScaler(const SpatialScalerDesc& desc) {
++  return SpatialScaler(api.createSpatialScaler(dev,desc));
++  }
++
+diff --git a/Engine/graphics/device.h b/Engine/graphics/device.h
+index bc06d6d4..20f96de6 100644
+--- a/Engine/graphics/device.h
++++ b/Engine/graphics/device.h
+@@ -16,0 +17 @@
++#include <Tempest/SpatialScaler>
+@@ -133,0 +135,2 @@ class Device {
++    SpatialScaler         spatialScaler(const SpatialScalerDesc& desc);
++
+diff --git a/Engine/graphics/encoder.cpp b/Engine/graphics/encoder.cpp
+index 959dac5d..418db0ae 100644
+--- a/Engine/graphics/encoder.cpp
++++ b/Engine/graphics/encoder.cpp
+@@ -325,0 +326,11 @@ void Encoder<CommandBuffer>::generateMipmaps(Attachment& tex) {
++
++bool Encoder<CommandBuffer>::spatialUpscale(const SpatialScaler& scaler, const Attachment& input, StorageImage& output) {
++  if(scaler.isEmpty() || input.isEmpty() || output.isEmpty())
++    return false;
++  if(state.stage==Rendering)
++    impl->endRendering();
++  state = State();
++  auto& src = *textureCast<const Texture2d&>(input).impl.handler;
++  auto& dst = *output.tImpl.impl.handler;
++  return impl->spatialUpscale(*scaler.impl.handler,src,dst);
++  }
+diff --git a/Engine/graphics/encoder.h b/Engine/graphics/encoder.h
+index 457666da..a2c0fb50 100644
+--- a/Engine/graphics/encoder.h
++++ b/Engine/graphics/encoder.h
+@@ -9,0 +10 @@
++#include <Tempest/SpatialScaler>
+@@ -121,0 +123,2 @@ class Encoder<Tempest::CommandBuffer> {
++    bool spatialUpscale(const SpatialScaler& scaler, const Attachment& input, StorageImage& output);
++
+diff --git a/Engine/gapi/metal/mtspatialscaler.h b/Engine/gapi/metal/mtspatialscaler.h
+new file mode 100644
+index 00000000..948bfe1c
+--- /dev/null
++++ b/Engine/gapi/metal/mtspatialscaler.h
+@@ -0,0 +1,30 @@
++#pragma once
++
++#if defined(TEMPEST_BUILD_METAL) && defined(TEMPEST_METALFX_SPATIAL)
++
++#include <Tempest/AbstractGraphicsApi>
++#include <MetalFX/MetalFX.hpp>
++
++#include "nsptr.h"
++
++namespace Tempest {
++namespace Detail {
++
++class MtDevice;
++class MtTexture;
++
++class MtSpatialScaler final : public AbstractGraphicsApi::SpatialScaler {
++  public:
++    MtSpatialScaler(MtDevice& device, const SpatialScalerDesc& desc);
++
++    bool isValid() const { return impl!=nullptr; }
++    bool encode(MTL::CommandBuffer& cmd, MtTexture& input, MtTexture& output);
++
++  private:
++    NsPtr<MTLFX::SpatialScaler> impl;
++  };
++
++}
++}
++
++#endif
+diff --git a/Engine/gapi/metal/mtspatialscaler.mm b/Engine/gapi/metal/mtspatialscaler.mm
+new file mode 100644
+index 00000000..9305e3b2
+--- /dev/null
++++ b/Engine/gapi/metal/mtspatialscaler.mm
+@@ -0,0 +1,85 @@
++#if defined(TEMPEST_BUILD_METAL) && defined(TEMPEST_METALFX_SPATIAL)
++
++#include "mtspatialscaler.h"
++
++#include <Tempest/MetalApi>
++
++#include "mtdevice.h"
++#include "mttexture.h"
++
++using namespace Tempest;
++using namespace Tempest::Detail;
++
++static MTLFX::SpatialScalerColorProcessingMode nativeColorMode(SpatialScalerColorMode mode) {
++  switch(mode) {
++    case SpatialScalerColorMode::Perceptual:
++      return MTLFX::SpatialScalerColorProcessingModePerceptual;
++    case SpatialScalerColorMode::Linear:
++      return MTLFX::SpatialScalerColorProcessingModeLinear;
++    case SpatialScalerColorMode::HDR:
++      return MTLFX::SpatialScalerColorProcessingModeHDR;
++    }
++  return MTLFX::SpatialScalerColorProcessingModePerceptual;
++  }
++
++MtSpatialScaler::MtSpatialScaler(MtDevice& device, const SpatialScalerDesc& cfg) {
++  if(cfg.inputWidth==0 || cfg.inputHeight==0 || cfg.outputWidth==0 || cfg.outputHeight==0)
++    return;
++  if(!MTLFX::SpatialScalerDescriptor::supportsDevice(device.impl.get()))
++    return;
++
++  auto pool = NsPtr<NS::AutoreleasePool>::init();
++  auto raw  = MTLFX::SpatialScalerDescriptor::alloc();
++  if(raw==nullptr)
++    return;
++  auto desc = NsPtr<MTLFX::SpatialScalerDescriptor>(raw->init());
++  if(desc==nullptr)
++    return;
++
++  desc->setColorTextureFormat(nativeFormat(cfg.inputFormat));
++  desc->setOutputTextureFormat(nativeFormat(cfg.outputFormat));
++  desc->setInputWidth(cfg.inputWidth);
++  desc->setInputHeight(cfg.inputHeight);
++  desc->setOutputWidth(cfg.outputWidth);
++  desc->setOutputHeight(cfg.outputHeight);
++  desc->setColorProcessingMode(nativeColorMode(cfg.colorMode));
++
++  impl = NsPtr<MTLFX::SpatialScaler>(desc->newSpatialScaler(device.impl.get()));
++  }
++
++bool MtSpatialScaler::encode(MTL::CommandBuffer& cmd, MtTexture& input, MtTexture& output) {
++  if(impl==nullptr || input.impl==nullptr || output.impl==nullptr)
++    return false;
++  if(input.impl->pixelFormat()!=impl->colorTextureFormat() ||
++     output.impl->pixelFormat()!=impl->outputTextureFormat())
++    return false;
++  if(input.impl->width()!=impl->inputWidth() || input.impl->height()!=impl->inputHeight() ||
++     output.impl->width()!=impl->outputWidth() || output.impl->height()!=impl->outputHeight())
++    return false;
++
++  const auto inputUsage  = impl->colorTextureUsage();
++  const auto outputUsage = impl->outputTextureUsage();
++  if((input.impl->usage()&inputUsage)!=inputUsage ||
++     (output.impl->usage()&outputUsage)!=outputUsage)
++    return false;
++
++  impl->setInputContentWidth(input.impl->width());
++  impl->setInputContentHeight(input.impl->height());
++  impl->setColorTexture(input.impl.get());
++  impl->setOutputTexture(output.impl.get());
++  impl->encodeToCommandBuffer(&cmd);
++  return true;
++  }
++
++AbstractGraphicsApi::SpatialScaler*
++  MetalApi::createSpatialScaler(AbstractGraphicsApi::Device* device, const SpatialScalerDesc& desc) {
++  auto& dev = *reinterpret_cast<MtDevice*>(device);
++  auto* scaler = new MtSpatialScaler(dev,desc);
++  if(!scaler->isValid()) {
++    delete scaler;
++    return nullptr;
++    }
++  return scaler;
++  }
++
++#endif
+diff --git a/Engine/graphics/spatialscaler.cpp b/Engine/graphics/spatialscaler.cpp
+new file mode 100644
+index 00000000..33fd8d73
+--- /dev/null
++++ b/Engine/graphics/spatialscaler.cpp
+@@ -0,0 +1,12 @@
++#include "spatialscaler.h"
++
++using namespace Tempest;
++
++SpatialScaler::~SpatialScaler() {
++  delete impl.handler;
++  }
++
++SpatialScaler& SpatialScaler::operator=(SpatialScaler&& other) {
++  std::swap(impl, other.impl);
++  return *this;
++  }
+diff --git a/Engine/graphics/spatialscaler.h b/Engine/graphics/spatialscaler.h
+new file mode 100644
+index 00000000..1b9863b2
+--- /dev/null
++++ b/Engine/graphics/spatialscaler.h
+@@ -0,0 +1,33 @@
++#pragma once
++
++#include <Tempest/AbstractGraphicsApi>
++
++#include "../utility/dptr.h"
++
++namespace Tempest {
++
++class Device;
++class CommandBuffer;
++template<class T>
++class Encoder;
++
++class SpatialScaler final {
++  public:
++    SpatialScaler() = default;
++    SpatialScaler(SpatialScaler&&) = default;
++    ~SpatialScaler();
++
++    SpatialScaler& operator=(SpatialScaler&& other);
++
++    bool isEmpty() const { return impl.handler==nullptr; }
++
++  private:
++    explicit SpatialScaler(AbstractGraphicsApi::SpatialScaler* scaler):impl(scaler) {}
++
++    Detail::DPtr<AbstractGraphicsApi::SpatialScaler*> impl;
++
++  friend class Tempest::Device;
++  friend class Encoder<Tempest::CommandBuffer>;
++  };
++
++}
+diff --git a/Engine/include/Tempest/SpatialScaler b/Engine/include/Tempest/SpatialScaler
+new file mode 100644
+index 00000000..b3b25cc3
+--- /dev/null
++++ b/Engine/include/Tempest/SpatialScaler
+@@ -0,0 +1 @@
++#include "../graphics/spatialscaler.h"

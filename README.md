@@ -40,22 +40,29 @@ Target: iPhone/iPad on **iOS 15+**, arm64. Best on modern GPUs (A-series / M-ser
 
 ### Install — download & play (no Mac, no build)
 
-No fork, no compiling — a prebuilt **unsigned `.ipa`** is published on every update. Detailed guide:
+No fork, no compiling — two prebuilt **unsigned `.ipa`** variants are maintained. Detailed guide:
 **[ios/README-ios.md](ios/README-ios.md)**.
 
-1. **Install with SideStore** (recommended). In SideStore: **Sources → +**, paste
-   `https://github.com/tryk016/opengothic-ios/releases/download/latest/apps.json`, then install
-   OpenGothic. SideStore signs it with your **free Apple ID** and **auto-refreshes the 7-day certificate
-   over Wi-Fi** — no manual reinstalling. *(AltStore or Sideloadly also work, using the `.ipa` from the
-   [Releases page](https://github.com/tryk016/opengothic-ios/releases/latest).)*
-2. **Add your game data.** Copy the `Data/`, `_work/`, and `system/` folders from your own Gothic II
+1. **Install MetalFX Temporal (recommended).** In SideStore: **Sources → +**, paste
+   `https://github.com/tryk016/opengothic-ios/releases/download/metalfx-temporal/apps.json`, then
+   install OpenGothic MetalFX Temporal. It uses Apple's temporal upscaler for the best reconstruction
+   quality available in this port and automatically falls back to MetalFX Spatial and then Lanczos if
+   required.
+2. **Use the Lanczos compatibility build only if Temporal causes a crash or graphics problem.** Add
+   `https://github.com/tryk016/opengothic-ios/releases/download/latest/apps.json`, or download the IPA
+   from the [Lanczos compatibility release](https://github.com/tryk016/opengothic-ios/releases/latest).
+3. **Add your game data.** Copy the `Data/`, `_work/`, and `system/` folders from your own Gothic II
    install into the app's **Documents** folder (Files app on iOS). This is needed only for the first
    install; normal SideStore updates preserve Documents, saves and settings. Launch and play.
 
-Already installed from the SideStore source? Tap **Update** there. Do not delete the app first: deleting
-an iOS app also removes its Documents container unless you have backed it up.
+Both variants use the same bundle identifier. Updates and installs over the existing app preserve its
+Documents container, but **do not uninstall the app when switching variants**: uninstalling removes
+the copied game data and saves unless they are backed up. See the detailed guide if SideStore does not
+offer the lower-version Lanczos build as an automatic update.
 
-<sub>Building it yourself (maintainers only): trigger the [`iOS build`](.github/workflows/ios.yml) Action, or use [`ios/build-ios.sh`](ios/build-ios.sh) + Xcode on a Mac — see the guide.</sub>
+<sub>Maintainers: trigger the [`MetalFX Temporal`](.github/workflows/ios-metalfx-temporal.yml)
+or [`Lanczos compatibility`](.github/workflows/ios.yml) workflow, or use
+[`ios/build-ios.sh`](ios/build-ios.sh) + Xcode on a Mac — see the guide.</sub>
 
 ### Controls
 
@@ -78,16 +85,16 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 | Camera | Right stick | Right stick |
 | Draw bow / aim; melee block | LT | L2 |
 | Draw melee; attack / shoot / cast | RT | R2 |
-| Walk; melee left attack | LB | L1 |
-| Look back; melee right attack | RB | R1 |
+| Walk; melee left attack; previous Journal/Statistics page | LB | L1 |
+| Look back; melee right attack; next Journal/Statistics page | RB | R1 |
 | Sneak | L3 | L3 |
 | Target lock | R3 | R3 |
 | Edit Items ring (inventory) | R3 | R3 |
 | Items ring | D-pad ↑ | D-pad ↑ |
 | Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
-| Status / previous combat target | D-pad ← | D-pad ← |
-| Quest log / next combat target | D-pad → | D-pad → |
-| Inventory (tap) / Map (hold) | View | Share / Create |
+| Quest log / previous combat target | D-pad ← | D-pad ← |
+| Map / next combat target | D-pad → | D-pad → |
+| Inventory | View | Share / Create |
 | Game menu | Menu | Options |
 | Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
 
@@ -106,12 +113,15 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
   synthetically so it can still be stowed. The Weapons / Magic ring remains automatic and uses equipped gear
   plus all active spell-book slots 3–10.
 - **Contextual combat:** LT blocks in melee and aims a bow; RT attacks, shoots or casts. LB/RB become
-  left/right melee attacks and otherwise provide walk/look-back. Outside combat, D-pad ←/→ opens
-  character status/the quest log; while target lock is active it selects the previous/next target.
+  left/right melee attacks and otherwise provide walk/look-back. Outside target lock, D-pad ← opens
+  the quest journal and D-pad → opens the map; while target lock is active they select the previous/next target.
+- **Journal and Statistics:** D-pad ← opens the Journal. On its category screen, D-pad selects a
+  category, A enters it and B closes the page. In a quest list, D-pad ↑/↓ selects a quest, A opens its
+  text and B returns one level. LB/RB switches directly between the Journal and Statistics pages.
 - **Inventory:** LB/RB jumps to the previous/next sorted item category; R3 opens Items-ring assignment
   for the highlighted player item; the sticks and D-pad retain normal grid navigation.
-- **System buttons:** tap View for the inventory or hold it for ~0.6 s for the map. Menu opens the game
-  menu. Quick save/load remains available to the engine through its keyboard commands, but is not
+- **System buttons:** View opens the inventory and Menu opens the game menu. Quick save/load remains
+  available to the engine through its keyboard commands, but is not
   assigned to the controller.
 - **Left-stick response:** the vertical axis keeps Gothic's animation-driven movement with
   press/release hysteresis; the horizontal axis turns proportionally to the deflection. A sloped axial
@@ -125,7 +135,8 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
 **On-screen virtual gamepad (no controller):** a full pad is drawn during play — move pad + camera area,
 A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. It mirrors the physical
 pad's contextual mapping and two D-pad quick-rings. Menus and dialogues get on-screen D-pad +
-OK/Back/Skip. While a ring is open, only corner controls remain: D-pad ↑/↓ switches the two panels and
+OK/Back/Skip; the Journal and Statistics pages additionally show LB/RB page controls. While a ring is
+open, only corner controls remain: D-pad ↑/↓ switches the two panels and
 B cancels; drag anywhere else and release to use the selected sector.
 
 ### iOS configuration
@@ -133,10 +144,10 @@ B cancels; drag anywhere else and release to use the selected sector.
 The copied `Documents/system/Gothic.ini` is never overwritten. On the first
 successful launch after valid game data is installed, OpenGothic creates a
 separate `Documents/Gothic.ini` override if it is absent, with the complete iOS
-profile: half-resolution 3D rendering, SSAO off, 512 px shadow maps, quick-save
-support and all stable `[GAMEPAD]` defaults (including `crossAxisGuard=0.12`).
-An existing root override — even an empty one — is not auto-populated or
-replaced.
+profile: half-resolution 3D rendering, SSAO off, 1024 px shadow maps, a 30 FPS
+default, quick-save support and all stable `[GAMEPAD]` defaults (including
+`crossAxisGuard=0.12`). Existing explicit FPS choices remain unchanged; the
+legacy generated 512 px shadow setting is upgraded once to 1024 px.
 
 The generated profile, upgrade note, override priority, optional FPS cap and
 diagnostic settings are documented in the
@@ -144,7 +155,8 @@ diagnostic settings are documented in the
 
 Options → Video → **Drawing distance** is live on iOS: 100% corresponds to an
 approximately 1 km world far plane, while 80%/60%/40% correspond to roughly
-800/600/400 m. Options → Game → **FPS limit** provides Off, 30 and 60 FPS.
+800/600/400 m. Options → Game → **FPS limit** provides Off, 30 and 60 FPS;
+30 FPS is the iOS default.
 
 ### Known limitations
 
@@ -172,7 +184,9 @@ approximately 1 km world far plane, while 80%/60%/40% correspond to roughly
 - **Performance & display:** ProMotion with native Off/30/60 display-link pacing, triple buffering,
   direct Metal drawable rendering, on-demand SSAO buffers, reduced offscreen/distant NPC pose work,
   live menu-controlled drawing distance, safe-area-aware HUD, configurable shadow resolution, and
-  the upscale-based render-scale guide.
+  the upscale-based render-scale guide. The recommended build adds Apple MetalFX Temporal upscaling
+  with automatic MetalFX Spatial and Lanczos fallbacks; a separate Lanczos-only compatibility build
+  remains available.
 ---
 
 *For the engine itself — Windows/Linux/macOS builds, features, mods, command-line arguments, graphics

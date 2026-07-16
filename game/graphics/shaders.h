@@ -61,6 +61,9 @@ class Shaders {
     Tempest::RenderPipeline  waterReflection, waterReflectionSSR;
 
     Tempest::RenderPipeline  tonemapping, tonemappingUpscale;
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+    Tempest::RenderPipeline  metalFxMotion;
+#endif
 
     // AA
     Tempest::ComputePipeline cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::PRESETS_COUNT)];

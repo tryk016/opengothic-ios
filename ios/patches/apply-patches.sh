@@ -263,3 +263,67 @@ else
     exit 1
   fi
 fi
+
+# Optional MetalFX Spatial backend support. The patch is always applied so the
+# public Tempest API remains available to the game; the CMake option controls
+# whether the iOS Metal implementation and weak framework link are compiled.
+METALFX_PATCH="$ROOT/ios/patches/tempest-metalfx-spatial.patch"
+METALFX_MARKER="$ROOT/lib/Tempest/Engine/gapi/metal/mtspatialscaler.mm"
+if [ -f "$METALFX_MARKER" ] && grep -q 'MetalApi::createSpatialScaler' "$METALFX_MARKER"; then
+  echo "skip: Tempest MetalFX Spatial support (already patched)"
+else
+  if [ ! -f "$METALFX_PATCH" ]; then
+    echo "ERROR: not found: $METALFX_PATCH" >&2
+    exit 1
+  fi
+  EXPECTED_TEMPEST_COMMIT="61b58f710b00f64d190fed2661f5762909397d1a"
+  ACTUAL_TEMPEST_COMMIT="$(git -C "$ROOT/lib/Tempest" rev-parse HEAD)"
+  if [ "$ACTUAL_TEMPEST_COMMIT" != "$EXPECTED_TEMPEST_COMMIT" ]; then
+    echo "ERROR: Tempest changed ($ACTUAL_TEMPEST_COMMIT); refresh MetalFX Spatial patch" >&2
+    exit 1
+  fi
+  if git -C "$ROOT/lib/Tempest" apply --unidiff-zero --check "$METALFX_PATCH"; then
+    git -C "$ROOT/lib/Tempest" apply --unidiff-zero "$METALFX_PATCH"
+  else
+    echo "ERROR: failed to apply Tempest MetalFX Spatial support patch" >&2
+    exit 1
+  fi
+  if [ -f "$METALFX_MARKER" ] && grep -q 'MetalApi::createSpatialScaler' "$METALFX_MARKER"; then
+    echo "patched: Tempest MetalFX Spatial support"
+  else
+    echo "ERROR: Tempest MetalFX Spatial marker missing after patch" >&2
+    exit 1
+  fi
+fi
+
+# Optional MetalFX Temporal backend support. This patch is based on the
+# already-patched Spatial Tempest tree because Temporal deliberately keeps
+# Spatial as its first runtime fallback. The CMake option controls compilation.
+METALFX_TEMPORAL_PATCH="$ROOT/ios/patches/tempest-metalfx-temporal.patch"
+METALFX_TEMPORAL_MARKER="$ROOT/lib/Tempest/Engine/gapi/metal/mttemporalscaler.mm"
+if [ -f "$METALFX_TEMPORAL_MARKER" ] && grep -q 'MetalApi::createTemporalScaler' "$METALFX_TEMPORAL_MARKER"; then
+  echo "skip: Tempest MetalFX Temporal support (already patched)"
+else
+  if [ ! -f "$METALFX_TEMPORAL_PATCH" ]; then
+    echo "ERROR: not found: $METALFX_TEMPORAL_PATCH" >&2
+    exit 1
+  fi
+  EXPECTED_TEMPEST_COMMIT="61b58f710b00f64d190fed2661f5762909397d1a"
+  ACTUAL_TEMPEST_COMMIT="$(git -C "$ROOT/lib/Tempest" rev-parse HEAD)"
+  if [ "$ACTUAL_TEMPEST_COMMIT" != "$EXPECTED_TEMPEST_COMMIT" ]; then
+    echo "ERROR: Tempest changed ($ACTUAL_TEMPEST_COMMIT); refresh MetalFX Temporal patch" >&2
+    exit 1
+  fi
+  if git -C "$ROOT/lib/Tempest" apply --unidiff-zero --check "$METALFX_TEMPORAL_PATCH"; then
+    git -C "$ROOT/lib/Tempest" apply --unidiff-zero "$METALFX_TEMPORAL_PATCH"
+  else
+    echo "ERROR: failed to apply Tempest MetalFX Temporal support patch after Spatial" >&2
+    exit 1
+  fi
+  if [ -f "$METALFX_TEMPORAL_MARKER" ] && grep -q 'MetalApi::createTemporalScaler' "$METALFX_TEMPORAL_MARKER"; then
+    echo "patched: Tempest MetalFX Temporal support"
+  else
+    echo "ERROR: Tempest MetalFX Temporal marker missing after patch" >&2
+    exit 1
+  fi
+fi

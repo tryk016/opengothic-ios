@@ -337,7 +337,6 @@ void GamepadInput::tickWorldSystemButtons(
     systemGesture.reset(s.options,s.menu);
     switch(effect) {
       case E::Inventory:  owner.uiAction(A::Inventory); break;
-      case E::Map:        openMap();                    break;
       case E::GameMenu:   owner.uiAction(A::Escape);    break;
       case E::None:                                     break;
       }
@@ -798,14 +797,15 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
     stuckHoldMs = 0;
     }
 
-  // D-pad left/right changes target focus or opens the two character pages.
+  // D-pad left/right changes target focus while locked. Otherwise Left opens
+  // the quest journal and Right opens the scripted map.
   if(pressedOrEdge(GamepadButton::DpadLeft,s.dleft,prev.dleft)) {
     if(ctrl.isTargetLocked()) {
       ctrl.focusLeft();
       Haptics::impact(Haptics::Light);
       }
     else {
-      owner.uiAction(A::Status);
+      owner.uiAction(A::Log);
       return;
       }
     }
@@ -815,12 +815,12 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
       Haptics::impact(Haptics::Light);
       }
     else {
-      owner.uiAction(A::Log);
+      openMap();
       return;
       }
     }
 
-  // View tap = inventory, View hold = map, Menu = the game menu.
+  // View = inventory; Menu = the game menu.
   tickWorldSystemButtons(s,events);
   }
 
@@ -843,13 +843,27 @@ void GamepadInput::tickDialog(const GamepadState& s,
 
 void GamepadInput::tickMenu(const GamepadState& s,
                             const std::vector<GamepadButtonEvent>& events) {
-  key(s.ly >  deadZone, prev.ly >  deadZone, Event::K_Up);
-  key(s.ly < -deadZone, prev.ly < -deadZone, Event::K_Down);
-  key(s.lx < -deadZone, prev.lx < -deadZone, Event::K_Left);
-  key(s.lx >  deadZone, prev.lx >  deadZone, Event::K_Right);
+  // Character pages deliberately use the D-pad only. This avoids accidental
+  // category/quest changes from a stick that was still settling after play.
+  if(!owner.padCharacterNavigationActive()) {
+    key(s.ly >  deadZone, prev.ly >  deadZone, Event::K_Up);
+    key(s.ly < -deadZone, prev.ly < -deadZone, Event::K_Down);
+    key(s.lx < -deadZone, prev.lx < -deadZone, Event::K_Left);
+    key(s.lx >  deadZone, prev.lx >  deadZone, Event::K_Right);
+    }
   for(const auto& event : events) {
     if(!event.pressed)
       continue;
+    if(owner.padCharacterPageActive()) {
+      if(event.button==GamepadButton::LB) {
+        owner.padCycleCharacterPage(-1);
+        return;
+        }
+      if(event.button==GamepadButton::RB) {
+        owner.padCycleCharacterPage(1);
+        return;
+        }
+      }
     switch(event.button) {
       case GamepadButton::DpadUp:    keyTap(Event::K_Up,     PadCtx::Menu, event, s); break;
       case GamepadButton::DpadDown:  keyTap(Event::K_Down,   PadCtx::Menu, event, s); break;

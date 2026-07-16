@@ -33,15 +33,17 @@ class TouchInput : public Tempest::Widget {
     // What a World button does when tapped.
     enum class TAct : uint8_t {
       Key, Interact, Special, Lt, Rt, Lb, Rb,
-      WeaponsRing, ItemRing, Lock, StatusOrFocus, LogOrFocus,
+      WeaponsRing, ItemRing, Lock, JournalOrFocus, MapOrFocus,
       SystemView, SystemMenu
       };
     struct Btn  { int x, y, s; PadGlyph::Btn glyph; TAct kind; KeyCodec::Action act; };
     struct MBtn { int x, y, s; Tempest::Event::KeyType key; };
+    struct PageBtn { int x, y, s; PadGlyph::Btn glyph; int direction; };
 
     std::array<Btn,16> layout()       const;   // full virtual pad (World)
     std::array<MBtn,6> menuLayout()   const;   // menu / inventory: dpad + ok/back
     std::array<MBtn,4> dialogLayout() const;   // dialogue: up/down/select/skip
+    std::array<PageBtn,2> characterPageLayout() const;
 
     void aimRing(const Tempest::Point& pos);
     void releaseWorldTouches();
@@ -54,8 +56,8 @@ class TouchInput : public Tempest::Widget {
     int            lookId = -1;   // touch id driving camera
     int            ringId = -1;   // touch id aiming an open radial ring
     int            walkId = -1;   // LB temporarily forcing walk outside melee
-    int            viewId = -1;   // touch id holding View (tap/hold)
-    int            menuId = -1;   // touch id holding Menu (tap/hold)
+    int            viewId = -1;   // touch id pressing View
+    int            menuId = -1;   // touch id pressing Menu
     PadSystemGesture systemGesture;
     Tempest::Point moveOrigin;
     Tempest::Point lookLast;

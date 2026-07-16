@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img"
      aria-labelledby="title desc">
   <title id="title">OpenGothic controller layout for Xbox and PlayStation pads</title>
-  <desc id="desc">Complete OpenGothic controller mapping with contextual combat controls, two separate radial quick-rings, tap and hold actions, and the unstuck shortcut.</desc>
+  <desc id="desc">Complete OpenGothic controller mapping with contextual combat controls, Journal and Statistics page switching, two separate radial quick-rings, and the unstuck shortcut.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#091119"/>
@@ -111,9 +111,9 @@
     <rect x="40" y="120" width="430" height="48" rx="11" class="card"/><rect x="54" y="127" width="125" height="34" rx="17" class="badge"/>
     <text x="116" y="150" class="key">LT / L2</text><text x="195" y="139" class="action">Bow: draw / aim</text><text x="195" y="158" class="small">Melee: block</text>
     <rect x="40" y="179" width="430" height="48" rx="11" class="card"/><rect x="54" y="186" width="125" height="34" rx="17" class="badge"/>
-    <text x="116" y="209" class="key">LB / L1</text><text x="195" y="198" class="action">Walk</text><text x="195" y="217" class="small">Melee: left attack</text>
+    <text x="116" y="209" class="key">LB / L1</text><text x="195" y="198" class="action">Walk / Previous page</text><text x="195" y="217" class="small">Melee: left attack</text>
     <rect x="40" y="238" width="430" height="48" rx="11" class="card"/><rect x="54" y="245" width="168" height="34" rx="17" class="badge"/>
-    <text x="138" y="268" class="key">View / Share·Create</text><text x="238" y="257" class="action">Tap: Inventory</text><text x="238" y="276" class="small">Hold: Map</text>
+    <text x="138" y="268" class="key">View / Share·Create</text><text x="238" y="269" class="action">Inventory</text>
 
     <rect x="40" y="297" width="430" height="48" rx="11" class="card"/><rect x="54" y="304" width="125" height="34" rx="17" class="badge"/>
     <text x="116" y="327" class="key">Left stick</text><text x="195" y="328" class="action">Move / turn</text>
@@ -125,9 +125,9 @@
     <rect x="40" y="474" width="430" height="48" rx="11" class="card"/><rect x="54" y="481" width="125" height="34" rx="17" class="badge"/>
     <text x="116" y="504" class="key">D-pad ↓</text><text x="195" y="505" class="action">Weapons / Magic ring</text>
     <rect x="40" y="533" width="430" height="48" rx="11" class="card"/><rect x="54" y="540" width="125" height="34" rx="17" class="badge"/>
-    <text x="116" y="563" class="key">D-pad ←</text><text x="195" y="552" class="action">Status</text><text x="195" y="571" class="small">Combat: previous target</text>
+    <text x="116" y="563" class="key">D-pad ←</text><text x="195" y="552" class="action">Quest journal</text><text x="195" y="571" class="small">Combat: previous target</text>
     <rect x="40" y="592" width="430" height="48" rx="11" class="card"/><rect x="54" y="599" width="125" height="34" rx="17" class="badge"/>
-    <text x="116" y="622" class="key">D-pad →</text><text x="195" y="611" class="action">Quest log</text><text x="195" y="630" class="small">Combat: next target</text>
+    <text x="116" y="622" class="key">D-pad →</text><text x="195" y="611" class="action">Map</text><text x="195" y="630" class="small">Combat: next target</text>
   </g>
 
   <!-- Right-side mappings. -->
@@ -135,7 +135,7 @@
     <rect x="1130" y="120" width="430" height="48" rx="11" class="card"/><rect x="1144" y="127" width="125" height="34" rx="17" class="badge"/>
     <text x="1206" y="150" class="key">RT / R2</text><text x="1285" y="139" class="action">Draw melee</text><text x="1285" y="158" class="small">Armed: attack / shoot / cast</text>
     <rect x="1130" y="179" width="430" height="48" rx="11" class="card"/><rect x="1144" y="186" width="125" height="34" rx="17" class="badge"/>
-    <text x="1206" y="209" class="key">RB / R1</text><text x="1285" y="198" class="action">Look back</text><text x="1285" y="217" class="small">Melee: right attack</text>
+    <text x="1206" y="209" class="key">RB / R1</text><text x="1285" y="198" class="action">Look back / Next page</text><text x="1285" y="217" class="small">Melee: right attack</text>
     <rect x="1130" y="238" width="430" height="48" rx="11" class="card"/><rect x="1144" y="245" width="145" height="34" rx="17" class="badge"/>
     <text x="1216" y="268" class="key">Menu / Options</text><text x="1305" y="269" class="action">Game menu</text>
 

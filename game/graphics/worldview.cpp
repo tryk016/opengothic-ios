@@ -44,8 +44,10 @@ void WorldView::resetRendering() {
   visuals.resetRendering();
   }
 
-void WorldView::preFrameUpdate(const Camera& camera, uint64_t tickCount, uint8_t fId) {
+void WorldView::preFrameUpdate(const Camera& camera, uint64_t tickCount, uint8_t fId,
+                               const Tempest::Matrix4x4* projectionOverride) {
   const auto ldir = gSky.sunLight().dir();
+  const auto& projection = projectionOverride!=nullptr ? *projectionOverride : camera.projective();
   Tempest::Matrix4x4 shadow   [Resources::ShadowLayers];
   Tempest::Matrix4x4 shadowLwc[Resources::ShadowLayers];
   for(size_t i=0; i<Resources::ShadowLayers; ++i) {
@@ -53,8 +55,8 @@ void WorldView::preFrameUpdate(const Camera& camera, uint64_t tickCount, uint8_t
     shadowLwc[i] = camera.viewShadowLwc(ldir,i);
     }
 
-  sGlobal.setViewProject(camera.view(),camera.projective(),camera.zNear(),camera.zFar(),shadow);
-  sGlobal.setViewLwc(camera.viewLwc(),camera.projective(),shadowLwc);
+  sGlobal.setViewProject(camera.view(),projection,camera.zNear(),camera.zFar(),shadow);
+  sGlobal.setViewLwc(camera.viewLwc(),projection,shadowLwc);
   sGlobal.setViewVsm(camera.viewShadowVsm(ldir), camera.viewShadowVsmLwc(ldir));
   sGlobal.originLwc = camera.originLwc();
   sGlobal.setUnderWater(camera.isInWater());

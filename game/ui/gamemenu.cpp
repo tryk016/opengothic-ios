@@ -340,6 +340,8 @@ GameMenu::~GameMenu() {
   }
 
 void GameMenu::resetVm(zenkit::DaedalusVm* inVm) {
+  questListItem    = nullptr;
+  questContentItem = nullptr;
   vm = inVm;
   for(int i=0; i<zenkit::IMenu::item_count; ++i){
     hItems[i].handle = nullptr;
@@ -796,6 +798,127 @@ void GameMenu::onKeyboard(KeyCodec::Action key) {
     }
   }
 
+bool GameMenu::onModalKeyboard(KeyCodec::Action key) {
+  // On mobile, opening Tempest's blocking Dialog::exec() from a synthetic pad
+  // event stalls the render loop. The quest list/content therefore live as a
+  // non-blocking state inside GameMenu and exclusively own D-pad/A/B here.
+  if(questContentItem!=nullptr) {
+    if(key==KeyCodec::Forward)
+      questContentItem->scroll = std::max(questContentItem->scroll-1,0);
+    else if(key==KeyCodec::Back)
+      questContentItem->scroll++;
+    else if(key==KeyCodec::Escape)
+      closeQuestContent();
+    update();
+    return true;
+    }
+
+  if(questListItem!=nullptr) {
+    if(key==KeyCodec::Forward)
+      moveQuestList(-1);
+    else if(key==KeyCodec::Back)
+      moveQuestList(1);
+    else if(key==KeyCodec::ActionGeneric)
+      openQuestContent();
+    else if(key==KeyCodec::Escape)
+      closeQuestList();
+    return true;
+    }
+  return false;
+  }
+
+bool GameMenu::hasModalDialog() const {
+  return questListItem!=nullptr || questContentItem!=nullptr;
+  }
+
+const QuestLog::Quest* GameMenu::selectedQuest(const Item& list) const {
+  const QuestStat status = toStatus(list.handle->user_string[0]);
+  int32_t num = 0;
+  if(auto ql=Gothic::inst().questLog()) {
+    for(size_t i=0; i<ql->questCount(); ++i) {
+      const auto& quest = ql->quest(ql->questCount()-i-1);
+      if(!isCompatible(quest,status))
+        continue;
+      if(num==list.value)
+        return &quest;
+      ++num;
+      }
+    }
+  return nullptr;
+  }
+
+void GameMenu::openQuestList(Item& list, uint32_t returnItem) {
+  const auto status = toStatus(list.handle->user_string[0]);
+  const int32_t count = numQuests(Gothic::inst().questLog(),status);
+  if(count<=0) {
+    curItem = returnItem;
+    return;
+    }
+
+  list.value = std::clamp(list.value,0,count-1);
+  questListItem       = &list;
+  questListReturnItem = returnItem;
+  update();
+  }
+
+void GameMenu::closeQuestList() {
+  if(questContentItem!=nullptr)
+    closeQuestContent();
+  questListItem = nullptr;
+  curItem = questListReturnItem;
+  update();
+  }
+
+void GameMenu::moveQuestList(int direction) {
+  if(questListItem==nullptr)
+    return;
+  const auto status = toStatus(questListItem->handle->user_string[0]);
+  const int32_t count = numQuests(Gothic::inst().questLog(),status);
+  if(count<=0)
+    return;
+  questListItem->value = std::clamp(questListItem->value+direction,0,count-1);
+  update();
+  }
+
+void GameMenu::openQuestContent() {
+  if(questListItem==nullptr)
+    return;
+  Item* next = selectedContentItem(questListItem);
+  const QuestLog::Quest* quest = selectedQuest(*questListItem);
+  if(next==nullptr || quest==nullptr)
+    return;
+
+  std::string text;
+  for(size_t i=0; i<quest->entry.size(); ++i) {
+    text += quest->entry[i];
+    if(i+1<quest->entry.size())
+      text += "\n---\n";
+    }
+
+  questContentItem       = next;
+  questContentReturnItem = curItem;
+  questContentWasVisible = next->visible;
+  next->visible          = true;
+  next->scroll           = 0;
+  next->handle->text[0]  = std::move(text);
+
+  for(uint32_t i=0; i<zenkit::IMenu::item_count; ++i)
+    if(&hItems[i]==next) {
+      curItem = i;
+      break;
+      }
+  update();
+  }
+
+void GameMenu::closeQuestContent() {
+  if(questContentItem==nullptr)
+    return;
+  questContentItem->visible = questContentWasVisible;
+  questContentItem = nullptr;
+  curItem = questContentReturnItem;
+  update();
+  }
+
 void GameMenu::onTick() {
   update();
 
@@ -1142,6 +1265,10 @@ void GameMenu::execCommands(std::string str, bool isClick, KeyCodec::Action hint
         if(i.visible && isClick) {
           const uint32_t prev = curItem;
           curItem = id;
+#if defined(__MOBILE_PLATFORM__)
+          openQuestList(i,prev);
+          return;
+#else
           ListViewDialog dlg(*this,i);
           if(dlg.numQuests()==0) {
             curItem = prev;
@@ -1150,6 +1277,7 @@ void GameMenu::execCommands(std::string str, bool isClick, KeyCodec::Action hint
           dlg.resize(owner.size());
           dlg.exec();
           curItem = prev;
+#endif
           }
         }
       }

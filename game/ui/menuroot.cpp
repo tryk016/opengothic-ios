@@ -111,6 +111,17 @@ bool MenuRoot::isActive() const {
   return current!=nullptr;
   }
 
+bool MenuRoot::isActive(KeyCodec::Action rootMenu) const {
+  // Submenus inherit the root shortcut as their close key. The empty stack
+  // check keeps controller page switching limited to MENU_LOG/MENU_STATUS
+  // themselves instead of replacing a child screen opened from either page.
+  return isRootMenu(rootMenu) && !current->hasModalDialog();
+  }
+
+bool MenuRoot::isRootMenu(KeyCodec::Action rootMenu) const {
+  return current!=nullptr && menuStack.empty() && current->keyClose()==rootMenu;
+  }
+
 void MenuRoot::setPlayer(const Npc &pl) {
   if(current!=nullptr)
     current->setPlayer(pl);
@@ -197,6 +208,22 @@ void MenuRoot::keyDownEvent(KeyEvent &e) {
     }
 
   if(current!=nullptr) {
+    KeyCodec::Action modalKey = KeyCodec::Idle;
+    if(e.key==Event::K_W || e.key==Event::K_Up)
+      modalKey = KeyCodec::Forward;
+    else if(e.key==Event::K_S || e.key==Event::K_Down)
+      modalKey = KeyCodec::Back;
+    else if(e.key==Event::K_A || e.key==Event::K_Left)
+      modalKey = KeyCodec::Left;
+    else if(e.key==Event::K_D || e.key==Event::K_Right)
+      modalKey = KeyCodec::Right;
+    else if(e.key==Event::K_Return)
+      modalKey = KeyCodec::ActionGeneric;
+    else if(e.key==Event::K_ESCAPE || keyCodec.tr(e)==current->keyClose())
+      modalKey = KeyCodec::Escape;
+    if(modalKey!=KeyCodec::Idle && current->onModalKeyboard(modalKey))
+      return;
+
     if(e.key==Event::K_W || e.key==Event::K_Up)
       current->onKeyboard(KeyCodec::Forward);
     else if(e.key==Event::K_S || e.key==Event::K_Down)
