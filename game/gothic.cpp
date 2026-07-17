@@ -41,9 +41,15 @@ static bool hasMeshShader() {
 
 static bool hasBindless() {
   const auto& p = Resources::device().properties();
-  if(p.descriptors.nonUniformIndexing && p.descriptors.maxTexture>=65000 && p.descriptors.maxStorage>=65000)
-    return true;
-  return false;
+  const bool  b = p.descriptors.nonUniformIndexing && p.descriptors.maxTexture>=65000 && p.descriptors.maxStorage>=65000;
+  // Log the decision inputs, not just the verdict: the two Android test GPUs
+  // took different paths here (Mali bindless, Adreno slot) and knowing WHY
+  // required a rebuild each time.
+  Tempest::Log::i("[caps] bindless=", int(b),
+                  " nonUniformIndexing=", int(p.descriptors.nonUniformIndexing),
+                  " maxTexture=", p.descriptors.maxTexture,
+                  " maxStorage=", p.descriptors.maxStorage);
+  return b;
   }
 
 Gothic::Gothic() {

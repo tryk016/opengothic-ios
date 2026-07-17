@@ -703,4 +703,41 @@ void AndroidApi::implSetWindowTitle(SystemApi::Window* /*w*/, const char* /*utf8
 EOF
 echo "wrote: lib/Tempest/Engine/system/api/androidapi.cpp"
 
+# --------------------------------------------------------------------------
+# (g) Descriptor-indexing detection for Vulkan 1.2+ drivers.
+#
+# VK_EXT_descriptor_indexing was promoted to core in Vulkan 1.2, and drivers
+# are then free to stop advertising the extension string -- Adreno 619 on
+# Vulkan 1.3 does exactly that (measured: the string is absent from its 75
+# extensions). vdevice.cpp gated the whole descriptor-indexing feature query
+# on that string, so such devices silently fell back to the slot path even
+# though the hardware supports bindless. Mali advertises the string, which is
+# why the two devices ran different shader sets.
+#
+# Two edits: (g1) treat apiVersion>=1.2 as descriptor-indexing-capable, and
+# (g2) only request the extension string at device creation when the driver
+# actually advertises it -- requesting an absent extension fails
+# vkCreateDevice. The feature structs chain into VkDeviceCreateInfo the same
+# way for core-promoted features, so nothing else changes.
+# --------------------------------------------------------------------------
+
+VDC="$ROOT/lib/Tempest/Engine/gapi/vulkan/vdevice.cpp"
+if [ ! -f "$VDC" ]; then
+  echo "ERROR: not found: $VDC" >&2
+  exit 1
+fi
+
+if grep -q 'promoted to core in Vulkan 1.2' "$VDC"; then
+  echo "skip: vdevice.cpp core-promoted descriptor indexing (already patched)"
+else
+  perl -0777 -pi -e 's/(  if\(hasDeviceFeatures2 && extensionSupport\(ext,VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME\)\) \{\r?\n    props\.hasDescIndexing = true;\r?\n    \}\r?\n)/${1}  if(hasDeviceFeatures2 && !props.hasDescIndexing) {\n    \/\/ promoted to core in Vulkan 1.2; drivers (e.g. Adreno on Vulkan 1.3) may\n    \/\/ no longer advertise the extension string\n    VkPhysicalDeviceProperties p0 = {};\n    vkGetPhysicalDeviceProperties(physicalDevice, \&p0);\n    if(p0.apiVersion>=VK_API_VERSION_1_2)\n      props.hasDescIndexing = true;\n    }\n/' "$VDC"
+  perl -0777 -pi -e 's/(  if\(props\.hasDescIndexing\) \{\r?\n)    rqExt\.push_back\(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME\);(\r?\n    \})/${1}    const auto extLd = extensionsList(pdev);\n    if(extensionSupport(extLd,VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME))\n      rqExt.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);${2}/' "$VDC"
+  if [ "$(grep -c 'promoted to core in Vulkan 1.2' "$VDC")" = "1" ] && [ "$(grep -c 'extLd' "$VDC")" = "2" ]; then
+    echo "patched: vdevice.cpp core-promoted descriptor indexing (detect + conditional rqExt)"
+  else
+    echo "ERROR: failed to patch vdevice.cpp descriptor indexing (marker=$(grep -c 'promoted to core in Vulkan 1.2' "$VDC") extLd=$(grep -c 'extLd' "$VDC"))" >&2
+    exit 1
+  fi
+fi
+
 echo "apply-patches.sh: done"
