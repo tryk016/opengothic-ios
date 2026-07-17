@@ -167,7 +167,7 @@ vec4 diffuseTex() {
   nonuniformEXT uint tId = bucketId;
   vec4 tex = texture(sampler2D(textureMain[tId], samplerMain),uv);
 #else
-  vec4 tex = texture(sampler2D(textureMain, samplerMain),uv);
+  vec4 tex = texture(textureMain,uv);
 #endif
 
 #if !defined(SIMPLE_MAT)

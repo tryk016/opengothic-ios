@@ -752,19 +752,22 @@ void PfxBucket::drawCommon(Tempest::Encoder<Tempest::CommandBuffer>& cmd, const 
 
   auto& mat = decl.visMaterial;
   if(view==SceneGlobals::V_Main || mat.isTextureInShadowPass()) {
+    // Pfx always uses the slot material shaders, which now take a combined
+    // image+sampler at L_Diffuse and no longer declare L_Sampler (see
+    // materials_common.glsl - the separate-sampler form crashes the Adreno 6xx
+    // shader compiler).
     auto smp = SceneGlobals::isShadowView(SceneGlobals::VisCamera(view)) ? Sampler::trillinear() : Sampler::anisotrophy();
     if(trl) {
-      cmd.setBinding(L_Diffuse, *decl.trlTexture);
+      cmd.setBinding(L_Diffuse, *decl.trlTexture, smp);
       }
     else if(mat.hasFrameAnimation()) {
       auto frame = size_t((itm.timeShift+scene.tickCount)/mat.texAniFPSInv);
       auto t     = mat.frames[frame%mat.frames.size()];
-      cmd.setBinding(L_Diffuse, *t);
+      cmd.setBinding(L_Diffuse, *t, smp);
       }
     else {
-      cmd.setBinding(L_Diffuse, *mat.tex);
+      cmd.setBinding(L_Diffuse, *mat.tex, smp);
       }
-    cmd.setBinding(L_Sampler, smp);
     }
 
   if(view==SceneGlobals::V_Main && mat.isShadowmapRequired()) {

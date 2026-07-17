@@ -101,20 +101,23 @@ void DrawCommands::setBindings(Tempest::Encoder<CommandBuffer>& cmd, const DrawC
     }
 
   if(v==SceneGlobals::V_Main || cx.isTextureInShadowPass()) {
+    // Slot-mode shaders take a combined image+sampler at L_Diffuse and have no
+    // L_Sampler binding (see materials_common.glsl - the separate-sampler form
+    // crashes the Adreno 6xx shader compiler); bindless keeps the split pair.
+    auto smp = SceneGlobals::isShadowView(v) ? Sampler::trillinear() : Sampler::anisotrophy();
     if(cx.isBindless()) {
       cmd.setBinding(L_Diffuse, buckets.textures());
+      cmd.setBinding(L_Sampler, smp);
       }
     else if(bx.mat.hasFrameAnimation()) {
       uint64_t timeShift = 0;
       auto     frame     = size_t((timeShift+scene.tickCount)/bx.mat.texAniFPSInv);
       auto*    t         = bx.mat.frames[frame%bx.mat.frames.size()];
-      cmd.setBinding(L_Diffuse, *t);
+      cmd.setBinding(L_Diffuse, *t, smp);
       }
     else {
-      cmd.setBinding(L_Diffuse, *bx.mat.tex);
+      cmd.setBinding(L_Diffuse, *bx.mat.tex, smp);
       }
-    auto smp = SceneGlobals::isShadowView(v) ? Sampler::trillinear() : Sampler::anisotrophy();
-    cmd.setBinding(L_Sampler, smp);
     }
 
   if(v==SceneGlobals::V_Main && cx.isShadowmapRequired()) {

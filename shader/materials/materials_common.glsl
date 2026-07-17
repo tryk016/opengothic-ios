@@ -127,16 +127,18 @@ layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[]; 
 #if defined(GL_FRAGMENT_SHADER) && defined(MAT_UV)
 #if defined(BINDLESS)
 layout(binding = L_Diffuse)          uniform  texture2D textureMain[];
-#else
-// Plain binding, no array: the slot path binds exactly one texture here, and
-// the array declaration is what kills the Adreno 6xx driver's shader compiler
-// (SIGSEGV inside vkCreateGraphicsPipelines) - the first texture-sampling
-// material pipeline crashes it deterministically, runtime-sized or sized [1]
-// alike (both measured on Adreno 619). Desktop drivers tolerate either form
-// in slot mode; do not rely on that.
-layout(binding = L_Diffuse)          uniform  texture2D textureMain;
-#endif
 layout(binding = L_Sampler)          uniform  sampler   samplerMain;
+#else
+// Combined image+sampler, no array: the slot path binds exactly one texture,
+// and the separate-image+separate-sampler form kills the Adreno 6xx driver's
+// shader compiler (SIGSEGV inside vkCreateGraphicsPipelines) on the first
+// texture-sampling material pipeline - measured on Adreno 619 with the
+// runtime-sized array, a sized [1] array and a bare texture2D alike. The
+// combined form is the most-exercised path of every mobile driver. Bindings
+// come as a (texture,sampler) pair from DrawCommands::setBindings; L_Sampler
+// is not used in slot mode.
+layout(binding = L_Diffuse)          uniform  sampler2D textureMain;
+#endif
 #endif
 
 #if (MESH_TYPE==T_MORPH)
