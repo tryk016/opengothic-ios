@@ -35,6 +35,19 @@ jobs:
       - name: Apply submodule patches
         run: bash android/patches/apply-patches.sh
 
+      # TEMP [vvldiag]: bundle the Khronos validation layer so the device
+      # settings (enable_gpu_debug_layers + gpu_debug_layers) can inject it
+      # into this (debuggable) build. Revert with the build.gradle change.
+      - name: Bundle Vulkan validation layer
+        run: |
+          curl -sL -o vvl.zip "https://github.com/KhronosGroup/Vulkan-ValidationLayers/releases/download/vulkan-sdk-1.4.350.1/android-binaries-1.4.350.1.zip"
+          unzip -q vvl.zip
+          for abi in arm64-v8a x86_64; do
+            mkdir -p "android/app/src/main/jniLibs/$abi"
+            cp "android-binaries-1.4.350.1/$abi/libVkLayer_khronos_validation.so" "android/app/src/main/jniLibs/$abi/"
+          done
+          ls -la android/app/src/main/jniLibs/arm64-v8a/
+
       - name: Build signed APK
         working-directory: android
         run: |
