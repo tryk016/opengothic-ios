@@ -2,8 +2,6 @@
 
 #include <Tempest/Log>
 
-#include <unordered_set>
-
 #include "graphics/mesh/submesh/animmesh.h"
 #include "graphics/mesh/submesh/staticmesh.h"
 #include "graphics/mesh/submesh/packedmesh.h"
@@ -412,18 +410,6 @@ void DrawCommands::drawHiZ(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {
   // return;
   struct Push { uint32_t firstMeshlet; uint32_t meshletCount; } push = {};
 
-#if defined(__ANDROID__)
-  // TEMP [hizdiag]: the Adreno 619 driver SIGSEGVs inside its shader compiler
-  // when the first draw with some HiZ pipeline variant lazily triggers
-  // vkCreateGraphicsPipelines (~2 min into a new game, at the intro scene
-  // cut). The toggle skips the occluder pass entirely to test that hypothesis
-  // (empty HiZ pyramid = nothing gets occlusion-culled = correct but slower);
-  // the first-use log names the variant being compiled when it crashes.
-  static const bool noOccluders = Gothic::settingsGetI("INTERNAL","hizNoOccluders")!=0;
-  if(noOccluders)
-    return;
-#endif
-
   auto  viewId = SceneGlobals::V_HiZ;
   auto& view   = views[viewId];
 
@@ -442,15 +428,6 @@ void DrawCommands::drawHiZ(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {
 
     setBindings(cmd, cx, viewId);
     cmd.setPushData(push);
-#if defined(__ANDROID__)
-    {
-      static std::unordered_set<const void*> seen;
-      if(seen.insert(cx.pHiZ).second)
-        Log::i("[hizdiag] first-use pso=", reinterpret_cast<const void*>(cx.pHiZ),
-               " type=", int(cx.type), " alpha=", int(cx.alpha),
-               " mesh=", int(cx.isMeshShader()), " bindless=", int(cx.bucketId==0xFFFFFFFFu));
-      }
-#endif
     cmd.setPipeline(*cx.pHiZ);
     if(cx.isMeshShader())
       cmd.dispatchMeshIndirect(view.indirectCmd, sizeof(IndirectCmd)*id + sizeof(uint32_t)); else
