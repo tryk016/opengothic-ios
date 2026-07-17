@@ -125,7 +125,18 @@ layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[]; 
 #endif
 
 #if defined(GL_FRAGMENT_SHADER) && defined(MAT_UV)
+#if defined(BINDLESS)
 layout(binding = L_Diffuse)          uniform  texture2D textureMain[];
+#else
+// Sized 1, not runtime-sized: the slot path binds exactly one texture here,
+// and slot-mode SPIR-V that carries a runtime-sized sampled-image array makes
+// the Adreno 6xx driver's shader compiler SIGSEGV inside
+// vkCreateGraphicsPipelines the first time any texture-sampling material
+// pipeline is created (the runtime-sized SSBO arrays above compile fine -- it
+// is specific to image descriptors). Desktop drivers tolerate the runtime
+// array in slot mode; do not rely on that.
+layout(binding = L_Diffuse)          uniform  texture2D textureMain[1];
+#endif
 layout(binding = L_Sampler)          uniform  sampler   samplerMain;
 #endif
 
