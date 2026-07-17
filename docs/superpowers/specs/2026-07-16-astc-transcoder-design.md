@@ -427,7 +427,20 @@ więc to zaległy, osobny bug — zgłoszony jako oddzielne zadanie.
 
 ## 8. Co to daje iOS
 
-iOS ma **dokładnie ten sam problem** (Apple GPU nie ma BC → ta sama ścieżka device.cpp:199 → RGBA8).
+> **⚠️ KOREKTA (2026-07-17, od użytkownika + weryfikacja wiedzy):** twierdzenie „Apple GPU nie ma BC"
+> jest **przestarzałe dla najnowszych układów**. **A17 Pro (iPhone 15 Pro) to pierwsza generacja
+> iPhone'a ze sprzętowym wsparciem BC/DXT** (dodane pod porty konsolowe — RE Village, Death
+> Stranding), M-series iPady również je mają. Na tych urządzeniach `supportsBCTextureCompression()`
+> zwraca true → DXT zostaje skompresowane natywnie → **blowup do RGBA8 w ogóle nie występuje
+> i transcoder nie jest potrzebny**. Problem dotyczy tylko starszych układów (≤A16, starsze iPady).
+> Urządzenie użytkownika (iPhone 15/16 Pro Max) najpewniej NIE potrzebuje Fazy 3.
+> Nadal **niezweryfikowane pomiarem** na realnym urządzeniu — test to jedna linia logu
+> (`supportsBCTextureCompression()` w mtdevice.mm) przy odmrożeniu prac iOS. Dzięki bramce
+> `!hasSamplerFormat(DXT1)` transcoder na sprzęcie z BC **wyłącza się sam**, więc Faza 3 jest
+> bezpieczna wszędzie — ale jej wartość ogranicza się do starszych urządzeń. Priorytet niski;
+> iOS zamrożone do zakończenia portu Android (decyzja użytkownika 2026-07-17).
+
+iOS **miał mieć dokładnie ten sam problem** (ta sama ścieżka device.cpp:199 → RGBA8) — patrz korekta wyżej.
 Dzięki gatingowi po możliwościach GPU, a nie po `#if`:
 
 - **Ta sama logika transkodowania i cache'u** działa na obu portach — każde urządzenie buduje
