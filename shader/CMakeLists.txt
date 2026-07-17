@@ -25,17 +25,6 @@ if(NOT GLSLANGVALIDATOR)
   message(FATAL_ERROR "glslangValidator required")
 endif()
 
-# Android: spirv-opt pass over every compiled shader (see the comment inside
-# add_shader). Required there - a raw-SPIR-V pattern crashes the Adreno 6xx
-# driver compiler; other platforms keep the plain glslang output.
-if(ANDROID)
-  find_program(SPIRV_OPT spirv-opt)
-  if(NOT SPIRV_OPT)
-    message(FATAL_ERROR "spirv-opt required for Android builds (apt install spirv-tools)")
-  endif()
-  message(STATUS "Android shaders: spirv-opt pass enabled (${SPIRV_OPT})")
-endif()
-
 function(add_shader OUTPUT SOURCE)
   set(OUTPUT_FILE "${PROJECT_BINARY_DIR}/sprv/${OUTPUT}.sprv")
   set(SOURCE_FILE "${CMAKE_SOURCE_DIR}/shader/${SOURCE}")
@@ -84,27 +73,13 @@ function(add_shader OUTPUT SOURCE)
   list(APPEND GLSL_CMD "-o")
   list(APPEND GLSL_CMD ${OUTPUT_FILE})
 
-  if(ANDROID)
-    # spirv-opt in-place after glslang: different instruction patterns dodge
-    # the Adreno 6xx driver-compiler SIGSEGV (validation-clean SPIR-V, plain
-    # driver bug), and optimized modules are smaller/faster to compile anyway.
-    add_custom_command(
-      OUTPUT     ${OUTPUT_FILE}
-      DEPENDS    ${SOURCE_FILE} ${GLSL_SOURCES}
-      COMMAND    ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/sprv/"
-      COMMAND    ${GLSL_CMD}
-      COMMAND    ${SPIRV_OPT} -O ${OUTPUT_FILE} -o ${OUTPUT_FILE}
-      VERBATIM
-      )
-  else()
-    add_custom_command(
-      OUTPUT     ${OUTPUT_FILE}
-      DEPENDS    ${SOURCE_FILE} ${GLSL_SOURCES}
-      COMMAND    ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/sprv/"
-      COMMAND    ${GLSL_CMD}
-      VERBATIM
-      )
-  endif()
+  add_custom_command(
+    OUTPUT     ${OUTPUT_FILE}
+    DEPENDS    ${SOURCE_FILE} ${GLSL_SOURCES}
+    COMMAND    ${CMAKE_COMMAND} -E make_directory "${PROJECT_BINARY_DIR}/sprv/"
+    COMMAND    ${GLSL_CMD}
+    VERBATIM
+    )
 endfunction(add_shader)
 
 # Ubershader flags:

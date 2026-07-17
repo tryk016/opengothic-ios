@@ -29,11 +29,8 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install glslang + spirv-tools (host shader compiler + optimizer)
-        run: |
-          sudo apt-get update && sudo apt-get install -y glslang-tools spirv-tools
-          glslangValidator --version | head -2
-          spirv-opt --version
+      - name: Install glslang (host shader compiler)
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
 
       - name: Apply submodule patches
         run: bash android/patches/apply-patches.sh
