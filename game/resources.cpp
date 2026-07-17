@@ -20,6 +20,7 @@
 #include <zenkit/addon/texcvt.hh>
 #include <zenkit/Texture.hh>
 
+#include "graphics/astctranscoder.h"
 #include "graphics/mesh/submesh/pfxemittermesh.h"
 #include "graphics/mesh/submesh/packedmesh.h"
 #include "graphics/mesh/skeleton.h"
@@ -387,6 +388,13 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
       zenkit::Texture tex;
 
       auto reader = entry->open_read();
+#if defined(HAS_ASTCENC)
+      // Entry size, measured the same way implLoadTextureUncached(Read&) does it. VfsNode
+      // exposes no size(), and the ASTC cache stores this to notice replaced game data.
+      reader->seek(0, zenkit::Whence::END);
+      const uint64_t srcSize = uint64_t(reader->tell());
+      reader->seek(0, zenkit::Whence::BEG);
+#endif
       tex.load(reader.get());
 
       if(tex.format() == zenkit::TextureFormat::DXT1 ||
@@ -436,6 +444,20 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
             // Mip-capped decode failed -- fall through to the full-resolution
             // path rather than giving up (which would show the red fallback).
             }
+          }
+#endif
+#if defined(HAS_ASTCENC)
+        // Sits after the cap block so an explicit [INTERNAL] androidTexCap still wins,
+        // but ahead of to_dds(): on a GPU without BC that path ends in a full-resolution
+        // RGBA8 decompression inside Device::texture (device.cpp:195-203). Gated on GPU
+        // capability rather than __ANDROID__, so iOS gets this unchanged and desktop --
+        // which samples DXT natively -- never enters it.
+        if(AstcTranscoder::enabled()) {
+          auto pm = AstcTranscoder::transcode(nameAlt, tex, srcSize);
+          // transcode() returns empty for anything it declines (single-mip sources,
+          // encoder failure), which falls through to the ordinary DXT path below.
+          if(!pm.isEmpty())
+            return dev.texture(pm, true); // mipCount()>1 guaranteed: transcode() skips 1-mip
           }
 #endif
         auto dds = zenkit::to_dds(tex);

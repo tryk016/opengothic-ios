@@ -261,6 +261,10 @@ if(ANDROID)
   add_subdirectory(lib/astcenc)
   target_include_directories(${PROJECT_NAME} PRIVATE lib/astcenc/Source)
   target_link_libraries(${PROJECT_NAME} ${ASTCENC_LIB})
+  # Guards game/graphics/astctranscoder.* and its call site. Keyed on the encoder being
+  # linked in, not on the platform: the transcoder itself gates on GPU capability, so the
+  # iOS port only has to define this and build astcenc.
+  target_compile_definitions(${PROJECT_NAME} PRIVATE HAS_ASTCENC=1)
 endif()
 
 # dmusic

@@ -17,6 +17,7 @@
 #include "game/definitions/particlesdefinitions.h"
 
 #include "world/objects/npc.h"
+#include "graphics/astctranscoder.h"
 #include "graphics/shaders.h"
 
 #include "utils/fileutil.h"
@@ -617,6 +618,11 @@ void Gothic::implStartLoadSave(std::string_view banner,
         next        = f(std::move(game));
         pendingGame = std::move(next);
         loadingFlag.compare_exchange_strong(curState,LoadState::Finalize);
+#if defined(HAS_ASTCENC)
+        // Every texture of the world has passed through Resources by now, so the
+        // texture-only subtotal is complete and meaningful at this point.
+        AstcTranscoder::logStats();
+#endif
         }
       catch(std::bad_alloc&){
         Tempest::Log::e("loading error: out of memory");

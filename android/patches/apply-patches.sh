@@ -15,11 +15,12 @@ SW="$ROOT/lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp"
 CM="$ROOT/lib/Tempest/Engine/CMakeLists.txt"
 AGA="$ROOT/lib/Tempest/Engine/gapi/abstractgraphicsapi.h"
 PM="$ROOT/lib/Tempest/Engine/formats/pixmap.cpp"
+PH="$ROOT/lib/Tempest/Engine/formats/pixmap.h"
 VD="$ROOT/lib/Tempest/Engine/gapi/vulkan/vdevice.h"
 API_H="$ROOT/lib/Tempest/Engine/system/api/androidapi.h"
 API_CPP="$ROOT/lib/Tempest/Engine/system/api/androidapi.cpp"
 
-for f in "$SYS" "$VK" "$SW" "$CM" "$AGA" "$PM" "$VD"; do
+for f in "$SYS" "$VK" "$SW" "$CM" "$AGA" "$PM" "$PH" "$VD"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: not found: $f" >&2
     exit 1
@@ -205,12 +206,13 @@ fi
 # --------------------------------------------------------------------------
 # (f) ASTC4x4 texture format support.
 #
-# Mali (and every Apple GPU) lacks BC/S3TC, so device.cpp:199 decompresses every
-# DXT texture to RGBA8 -- measured 1.38GB GPU on a 3.5GB device, vs 69MB on an
-# Adreno that samples DXT natively. ASTC keeps textures compressed at FULL
-# resolution (4x smaller than RGBA8), which a mip-cap fundamentally cannot do:
-# measured cap=512 saves only 60MB (Gothic2 textures are mostly <=512px) while
-# cap=256 saves 500MB but is visibly blocky.
+# Mobile Vulkan essentially has no BC/S3TC -- Phase 1 measured DXT1=0 on BOTH
+# Mali-G57 and Adreno 619, and no Apple GPU has it either. So device.cpp:199
+# decompresses every DXT texture to RGBA8: measured 1.38GB GPU on a 3.5GB device.
+# ASTC keeps textures compressed at FULL resolution (4x smaller than RGBA8),
+# which a mip-cap fundamentally cannot do: measured cap=512 saves only ~80MB
+# (Gothic2 textures are mostly <=512px) while cap=256 saves 500MB but is visibly
+# blocky.
 #
 # ASTC 4x4 specifically, because it is 16 bytes per 4x4 block -- exactly the
 # shape pixmap.cpp and metal/mttexture.cpp already hardcode for DXT3/DXT5 -- so
@@ -243,16 +245,54 @@ else
   fi
 fi
 
+# blockCount is NOT internal Pixmap bookkeeping: vulkanapi.cpp:343 uses it to
+# walk per-mip offsets in the staging buffer, and :426 to size a readback. It
+# has no `default:` label, so an unpatched ASTC4x4 silently returns Size(0,0)
+# -- every mip would then copy from offset 0. Tempest has no -Werror, so this
+# would NOT fail the build; it would just corrupt every mip chain at runtime.
+#
+# The kfrm guard closes an out-of-bounds read. Impl::convert indexes a
+# 3-element `static const int kfrm[]` by `frm - DXT1`; with ASTC4x4 appended
+# last that is kfrm[5] -- reading past the array and handing the garbage to
+# squish as a format flag (silent corruption in release, not a clean crash).
+# The pre-existing assert() does NOT catch it: it checks the DESTINATION
+# format, which is legitimately RGBA8 on that path. Adding ASTC4x4 to
+# isCompressed above is what makes this reachable, so the two must land
+# together.
 if grep -q 'ASTC4x4' "$PM"; then
   echo "skip: pixmap.cpp ASTC4x4 (already patched)"
 else
   perl -0777 -pi -e 's/(    return frm==TextureFormat::DXT1 \|\|\r?\n           frm==TextureFormat::DXT3 \|\|\r?\n           frm==TextureFormat::DXT5;)/    return frm==TextureFormat::DXT1 ||\n           frm==TextureFormat::DXT3 ||\n           frm==TextureFormat::DXT5 ||\n           frm==TextureFormat::ASTC4x4;/' "$PM"
   perl -0777 -pi -e 's/(    case TextureFormat::DXT5:        return 16;\r?\n)/${1}    case TextureFormat::ASTC4x4:     return 16;\n/' "$PM"
   perl -0777 -pi -e 's/(    case TextureFormat::DXT5:        return 4;\r?\n)/${1}    case TextureFormat::ASTC4x4:     return 4;\n/' "$PM"
-  if [ "$(grep -c 'ASTC4x4' "$PM")" = "3" ]; then
-    echo "patched: pixmap.cpp ASTC4x4 (isCompressed + blockSize=16 + componentCount=4)"
+  perl -0777 -pi -e 's/(    case TextureFormat::DXT5:\r?\n)(      return Size\(\(w\+3\)\/4,\(h\+3\)\/4\);)/${1}    case TextureFormat::ASTC4x4:\n${2}/' "$PM"
+  perl -0777 -pi -e 's/(      static const int kfrm\[\] = \{squish::kDxt1,squish::kDxt3,squish::kDxt5\};)/      if(other.frm==TextureFormat::ASTC4x4)\n        throw std::system_error(Tempest::GraphicsErrc::UnsupportedTextureFormat, "ASTC4x4->RGBA8");\n${1}/' "$PM"
+  if [ "$(grep -c 'ASTC4x4' "$PM")" = "6" ]; then
+    echo "patched: pixmap.cpp ASTC4x4 (isCompressed + blockSize=16 + componentCount=4 + blockCount + kfrm guard)"
   else
-    echo "ERROR: failed to patch pixmap.cpp ASTC4x4 (expected 3 hits, got $(grep -c 'ASTC4x4' "$PM"))" >&2
+    echo "ERROR: failed to patch pixmap.cpp ASTC4x4 (expected 6 hits, got $(grep -c 'ASTC4x4' "$PM"))" >&2
+    exit 1
+  fi
+fi
+
+# Pixmap ctor from raw bytes. Required, not a convenience: Impl::mipCnt is
+# private and written ONLY by PixmapCodec::loadImg, so the codec path is the
+# only existing way to get mipCount()>1. Pixmap(w,h,frm)+memcpy is stuck at
+# mipCnt==1, and Device::texture() turns a compressed pixmap with mipCount()==1
+# and mips==true into Pixmap(pm,RGBA8) -- i.e. straight back into the
+# decompression we are trying to avoid. Registering a codec is not an option
+# either: the codec list is hardcoded in the ctor of the private struct
+# PixmapCodec::Impl and there is no register/install API anywhere in Tempest.
+if grep -q 'const void\* data, size_t dataSz' "$PH"; then
+  echo "skip: pixmap raw-bytes ctor (already patched)"
+else
+  perl -0777 -pi -e 's/(    Pixmap\(uint32_t w, uint32_t h, TextureFormat frm\);\r?\n)/${1}    Pixmap(const void* data, size_t dataSz, uint32_t w, uint32_t h, uint32_t mipCnt, TextureFormat frm);\n/' "$PH"
+  perl -0777 -pi -e 's/(  Impl\(const Impl& other\):w\(other\.w\),h\(other\.h\),dataSz\(other\.dataSz\),frm\(other\.frm\),mipCnt\(other\.mipCnt\)\{)/  Impl(const void* px, size_t sz, uint32_t w, uint32_t h, uint32_t mipCnt, TextureFormat frm)\n      :w(w),h(h),dataSz(sz),frm(frm),mipCnt(mipCnt) {\n    data = reinterpret_cast<uint8_t*>(std::malloc(sz));\n    if(!data)\n      throw std::bad_alloc();\n    std::memcpy(data,px,sz);\n    }\n\n${1}/' "$PM"
+  perl -0777 -pi -e 's/(Pixmap::Pixmap\(uint32_t w, uint32_t h, TextureFormat frm\)\r?\n  :impl\(new Impl\(w,h,frm\)\)\{\r?\n  \}\r?\n)/${1}\nPixmap::Pixmap(const void* data, size_t dataSz, uint32_t w, uint32_t h, uint32_t mipCnt, TextureFormat frm)\n  :impl(new Impl(data,dataSz,w,h,mipCnt,frm)){\n  }\n/' "$PM"
+  if grep -q 'const void\* data, size_t dataSz' "$PH" && [ "$(grep -c 'const void\* px, size_t sz\|const void\* data, size_t dataSz' "$PM")" = "2" ]; then
+    echo "patched: pixmap raw-bytes ctor (pixmap.h decl + Impl ctor + Pixmap ctor)"
+  else
+    echo "ERROR: failed to patch pixmap raw-bytes ctor" >&2
     exit 1
   fi
 fi
