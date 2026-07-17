@@ -141,7 +141,7 @@ Pixmap readCache(const std::string& path, uint64_t srcSize) {
     return Pixmap();
     }
 
-  std::vector<uint8_t> data(size_t(h.dataSz));
+  std::vector<uint8_t> data(static_cast<size_t>(h.dataSz));
   const bool ok = std::fread(data.data(),1,data.size(),f)==data.size();
   std::fclose(f);
   if(!ok)
@@ -225,7 +225,7 @@ Tempest::Pixmap AstcTranscoder::transcode(std::string_view name, const zenkit::T
     total += astcSize(std::max<uint32_t>(1,tex.mipmap_width(l)),
                       std::max<uint32_t>(1,tex.mipmap_height(l)));
 
-  std::vector<uint8_t> out(size_t(total));
+  std::vector<uint8_t> out(static_cast<size_t>(total));
   // Straight RGBA even for DXT1: Gothic's DXT1 can carry 1-bit punch-through alpha, and an
   // RGB1 swizzle would silently flatten it. Costs some rate; cannot lose data.
   const astcenc_swizzle swz = {ASTCENC_SWZ_R,ASTCENC_SWZ_G,ASTCENC_SWZ_B,ASTCENC_SWZ_A};
