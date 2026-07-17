@@ -497,6 +497,19 @@ void DrawCommands::drawCommon(Tempest::Encoder<Tempest::CommandBuffer>& cmd, Sce
 
     setBindings(cmd, cx, viewId);
     cmd.setPushData(push);
+#if defined(__ANDROID__)
+    // TEMP [psodiag]: companion to the [hizdiag] log in drawHiZ. One VkPipeline
+    // is compiled per (pso, framebuffer-format) pair, and viewId maps 1:1 onto
+    // the framebuffer used, so key the first-use set on both. The last line
+    // before the Adreno SIGSEGV names the compile that kills the driver.
+    {
+      static std::unordered_set<uintptr_t> seen;
+      if(seen.insert(reinterpret_cast<uintptr_t>(pso)+uintptr_t(viewId)).second)
+        Log::i("[psodiag] first-use pso=", reinterpret_cast<const void*>(pso),
+               " view=", int(viewId), " type=", int(cx.type), " alpha=", int(cx.alpha),
+               " mesh=", int(cx.isMeshShader()), " bindless=", int(cx.bucketId==0xFFFFFFFFu));
+      }
+#endif
     cmd.setPipeline(*pso);
     if(cx.isMeshShader())
       cmd.dispatchMeshIndirect(view.indirectCmd, sizeof(IndirectCmd)*id + sizeof(uint32_t)); else
