@@ -359,6 +359,57 @@ fundamencie, który mógł nie istnieć. Jeden cykl spalił błąd arności `ast
 (log `[astcdiag]` + `astcBenchmark()` + `#include <astcenc.h>`), **zostawiając** sekcję `(f)` w
 `apply-patches.sh`, submoduł astcenc i konfigurację CMake — to jest fundament Fazy 2.
 
+## 6b. WYNIK FAZY 2 (2026-07-17) — ✅ WSZYSTKIE KRYTERIA ZALICZONE NA MALI; NA ADRENO TRANSCODER CZYSTY, CRASH NIEZALEŻNY
+
+Zmierzone na Tab A9 (Mali-G57) i Galaxy A23 (Adreno 619), build `74d55d2b`
+(commit implementacji `e2d17f4b` + poprawka vexing-parse). Konfiguracja jak w pomiarze
+bazowym: `vidResIndex=0`, `androidTexCap=0`, ta sama scena (komnata Xardasa).
+
+| Kryterium (§6 Faza 2) | Wynik | Werdykt |
+|---|---|---|
+| Podsuma tekstur spada ~4× | **astc=158 MiB vs rgba8=633 MiB, ratio ×4.0006** (867 tekstur, 0 błędów) — zalogowane, nie wyliczone | ✅ |
+| `GL mtrack` do ~380–460 MB | **406 MB** po loadzie / **490–521 MB** in-world (baseline: **1401 MB**, −63%) | ✅ |
+| Wolny RAM rośnie | 288 MB → **841 MB** (PSS 1.94 GB → 1.28–1.35 GB) | ✅ (poniżej projekcji ~1.2–1.3 GB — system część odzyskał dla siebie; projekcja była zawyżona) |
+| Ostrość niezmieniona | zrzut A/B komnaty Xardasa — mur/pentagram/szaty bez różnicy, **zero artefaktów mipów** | ✅ |
+| Pierwszy load zmierzony | **~83 s** od tapnięcia (w tym **61.5 s kodowania**, zmierzone **166.1 Mpx** — realny rozmiar zadania, nie górna granica 345 Mpx) | ✅ |
+| Drugi load ≤ dzisiejszych czasów | **~8 s** (868 trafień w cache, 0 kodowań) — szybszy niż ścieżka DXT, bo czyta 158 MB zamiast dekompresować 633 MB | ✅ |
+| Zero regresji crashy | Mali: soak 4 min + drugi bieg **15+ min**, zero SIGSEGV, `crash.log` nie powstał | ✅ |
+| FPS bez zmian (transcoder ≠ FPS, §2) | **16.5 FPS** vs baseline 16.2/15.9 (ta sama scena/ustawienia, warstwa BLAST) | ✅ |
+
+**Cache na dysku: 160 MB / 867 plików** (Khorinis; projekcja §5.4 mówiła „do ~350 MB" — górna
+granica z tej samej zawyżonej bazy co 345 Mpx). Pierwsze uruchomienie po instalacji tworzy go
+samo; przetrwa reinstalację APK (leży w `/sdcard/OpenGothic/astc/`).
+
+**Adreno 619 (A23): transcoder działa identycznie** — `DXT1=0 ASTC4x4=1 → transcoder 1`,
+867 kodowań w 51.1 s, drugi load z cache w ~11 s, te same bajty (ratio ×4.0006). Gra jednak
+**crashuje ~2:05 po loadzie — i to NIE jest wina ASTC, co udowodniono testem A/B**: przebieg
+z ominiętym transcoderem (`androidTexCap=512` → czysta ścieżka RGBA8) pada **identycznie**
+(3/3 reprodukcje, ten sam backtrace). Miejsce: kompilator shaderów sterownika
+(`libllvm-glnext.so` → `vkCreateGraphicsPipelines`) przy leniwej instancjacji pipeline'u
+`DrawCommands::drawHiZ`. A23 nie był testowany od 2026-07-15 (przed fixem orientacji i merge),
+więc to zaległy, osobny bug — zgłoszony jako oddzielne zadanie.
+
+**Odchylenia implementacji od projektu (§5), z pomiaru kodu — nie do pominięcia w Fazie 3:**
+
+1. **Kodowanie jest szeregowe, nie równoległe.** §5.3 zakładało, że tekstury ładują się przez
+   `Workers`. Nieprawda: `Resources::loadTexture` trzyma globalny `recursive_mutex sync` przez
+   cały load tekstury, a `Workers` w ogóle nie występuje w tej ścieżce. Obowiązywała więc
+   uczciwa liczba jednowątkowa — i zmierzone 61.5 s / 166 Mpx = 2.70 Mpx/s zgadza się z
+   benchmarkiem Fazy 1 (2.67 Mpx/s) co do 1%.
+2. **Faza 1 zostawiła realną dziurę: `Pixmap::blockCount` bez case'a ASTC.** `vulkanapi.cpp:343`
+   liczy nim offsety mipów w stagingu — bez patcha każdy mip kopiowałby się z offsetu 0,
+   po cichu (Tempest nie ma `-Werror`). Wykryte czytaniem kodu przed pierwszym buildem Fazy 2.
+3. **Trzeba było dodać publiczny konstruktor `Pixmap` z surowych bajtów** (patch w
+   apply-patches.sh): `Impl::mipCnt` zapisuje wyłącznie ścieżka kodeków, a lista kodeków jest
+   prywatna bez API rejestracji — nie istniała żadna droga, by oddać silnikowi skompresowaną
+   pixmapę z łańcuchem mipów.
+4. **Strażnik `kfrm`**: `Pixmap(astc, RGBA8)` czytałoby poza 3-elementową tablicą (indeks
+   `frm−DXT1` = 5) i podało śmieci do squisha. Teraz rzuca `UnsupportedTextureFormat`.
+5. **Tekstury jedno-mipowe są celowo pomijane** (UI/menu): `Device::texture()` z `forceMips`
+   zdekompresowałoby 1-mipową skompresowaną pixmapę z powrotem do RGBA8 — pułapka, nie zysk.
+6. **Liczba mipów z pliku jest clampowana do wymiarów** — nikt inny jej nie waliduje, a
+   `mipmap_width()` zenkita to gołe `w >> level`.
+
 ## 7. Ryzyka
 
 | Ryzyko | Skala | Mitygacja |
