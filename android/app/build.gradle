@@ -50,18 +50,6 @@ android {
         release {
             signingConfig signingConfigs.release
             minifyEnabled false
-            // TEMP [vvldiag]: debuggable + extracted native libs let the Vulkan
-            // loader inject VK_LAYER_khronos_validation (bundled by CI into
-            // jniLibs) via the enable_gpu_debug_layers device settings, to name
-            // whatever makes the Adreno 619 shader compiler SIGSEGV. Revert
-            // together with the CI download step once diagnosed.
-            debuggable true
-        }
-    }
-
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging true // TEMP [vvldiag]: extract .so so the loader can enumerate layers
         }
     }
 
