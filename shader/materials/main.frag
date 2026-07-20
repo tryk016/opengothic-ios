@@ -3,39 +3,6 @@
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
 
-#if defined(TEMP_BISECT_A)
-
-#if defined(GBUFFER)
-layout(location = 0) out vec4 outDiffuse;
-layout(location = 1) out uint outNormal;
-
-void main() {
-  outDiffuse = vec4(0.0);
-  outNormal  = 0u;
-  }
-#elif defined(WATER)
-layout(location = 0) out vec4 outColor;
-layout(location = 1) out vec4 outDiffuse;
-layout(location = 2) out uint outNormal;
-
-void main() {
-  outColor   = vec4(0.0);
-  outDiffuse = vec4(0.0);
-  outNormal  = 0u;
-  }
-#elif !defined(DEPTH_ONLY)
-layout(location = 0) out vec4 outColor;
-
-void main() {
-  outColor = vec4(0.0);
-  }
-#else
-void main() {
-  }
-#endif
-
-#else
-
 #if defined(VIRTUAL_SHADOW)
 #include "virtual_shadow/vsm_common.glsl"
 #endif
@@ -393,5 +360,3 @@ void main() {
   //outColor   = vec4(vec3(shPos0.xy,0),1.0);
   //outColor = dbgLambert();
   }
-
-#endif
