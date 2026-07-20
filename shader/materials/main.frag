@@ -323,6 +323,9 @@ void mainWater(vec4 t) {
 #endif
 
 void main() {
+#if defined(TEMP_BISECT_A)
+  return; // TEMP [bisect] step A - see materials_common.glsl
+#endif
 #if defined(MAT_UV)
   vec4 t = diffuseTex();
 #  if defined(ATEST)

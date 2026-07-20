@@ -124,6 +124,14 @@ layout(binding = L_Ibo,      std430) readonly buffer Ibo  { uint    indexes []; 
 layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[];    } vbo[];
 #endif
 
+// TEMP [bisect] step A: slot fragments keep every declaration (varyings,
+// texture, SSBOs) but execute nothing - a binary probe for the Adreno 6xx
+// compiler SIGSEGV. Survives => the crash needs USAGE of one of these;
+// crashes => declarations/stage-linking alone are toxic. Remove after.
+#if defined(GL_FRAGMENT_SHADER) && !defined(BINDLESS) && defined(MAT_UV)
+#define TEMP_BISECT_A 1
+#endif
+
 #if defined(GL_FRAGMENT_SHADER) && defined(MAT_UV)
 #if defined(BINDLESS)
 layout(binding = L_Diffuse)          uniform  texture2D textureMain[];
