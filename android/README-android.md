@@ -1,108 +1,164 @@
-# OpenGothic on Android — install guide
+# OpenGothic on Android — install and compatibility guide
 
-> ### ⚠️ Work in progress — not ready for players yet
-> The Android port boots *Gothic II: Night of the Raven*, reaches the main
-> menu, starts a new game and plays the intro cutscene, and survives
-> backgrounding/resuming — but so far only on a **desktop emulator**. It has
-> **not** been validated on real phones, nor under the low-RAM conditions
-> (roughly 4 GB) that are the actual target hardware. Expect crashes, no
-> settings persistence, and untuned touch controls. The published build is
-> explicitly marked **"do not install"** on its GitHub Release. Only install
-> it if you want to help test an early, unfinished build — not to play the
-> game yet.
+> ### ⚠️ Pre-alpha test build
+>
+> The Android port is playable on the tested Samsung Galaxy Tab A9
+> (Helio G99 / Mali-G57 MC2): it loads Khorinis, renders in landscape,
+> accepts touch input, survives background/resume, and has completed sustained
+> gameplay tests. The tested Galaxy A23 (Adreno 619, Samsung driver
+> 512.548.0) currently crashes inside Qualcomm's Vulkan shader compiler before
+> the first 3D gameplay frame. Compatibility with other GPUs is unknown.
+>
+> The published APK remains a work-in-progress prerelease. Install it for
+> testing, not as a finished mobile edition.
 
-You must legally own *Gothic II: Night of the Raven*. OpenGothic ships **no**
-game assets or scripts; you supply them yourself from your own installation.
-
----
+You must legally own *Gothic II: Night of the Raven*. OpenGothic ships no game
+assets or scripts; you supply them from your own installation.
 
 ## 1. Get the APK
 
-Download the latest test build from the
-**[`latest-android` release](https://github.com/tryk016/opengothic-ios/releases/tag/latest-android)**
-(asset `OpenGothic.apk`). It rebuilds and republishes automatically on every
-push to the `android` branch — see
-[`DEVELOPMENT.md`](DEVELOPMENT.md#ci-and-distribution) for the CI pipeline.
-Every build is signed with the same committed keystore, so installing a new
-one over an older one behaves like a normal app update (no uninstall needed).
+Download `OpenGothic.apk` from the
+[`latest-android` release](https://github.com/tryk016/opengothic-ios/releases/tag/latest-android).
+CI rebuilds it after code-affecting pushes to the `android` branch;
+documentation-only pushes are intentionally ignored.
 
-## 2. Allow installing from this source
+Every published build uses the same committed signing key, so a new APK can
+be installed over the previous version without uninstalling the app or
+recopying game data.
 
-Android blocks installing APKs from outside the Play Store by default. When
-you open the downloaded file (or tap "Install" from your browser's or file
-manager's download notification), Android prompts to allow that specific app
-to install unknown apps — accept it, then continue the install. (Manually:
-Settings → Apps → Special app access → Install unknown apps.)
+> **Signing warning:** the keystore and its passwords are public in this
+> repository. This is convenient for personal sideload updates, but it means
+> the APK signature alone does not prove that a build came from the
+> maintainer. Download builds only from this repository's official
+> `latest-android` release.
 
-## 3. Install and grant storage access
+## 2. Allow installation from this source
 
-Install the APK, then launch it. On first launch it needs full storage
-access to read your game files from `/sdcard/`:
+Android blocks APK installation from outside the Play Store by default. Open
+the downloaded APK and allow your browser or file manager to install unknown
+apps when Android asks. The setting is also available under:
 
-- The app automatically opens **Settings → Allow access to manage all
-  files**. Toggle it **on** for OpenGothic, then go back to the app (or
-  relaunch it if it doesn't resume on its own).
-- This is Android's `MANAGE_EXTERNAL_STORAGE` ("All files access")
-  permission — required because Gothic's data folder layout doesn't fit the
-  scoped-storage model regular apps use.
+`Settings → Apps → Special app access → Install unknown apps`
 
-## 4. Copy your game data
+## 3. Grant storage access
 
-Copy the **contents** of your Gothic II: NotR installation onto the device,
-under:
+On first launch, OpenGothic opens the Android settings page for
+**Allow access to manage all files**. Enable it for OpenGothic.
 
-```
+The current port needs `MANAGE_EXTERNAL_STORAGE` because it reads game data
+from the fixed shared-storage path `/sdcard/OpenGothic/Gothic2/`. A future
+app-private or Storage Access Framework implementation could avoid this
+permission.
+
+GameActivity can start the native thread before permission is granted. After
+enabling access, fully close and relaunch OpenGothic if the first launch has
+already exited.
+
+## 4. Copy game data once
+
+Copy exactly these three folders from your Gothic II: NotR installation:
+
+```text
 /sdcard/OpenGothic/Gothic2/
 ├── Data/
 ├── _work/
 └── system/
 ```
 
-That is: copy the `Data/`, `_work/`, and `system/` folders from something like
-`C:\Program Files (x86)\Steam\steamapps\common\Gothic II` into
-`/sdcard/OpenGothic/Gothic2/` on the device — over a USB cable (MTP file
-transfer) or with any file manager on the device itself. Saves and the
-writable `Gothic.ini` override are created one level up, directly under
-`/sdcard/OpenGothic/`.
+For a Steam installation, the source is usually:
 
-If the data isn't there yet, or storage access wasn't granted, you'll see an
-on-screen "Gothic II data not found" message instead of a crash — copy the
-data (or grant the permission), then relaunch.
+```text
+C:\Program Files (x86)\Steam\steamapps\common\Gothic II
+```
 
-## 5. Play
+`_work/` is mandatory. It contains compiled scripts, music, and video data
+that are not replaced by the VDF archives.
 
-Launch **OpenGothic**. Menus are navigated by touch: tap the buttons on the
-on-screen control overlay (the same overlay used by the iOS port) rather than
-tapping menu text directly — e.g. tap the confirm/"A" button to select "Nowa
-gra" (New Game). There's no Android-tuned virtual gamepad yet, no
-Bluetooth/USB controller support, and settings persistence across restarts is
-unconfirmed — see [`DEVELOPMENT.md`](DEVELOPMENT.md#remaining--deferred-work)
-for the full list of what's still missing.
+Writable files are kept one level above the game data:
 
----
+- `/sdcard/OpenGothic/Gothic.ini`
+- `/sdcard/OpenGothic/log.txt`
+- `/sdcard/OpenGothic/astc/`
+- save data created by the engine
 
-### Requirements
+If game data or permission is missing, the native thread currently writes
+`Gothic II data not found` to logcat/`log.txt` and exits. A visible Android
+error dialog has not been implemented yet.
 
-- Android 8.0 (API 26) or newer.
-- A Vulkan-capable GPU (the manifest requires the
-  `android.hardware.vulkan.version` feature).
-- An `arm64-v8a` device for real phones/tablets. An `x86_64` build is also
-  produced, but that's for desktop-emulator testing, not real hardware.
+## 5. First launch and the ASTC cache
 
-### Known limitations (M1)
+On the first successful launch, the port creates
+`/sdcard/OpenGothic/Gothic.ini` with the mobile profile:
 
-- Not yet tested on real hardware, or under the real (~4 GB) memory pressure
-  that is the actual target — only a desktop emulator has run this build so
-  far.
-- On-screen controls are the shared iOS overlay, untuned for Android; no
-  physical controller or haptics support yet.
-- `Gothic.ini` settings persistence across restarts hasn't been verified.
-- Expect rough edges generally — this is a first boot-to-menu milestone, not
-  a finished port.
+- half-resolution rendering (`vidResIndex=2`);
+- cloud shadows/SSAO disabled;
+- 512 px shadow maps on Android;
+- mobile gamepad defaults.
 
----
+The copied `system/Gothic.ini` remains untouched. The writable override is
+loaded across relaunches; persistence of every individual option changed
+through the in-game menu still needs dedicated coverage.
 
-*For the engine itself — Windows/Linux/macOS builds, features, mods,
-command-line arguments, graphics options, and the contribution guide — see
-the upstream project:* **[Try/OpenGothic](https://github.com/Try/OpenGothic)**.
-*Maintainer/architecture notes for this port are in [`DEVELOPMENT.md`](DEVELOPMENT.md).*
+The profile currently also writes `zMaxFpsMode=1`, but that selector is read
+only by the iOS path. Android's effective cap still comes from
+`SystemPack.ini` `PARAMETERS/FPS_Limit`, then `ENGINE/zMaxFps`. Therefore the
+port does **not** currently guarantee a 30 FPS default.
+
+On GPUs without BC/S3TC but with ASTC, the first world load builds a compressed
+texture cache under `/sdcard/OpenGothic/astc/`. On the tested Mali-G57:
+
+- encoding added about 61.5 seconds to the first world load;
+- the cache occupied about 160 MB;
+- a subsequent world load took about 8 seconds;
+- process memory fell from about 1.94 GB PSS to 1.28–1.35 GB.
+
+Do not delete this directory unless you want the cache rebuilt. The cache
+format is still experimental and its validation needs hardening, so do not
+copy cache files from untrusted sources.
+
+## 6. Controls
+
+Menus and basic gameplay accept touch through the shared mobile control
+overlay. Tap the on-screen confirm/"A" control to select a menu item; menu
+text itself is not a native Android button.
+
+Current limitations:
+
+- touch handling tracks only the primary pointer, so simultaneous movement
+  and action input is not complete;
+- there is no Android-tuned virtual gamepad;
+- hardware controller input and haptics are not implemented;
+- the Android Back key is drained but not mapped to a game action.
+
+## Requirements and tested devices
+
+- Android 8.0 / API 26 or newer;
+- Vulkan-capable GPU;
+- `arm64-v8a` for real phones/tablets;
+- approximately 4 GB RAM or more is recommended;
+- `x86_64` is included for desktop emulator testing.
+
+| Device | GPU | Result |
+|---|---|---|
+| Samsung Galaxy Tab A9 / SM-X115 | Mali-G57 MC2 | Khorinis loads and runs; landscape, touch, lifecycle and ASTC verified |
+| Samsung Galaxy A23 5G / SM-A236B | Adreno 619 | Deterministic Qualcomm shader-compiler crash before the first 3D gameplay frame; workaround investigation remains open |
+| Pixel Tablet AVD | host Vulkan / x86_64 | Boot, menu, intro, touch and lifecycle smoke-tested |
+
+## Known limitations
+
+- This is still a pre-alpha build; compatibility beyond the devices above is
+  unknown.
+- Adreno 619 with the tested Samsung driver is currently blocked.
+- The ASTC cache is public and not yet fully validated against corrupted or
+  malicious files.
+- First-run storage permission is not gated before native startup.
+- Missing data and fatal errors do not yet produce a native Android dialog.
+- Android crash logs do not currently provide a reliable native stack unwind.
+- Full Activity destroy/recreate in the same process has not been hardened.
+
+For architecture, build, CI and current engineering priorities, see
+[`DEVELOPMENT.md`](DEVELOPMENT.md). Historical implementation details and
+measurements live under [`docs/superpowers/`](../docs/superpowers/).
+
+For the upstream engine, desktop builds, mods and contribution guide, see
+[Try/OpenGothic](https://github.com/Try/OpenGothic).

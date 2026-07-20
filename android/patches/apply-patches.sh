@@ -206,9 +206,11 @@ fi
 # --------------------------------------------------------------------------
 # (f) ASTC4x4 texture format support.
 #
-# Mobile Vulkan essentially has no BC/S3TC -- Phase 1 measured DXT1=0 on BOTH
-# Mali-G57 and Adreno 619, and no Apple GPU has it either. So device.cpp:199
-# decompresses every DXT texture to RGBA8: measured 1.38GB GPU on a 3.5GB device.
+# Phase 1 measured DXT1=0 on both tested mobile Vulkan GPUs (Mali-G57 and
+# Adreno 619). Older Apple GPUs also lack BC, while A17 Pro and some M-series
+# devices support it. Where BC is absent, device.cpp:199 decompresses DXT
+# textures to RGBA8. The measured texture payload was 633MiB RGBA8 versus
+# 158MiB ASTC; 1.38GB was the total GL mtrack including non-texture resources.
 # ASTC keeps textures compressed at FULL resolution (4x smaller than RGBA8),
 # which a mip-cap fundamentally cannot do: measured cap=512 saves only ~80MB
 # (Gothic2 textures are mostly <=512px) while cap=256 saves 500MB but is visibly
@@ -710,9 +712,11 @@ echo "wrote: lib/Tempest/Engine/system/api/androidapi.cpp"
 # are then free to stop advertising the extension string -- Adreno 619 on
 # Vulkan 1.3 does exactly that (measured: the string is absent from its 75
 # extensions). vdevice.cpp gated the whole descriptor-indexing feature query
-# on that string, so such devices silently fell back to the slot path even
-# though the hardware supports bindless. Mali advertises the string, which is
-# why the two devices ran different shader sets.
+# on that string, so such devices were not even queried correctly. After this
+# patch core-promoted features can be read, but the tested Adreno still selects
+# the slot path because it reports nonUniformIndexing=0 and does not expose the
+# complete feature set required by OpenGothic's bindless renderer. Mali
+# advertises the extension string and exposes the required features.
 #
 # Two edits: (g1) treat apiVersion>=1.2 as descriptor-indexing-capable, and
 # (g2) only request the extension string at device creation when the driver

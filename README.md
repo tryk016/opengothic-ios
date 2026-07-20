@@ -4,9 +4,12 @@ An **unofficial iOS port** of [OpenGothic](https://github.com/Try/OpenGothic) â€
 re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbing to build, sideload,
 and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-screen virtual gamepad.
 
-An early-stage **Android port** is also in development on the
-[`android` branch](https://github.com/tryk016/opengothic-ios/tree/android) â€” it boots to the main menu
-and beyond, but is pre-alpha and **not yet ready for players**. See
+An experimental **Android port** is also in development on the
+[`android` branch](https://github.com/tryk016/opengothic-ios/tree/android).
+It has been validated on real arm64 hardware and loads/runs Khorinis on the
+target Mali-G57 device. The tested Adreno 619 currently crashes inside
+Qualcomm's Vulkan shader compiler before the first 3D gameplay frame, so the
+port remains pre-alpha. See the current compatibility matrix in
 [`android/README-android.md`](android/README-android.md) to try it anyway, or
 [`android/DEVELOPMENT.md`](android/DEVELOPMENT.md) for the architecture notes.
 

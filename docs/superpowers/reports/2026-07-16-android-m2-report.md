@@ -27,7 +27,7 @@ obrócony o 90°, dotyk nieużywalny (testy wymagały obejścia `-nomenu`).
 
 ### 1+2+4 — jeden hack, trzy problemy (najważniejsza lekcja sesji)
 
-Crash #1 zdiagnozowałem poprawnie: [vdescriptorarray.cpp:90](lib/Tempest/Engine/gapi/vulkan/vdescriptorarray.cpp:90)
+Crash #1 zdiagnozowałem poprawnie: [vdescriptorarray.cpp:90](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vdescriptorarray.cpp#L90)
 wpisuje `VK_NULL_HANDLE` jako imageView dla null-tekstur, a Mali-G57 **nie ma `VK_EXT_robustness2`
 (nullDescriptor)** → `vkUpdateDescriptorSets` na null imageView = UB → crash w sterowniku.
 (Ścieżka buforowa w tym samym pliku **ma** guard `!hasRobustness2` — teksturowa go nie ma. To realna
@@ -39,14 +39,14 @@ null-a, tylko `&fallback`. To zmieniło **kontrakt null-a w całym silniku** i w
 - **Zawis ładowania (#2):** `loadTextureAnim` sonduje klatki animacji `TEX_A0, TEX_A1, …` i **kończy
   na null-u**. Skoro `loadTexture` przestał zwracać null — pętla kręciła się w nieskończoność,
   ładując fallback jako kolejne klatki. 100% CPU, GPU płaskie, pasek zamrożony na 27%.
-- **Czerwone pancerze (#4):** [meshobjects.cpp:43](game/graphics/meshobjects.cpp:43) `solveTex` próbuje
+- **Czerwone pancerze (#4):** [meshobjects.cpp:43](../../../game/graphics/meshobjects.cpp#L43) `solveTex` próbuje
   wariantu tekstury (`HUM_ORGL_ARMOR_V1.TGA`) i **gdy go nie ma, ma dostać `nullptr` i wrócić do
   tekstury bazowej `def`**. Nie wszystkie warianty istnieją w VDF — silnik na tym polega.
   Mój hack zwracał `&fallback`, więc `if(ntex!=nullptr)` odpalał i pancerz dostawał fallback.
-  A fallback to **czysta czerwień** ([resources.cpp:94](game/resources.cpp:94): `pix[0]=255; pix[3]=255;`)
+  A fallback to **czysta czerwień** ([resources.cpp:94](../../../game/resources.cpp#L94): `pix[0]=255; pix[3]=255;`)
   — celowy marker „missing texture".
 
-**Właściwy fix (`58d7ec37`) leżał gdzie indziej.** [drawbuckets.cpp:99](game/graphics/drawbuckets.cpp:99)
+**Właściwy fix (`58d7ec37`) leżał gdzie indziej.** [drawbuckets.cpp:99](../../../game/graphics/drawbuckets.cpp#L99)
 `tex.resize(roundup(tex.size()))` dopycha tablicę bindless do wielokrotności **1024** — a nowe
 elementy to **domyślne `nullptr`**. Przy 805 kubełkach daje to **219 null-owych slotów**, których
 żaden fix w warstwie zasobów nie dosięgnie (one nigdy nie przechodzą przez `loadTexture`).
@@ -55,7 +55,7 @@ sloty wypełniające, materiały bez tekstury i błędy ładowania.
 
 Po tym hack z warstwy zasobów stał się zbędny i **został cofnięty w całości** (`54ec164f`, −28 linii),
 razem z wymuszoną przez niego łatką na `loadTextureAnim`. Zweryfikowałem bezpieczeństwo: jedyna
-druga tablica deskryptorów tekstur to [rtscene.cpp:127](game/graphics/rtscene.cpp:127), a Mali nie ma
+druga tablica deskryptorów tekstur to [rtscene.cpp:127](../../../game/graphics/rtscene.cpp#L127), a Mali nie ma
 sprzętowego ray-query, więc ta ścieżka nigdy nie biegnie.
 
 > **Lekcja:** kwirki mobilnych GPU naprawiać **w warstwie GPU/bindingu**, nigdy przez zmianę
@@ -77,7 +77,7 @@ wm size: Physical size: 800x1340 (panel portretowy)
 
 **Notatka była błędna.** Surface, extent swapchaina, layout UI i współrzędne dotyku były **już
 spójnie landscape**, a silnik renderował poprawną klatkę. Zła była wyłącznie **deklaracja**:
-[vswapchain.cpp:312](lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp:312) `preTransform = currentTransform`
+[vswapchain.cpp:312](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vswapchain.cpp#L312) `preTransform = currentTransform`
 mówi „aplikacja już obróciła obraz o 90°" — a nie obróciła. Kompozytor pomijał więc swoją rotację
 i wyświetlał landscape'ową klatkę bokiem na portretowym panelu.
 
@@ -87,8 +87,8 @@ jest *logicznie*; po prostu widziało się go gdzie indziej.
 
 Pułapka: `preTransform != currentTransform` sprawia, że sterownik **trwale** zgłasza
 `VK_SUBOPTIMAL_KHR`. Tempest rzuca wtedy `SwapchainSuboptimal()` w **dwóch** miejscach
-([vswapchain.cpp:431](lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp:431) acquire i
-[:523](lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp:523) present) → odtworzenie swapchaina →
+([vswapchain.cpp:431](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vswapchain.cpp#L431) acquire i
+[:523](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vswapchain.cpp#L523) present) → odtworzenie swapchaina →
 identycznie suboptymalny → **zawis**. Oba miejsca neutralizują `SUBOPTIMAL` na Androidzie.
 To **nie jest** to samo, co „ignoruj SUBOPTIMAL" z zamkniętego [PR #893](https://github.com/Try/OpenGothic/pull/893):
 tam maskowano nieznaną niespójność, tu **sami świadomie wywołujemy** niedopasowanie, a realne zmiany
@@ -174,7 +174,7 @@ oraz re-test bazy (15,9 vs 16,2 = powtarzalność ~2%), żeby odróżnić realny
 
 ## Transcoder DXT→ASTC — Faza 1 (brama decyzyjna)
 
-**Przyczyna źródłowa 1,38 GB:** [device.cpp:195-203](lib/Tempest/Engine/graphics/device.cpp:195) —
+**Przyczyna źródłowa 1,38 GB:** [device.cpp:195-203](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/graphics/device.cpp#L195-L203) —
 gdy GPU nie ma BC/S3TC, **każda** tekstura DXT jest dekompresowana do RGBA8 (DXT1: 8×, DXT5: 4×).
 To nie kilka wielkich tekstur, tylko **setki średnich**. Dlatego cap nie pomaga, a ASTC pomaga:
 trzyma je skompresowane **w pełnej rozdzielczości** (tekstury /4 → realnie ~1,38 GB → **~380–460 MB**;
@@ -209,7 +209,7 @@ offline (spec §9) okazał się niepotrzebny.
 > **⚠️ DWIE KOREKTY DO POWYŻSZEGO LOGU (2026-07-16, weryfikacja adwersaryjna):**
 >
 > **1. „~21.6 s over 6 cores" to projekcja, nie pomiar — i to zła.** Plan specyfikował log
-> `" s **if it scales** over 6 cores"`; kod ([main_android.cpp:121](game/main_android.cpp:121))
+> `" s **if it scales** over 6 cores"`; kod ([main_android.cpp:121](../../../game/main_android.cpp#L121))
 > zgubił „if it scales", a ja awansowałem to do rangi ✅ wyniku. Do tego „6" nie pasuje do niczego:
 > Helio G99 to **2× A76 + 6× A55** (8 rdzeni). Benchmark biegł na **jednym** wątku, **bez przypięcia
 > do rdzenia**, jako 98 ms burst na zimnym rdzeniu — nie wiadomo nawet, na jakim rdzeniu, więc żaden
@@ -237,33 +237,35 @@ w 5.6.0, nie 3) — ale ten sam czerwony build **udowodnił ryzyko #3**, pokazuj
 ### Odkrycia Fazy 1
 
 **ASTC 4×4 wpasowuje się w Tempest bez uogólniania matematyki bloków.** ASTC 4×4 to blok 4×4 i
-**16 bajtów** — dokładnie to, co [pixmap.cpp:452](lib/Tempest/Engine/formats/pixmap.cpp:452) i
-[mttexture.cpp:76](lib/Tempest/Engine/gapi/metal/mttexture.cpp:76) już hardkodują dla DXT3/DXT5.
+**16 bajtów** — dokładnie to, co [pixmap.cpp:452](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/formats/pixmap.cpp#L452) i
+[mttexture.cpp:76](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/metal/mttexture.cpp#L76) już hardkodują dla DXT3/DXT5.
 6×6 kompresowałoby 9× zamiast 4×, ale wymagałoby operacji na Vulkanie **i** Metalu.
 
-**Enum ma arytmetykę pozycyjną.** [pixmap.cpp:68](lib/Tempest/Engine/formats/pixmap.cpp:68):
+**Enum ma arytmetykę pozycyjną.** [pixmap.cpp:68](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/formats/pixmap.cpp#L68):
 `kfrm[uint8_t(frm)-uint8_t(DXT1)]` — ASTC **musi** trafić na koniec enuma, przed `Last`.
 
-**Sondowanie możliwości jest generyczne** ([vdevice.cpp:678](lib/Tempest/Engine/gapi/vulkan/vdevice.cpp:678)):
+**Sondowanie możliwości jest generyczne** ([vdevice.cpp:678](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vdevice.cpp#L678)):
 pętla `i<Last` → `nativeFormat(i)` → `vkGetPhysicalDeviceFormatProperties` → `smpFormat |= 1ull<<i`.
 Czyli `hasSamplerFormat(ASTC4x4)` zaczyna działać **za darmo** po dodaniu enuma + `nativeFormat` +
 `isCompressedFormat`. Maska jest 64-bitowa, `Last` = 26 → 27. Bezpiecznie.
 
 **Ryzyko enuma było niższe, niż zakładał spec:** Tempest **nie używa `-Werror`** (tylko wyciszenia
 `-Wno-*` dla zależności trzecich), więc brakujący case w switchu to ostrzeżenie, nie błąd.
-`-Werror` dotyczy wyłącznie targetu gry ([CMakeLists.txt:29](CMakeLists.txt:29)), a `game/` nie ma
+`-Werror` dotyczy wyłącznie targetu gry ([CMakeLists.txt:29](../../../CMakeLists.txt#L29)), a `game/` nie ma
 żadnego switcha po `TextureFormat`.
 
 ### ⚠️ Korekta wcześniejszego ustalenia: Adreno **też nie ma BC**
 
 Wcześniej w tej sesji zapisałem „Adreno ma BC → tekstury zostają skompresowane → GPU 69 MB".
 **To była interpretacja liczby, nie pomiar** — dorobiłem wyjaśnienie i uznałem je za fakt.
-Bezpośredni pomiar: **`DXT1=0` na Adreno 619**, tak samo jak na Mali. Jest to zgodne z realiami
-mobilnych GPU: **BC/S3TC praktycznie nie istnieje w Vulkanie na mobilkach** — i Mali, i Adreno stoją
-na ETC2/ASTC. Tamte 69 MB pochodziło najpewniej z pomiaru w menu, nie w świecie.
+Bezpośredni pomiar: **`DXT1=0` na Adreno 619**, tak samo jak na testowanym Mali-G57.
+Potwierdza to brak BC na tych dwóch urządzeniach, ale nie uzasadnia
+generalizacji na każdy mobilny GPU. Tamte 69 MB pochodziło najpewniej z
+pomiaru w menu, nie w świecie.
 
-**Skutek: dobry.** ASTC pomoże **obu** urządzeniom, gating `!hasSamplerFormat(DXT1)` włączy się
-wszędzie, ścieżka jest jedna zamiast dwóch. Spec §4/§7 wymaga korekty (Adreno nie „pominie cache").
+**Skutek: dobry.** ASTC pomaga **obu testowanym urządzeniom**, a gating
+`!hasSamplerFormat(DXT1)` włącza się na obu. Na innym sprzęcie decyzja nadal
+wynika z raportowanych capabilities, nie z nazwy producenta.
 
 ## Metoda pracy — co się sprawdziło
 
@@ -348,19 +350,30 @@ build Zadania 2 od razu pokazał, że **astcenc się kompiluje**, a padło tylko
 
 ## Co dalej
 
-1. **Cofnąć diagnostykę Fazy 1** z `main_android.cpp` (log `[astcdiag]`, `astcBenchmark()`,
-   `#include <astcenc.h>`) — **zostawiając** sekcję `(f)` w `apply-patches.sh`, submoduł astcenc
-   i konfigurację CMake. To jest fundament Fazy 2.
-2. **Faza 2** — cache + loader + kodowanie na urządzeniu (brama zaliczona, zielone światło).
-3. **Faza 3** — iOS: powielić patche w `ios/patches/apply-patches.sh` + case w Metalu.
-   `resources.cpp` i cache działają bez zmian dzięki gatingowi po możliwościach GPU.
-4. **Rebase na `master`** — 9 commitów zaległości. PR #893 umarł właśnie na konfliktach; nie zwlekać.
-   Jeden konflikt do pogodzenia w bloku mobilnym `gothic.cpp`.
-5. **Strojenie FPS** — `vidResIndex` **odpada** (zmierzone: rozdzielczość nie rusza FPS w scenie
-   wewnętrznej; `=0` jest najlepszy na obu osiach). Prawdziwe pokrętła to `modelDetail` i `sightValue`,
-   bo jesteśmy CPU/geometrią-bound. **Najpierw jednak zmierzyć scenę ZEWNĘTRZNĄ** — tam fill może
-   dominować i wnioski mogą być inne. Ciekawostka spójna z diagnozą: przy CPU-bound **podniesienie**
-   `sightValue` (dziś 2, czyli 60k z 300k) kosztowałoby FPS, a nie dało.
-6. **Licznik FPS na ekranie** — `[GAME] showFpsCounter=1` nie odpala; `doFrate()` czyta ustawienie
-   w `setupSettings()` (gothic.cpp:946, wołane z konstruktora), podejrzenie: kolejność ładowania
-   `Gothic.ini`. Wymaga rebuilda z logiem.
+> **Aktualizacja 2026-07-20:** poniższy stan zastępuje pierwotną listę
+> „Co dalej”. Faza 2 ASTC została wykonana, diagnostyka Fazy 1 usunięta, a
+> `master` jest już przodkiem `android` — branch Android nie jest za nim.
+
+1. **Adreno 619:** kontynuować bisekcję fragment shadera i zbudować prawdziwy
+   scalar slot-mode bez tablic deskryptorów IBO/VBO/morph. Poprzedni werdykt
+   „nieobejściowalny” został cofnięty; patrz
+   [`2026-07-17-adreno-compiler-crash-investigation.md`](2026-07-17-adreno-compiler-crash-investigation.md).
+2. **Vulkan Validation:** usunąć błędy capabilities descriptor indexing,
+   update-after-bind/partially-bound i zależności SPIR-V, zanim problem
+   zostanie ostatecznie przypisany wyłącznie sterownikowi.
+3. **Cache ASTC:** dodać pełną walidację nagłówka/payloadu, hash źródła,
+   bezkolizyjny klucz i testy uszkodzonych plików. Kryteria funkcjonalne i
+   wydajnościowe są zaliczone, lecz cache nie jest jeszcze produkcyjnie
+   utwardzony.
+4. **CI:** przypiąć/logować glslang i SPIRV-Tools, zatwierdzić Gradle Wrapper
+   oraz naprawić target release `latest-android`, którego source archive nadal
+   wskazuje `master`.
+5. **Strojenie FPS:** zmierzyć stałą scenę zewnętrzną. Wynik z komnaty Xardasa
+   dowodzi CPU/geometry bottleneck tylko dla tej sceny i nie rozstrzyga
+   zachowania na zewnątrz.
+6. **Platforma Android:** bramkować start na uprawnieniu storage, dodać
+   widoczny komunikat błędu, utwardzić pełne Activity recreate i rozwinąć
+   multitouch/controller/haptics.
+
+Aktywny backlog znajduje się w
+[`android/TODO.md`](../../../android/TODO.md).

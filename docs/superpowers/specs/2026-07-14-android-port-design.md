@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-14
 **Branch:** `android`
-**Status:** Approved (design phase)
+**Status:** Archived design; M1 completed and superseded by the current
+[`android/TODO.md`](../../../android/TODO.md) and
+[`M2 report`](../reports/2026-07-16-android-m2-report.md)
 
 ## Goal
 

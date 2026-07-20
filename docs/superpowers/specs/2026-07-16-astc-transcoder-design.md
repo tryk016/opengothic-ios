@@ -1,13 +1,24 @@
 # DXT→ASTC transcoder — projekt (Android + iOS)
 
 Data: 2026-07-16
-Status: zatwierdzony kierunek (wariant B — transkodowanie **na urządzeniu**, leniwe + cache dyskowy), do implementacji fazami
-Dotyczy: portu Android (`android`) **oraz** portu iOS (`master`) — projekt jest celowo platform-neutralny
+Status: **Faza 2 zaimplementowana i zmierzona na Androidzie; przed statusem produkcyjnym wymagane utwardzenie cache**
+Dotyczy: implementacji Android (`android`) oraz możliwej przyszłej Fazy 3 na iOS
+
+> **Aktualizacja 2026-07-20:** ten dokument powstał przed implementacją i
+> zachowuje część pierwotnych założeń projektowych. Android ma już działający
+> transcoder i cache, ale iOS nie definiuje `HAS_ASTCENC`, nie buduje astcenc i
+> nie ma mapowania ASTC w patchach backendu Metal. Własny format cache Androida
+> wymaga jeszcze pełnej walidacji, klucza opartego na hashu zawartości i ochrony
+> przed kolizjami nazw. Szczegóły stanu faktycznego są opisane w §5.4 i §6b.
+> Ewentualna Faza 3 na iOS jest opcjonalnym reuse'em, a nie wymaganiem ani
+> ograniczeniem dla dalszego rozwoju brancha `android`.
 
 ## 1. Problem
 
-Mali-G57 (i **każde Apple GPU**) nie ma BC/S3TC. Wspólna warstwa graficzna Tempesta dekompresuje
-wtedy każdą teksturę DXT do RGBA8 — [device.cpp:195-203](lib/Tempest/Engine/graphics/device.cpp:195):
+Mali-G57 i wiele mobilnych GPU bez BC/S3TC nie próbkuje DXT. Starsze Apple GPU
+również nie mają BC, natomiast A17 Pro i część układów M-series je obsługują.
+Wspólna warstwa graficzna Tempesta dekompresuje
+wtedy każdą teksturę DXT do RGBA8 — [device.cpp:195-203](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/graphics/device.cpp#L195-L203):
 
 ```cpp
 if(isCompressedFormat(format)){
@@ -81,9 +92,9 @@ przy **zachowaniu pełnej rozdzielczości**. Realistyczne lądowanie: **1.38 GB 
 
 6×6 (3.56 bpp) dałoby 9× (~150 MB), ale **oba backendy hardkodują bloki 4×4**:
 
-- Vulkan/Pixmap: [pixmap.cpp:452](lib/Tempest/Engine/formats/pixmap.cpp:452) `blockSizeForFormat`:
+- Vulkan/Pixmap: [pixmap.cpp:452](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/formats/pixmap.cpp#L452) `blockSizeForFormat`:
   DXT1=8, DXT3=16, DXT5=16 (bajty na blok 4×4)
-- Metal: [mttexture.cpp:76-83](lib/Tempest/Engine/gapi/metal/mttexture.cpp:76)
+- Metal: [mttexture.cpp:76-83](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/metal/mttexture.cpp#L76-L83)
   `blockSize = (frm==DXT1) ? 8 : 16;` + `wBlk=(w+3)/4, hBlk=(h+3)/4`
 
 **ASTC 4×4 wpasowuje się w oba bez tknięcia matematyki bloków.** 6×6 wymagałoby uogólnienia
@@ -95,10 +106,10 @@ Wszystko dzieje się **na urządzeniu, bez żadnego kroku ręcznego**. Transkodo
 płacimy tylko za tekstury, które faktycznie się ładują, i tylko raz — potem jest cache.
 
 ```text
-Resources::implLoadTextureUncached(name)          [Android lub iOS]
+Resources::implLoadTextureUncached(name)          [Android; przyszła Faza 3 iOS]
   │
   ├─ hasSamplerFormat(DXT1)?  ── tak ─► dotychczasowe zachowanie (desktop: natywne DXT)
-  │        │ nie  (Mali, Adreno, Apple GPU — patrz korekta w §4)
+  │        │ nie  (testowane Mali/Adreno; przyszłe urządzenia wg capabilities)
   │        ▼
   ├─ <cache>/<NAZWA>.astc istnieje?
   │        │ tak ─► wczytaj → Pixmap(ASTC4x4) → dev.texture()      ← trafienie: szybko, skompresowane
@@ -110,21 +121,25 @@ Resources::implLoadTextureUncached(name)          [Android lub iOS]
   └─ Pixmap(ASTC4x4) → dev.texture()
 ```
 
-**Gating przez możliwości GPU, nie przez `#if`.** Warunek to `!hasSamplerFormat(DXT1)`:
+**Gating runtime przez możliwości GPU.** Po zbudowaniu kodu z
+`HAS_ASTCENC` warunek to `!hasSamplerFormat(DXT1)`:
 
 - Mali → brak BC → używa cache ASTC — **zmierzone: `DXT1=0 DXT5=0 ASTC4x4=1`**
-- **Apple GPU → brak BC → używa tego samego cache ASTC** (iOS działa za darmo)
 - Adreno → **również brak BC** → także używa cache ASTC — **zmierzone: `DXT1=0 DXT5=0 ASTC4x4=1`**
+- iOS → **jeszcze niezaimplementowane**; po Fazie 3 urządzenia bez BC mogłyby
+  wejść w tę samą logikę, a urządzenia z BC pozostałyby na DXT
 
-To jest powód, dla którego projekt jest platform-neutralny: **jeden cache, oba porty**.
+Logika zasobów jest zaprojektowana do przyszłego współdzielenia, ale obecnie
+działa tylko w buildzie Androida. Format/lokalizacja cache iOS wymagają osobnej
+decyzji w Fazie 3.
 
 > **⚠️ KOREKTA (2026-07-16, Faza 1).** Wcześniejsza wersja tego dokumentu twierdziła, że
 > „Adreno **ma** BC → ignoruje cache, zostaje przy natywnym DXT". **To było błędne** — była to
 > *interpretacja* wcześniejszego pomiaru (GPU 69 MB na A23 vs 263 MB na Mali), a nie pomiar
 > możliwości. Bezpośredni odczyt `hasSamplerFormat` na Adreno 619 daje **`DXT1=0`**, dokładnie jak
-> na Mali. Jest to zgodne z realiami mobilnych GPU: **BC/S3TC praktycznie nie istnieje w Vulkanie na
-> mobilkach** — i Mali, i Adreno stoją na ETC2/ASTC. Tamte 69 MB pochodziło najpewniej z pomiaru
-> w menu, nie w załadowanym świecie.
+> na Mali. Oba przetestowane mobilne GPU polegają na ETC2/ASTC i nie udostępniają BC/S3TC przez
+> Vulkan; nie należy tego pomiaru uogólniać na wszystkie mobilne implementacje Vulkan. Tamte 69 MB
+> pochodziło najpewniej z pomiaru w menu, nie w załadowanym świecie.
 >
 > **Skutek jest korzystny:** ASTC pomaga **wszystkim** testowanym urządzeniom, ścieżka jest jedna
 > zamiast dwóch, a gating `!hasSamplerFormat(DXT1)` pozostaje poprawny bez zmian — po prostu włącza
@@ -148,9 +163,9 @@ Tempest to **submoduł, którego nigdy nie commitujemy** — wszystko idzie prze
 | 5 | `formats/pixmap.cpp:452` | `blockSizeForFormat`: `ASTC4x4 → 16` |
 | 6 | `formats/pixmap.cpp:492` | `componentCount`: `ASTC4x4 → 4` |
 | 7 | `gapi/vulkan/vdevice.h:93` | `ASTC4x4 → VK_FORMAT_ASTC_4x4_UNORM_BLOCK` |
-| 8 (iOS) | `gapi/metal/mttexture.cpp` | `ASTC4x4 → MTL::PixelFormatASTC_4x4_LDR` (backend już zna ASTC) |
+| 8 (iOS, plan) | `gapi/metal/mttexture.cpp` | dodać mapowanie `ASTC4x4 → MTL::PixelFormatASTC_4x4_LDR`; matematyka uploadu 4×4/16 B jest kompatybilna, lecz mapowania jeszcze nie ma |
 
-**⚠️ PUŁAPKA — enum ma arytmetykę pozycyjną.** [pixmap.cpp:68](lib/Tempest/Engine/formats/pixmap.cpp:68):
+**⚠️ PUŁAPKA — enum ma arytmetykę pozycyjną.** [pixmap.cpp:68](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/formats/pixmap.cpp#L68):
 
 ```cpp
 ddsToRgba(data, other.data, w, h, kfrm[uint8_t(other.frm)-uint8_t(TextureFormat::DXT1)], 3);
@@ -165,7 +180,7 @@ DX12) mogą mieć switche wymagające kompletności. Dlatego Faza 1 (niżej) ist
 
 ### 5.2 resources.cpp — ładowanie cache'u
 
-W [resources.cpp:397](game/resources.cpp:397) (dziś siedzi tam mip-cap `androidTexCap`):
+W [resources.cpp:397](../../../game/resources.cpp#L397) (dziś siedzi tam mip-cap `androidTexCap`):
 
 ```
 if(format is DXT):
@@ -184,18 +199,19 @@ if(format is DXT):
 
 ### 5.3 astcenc na urządzeniu
 
-**astcenc** (ARM, Apache-2.0) wchodzi jako vendored/submoduł do builda Androida **i** iOS.
-Buduje się przez CMake, ma oficjalne wsparcie arm64 + NEON (`ASTCENC_ISA_NEON=ON`).
-Linkujemy **bibliotekę** (`astcenc-static`), nie CLI.
+**Stan implementacji:** astcenc (ARM, Apache-2.0) jest vendored jako submoduł
+i budowany obecnie tylko dla Androida. CMake wybiera NEON dla arm64 oraz SSE4.1
+dla emulatorowego x86_64. iOS pozostaje niezrealizowaną Fazą 3. Linkujemy
+bibliotekę statyczną, nie CLI.
 
 Wywołanie: preset **`ASTCENC_PRE_FAST`**, profil `ASTCENC_PRF_LDR` (nie sRGB — dopasować do tego,
 jak dziś traktujemy RGBA8), blok **4×4**. Kontekst astcenc tworzymy **raz** (jest kosztowny)
 i reużywamy; jest thread-safe przy użyciu `thread_index`.
 
-**Wątkowanie.** Tekstury ładują się w OpenGothicu z workerów (`Workers`), więc kodowanie
-naturalnie rozkłada się na rdzenie — ale trzeba to zweryfikować, a nie założyć: jeśli ładowanie
-tekstur jest w praktyce jednowątkowe, pierwszy load wydłuży się liniowo. astcenc przyjmuje
-`thread_count`, więc alternatywnie można oddać mu równoległość wewnętrznie.
+**Wątkowanie — stan zmierzony:** kodowanie jest szeregowe. `Resources::loadTexture`
+trzyma globalny `recursive_mutex` przez cały load, a kontekst astcenc pracuje
+z `thread_count=1`. Nie rozkłada się to naturalnie na `Workers`. Ewentualna
+równoległość wewnętrzna pozostaje przyszłą optymalizacją po utwardzeniu cache.
 
 **Ile to potrwa — rząd wielkości wyprowadzony z pomiaru.** 1.38 GB RGBA8 ÷ 4 B/px = **~345 Mpikseli**
 dla całego Khorinisu (z mipami).
@@ -223,16 +239,26 @@ Dla gry z 2003 powinno być wizualnie nieodróżnialne, ale należy to sprawdzi�
 ### 5.4 Cache na dysku
 
 - Android: `/sdcard/OpenGothic/astc/` — przeżywa reinstalację APK (jak dane gry)
-- iOS: katalog danych aplikacji + `/astc/`
-- Ścieżka konfigurowalna: `Gothic.ini` `[INTERNAL] astcCacheDir`
+- iOS: niezrealizowana Faza 3; docelowo prywatny katalog danych aplikacji
+- Ścieżka jest konfigurowalna przez `[INTERNAL] astcCacheDir`; względna
+  wartość jest rozwiązywana względem `/sdcard/OpenGothic`, a domyślna to `astc`
 
-**Format pliku:** standardowy `.astc` (nagłówek 16 B) z pełnym łańcuchem mipów.
+**Format pliku w implementacji Androida:** własny 36-bajtowy `CacheHeader`,
+po którym zapisane są kolejno payloady ASTC wszystkich mipów. Rozszerzenie
+`.astc` nie oznacza standardowego kontenera ASTC z 16-bajtowym nagłówkiem.
 
 **Zapis atomowy:** `tmp` + `rename`, żeby zabicie procesu w trakcie kodowania nie zostawiło
 obciętego pliku, który przy następnym starcie wygląda jak poprawny cache.
 
-**Unieważnianie:** w nagłówku zapisujemy rozmiar źródłowego wpisu VDF + wersję enkodera.
-Niezgodność → koduj ponownie. Chroni przed podmianą danych gry i zmianą parametrów astcenc.
+**Obecne unieważnianie:** nagłówek zapisuje rozmiar źródłowego wpisu VDF i
+ręczny `kCacheVersion`. Nie zapisuje hasha zawartości ani wersji astcenc.
+Zmiana tekstury przy zachowaniu identycznego rozmiaru nie zostanie wykryta.
+
+**Wymagane utwardzenie:** odczyt musi zweryfikować wymiary, ograniczoną liczbę
+mipów, dokładną sumę bloków `ceil(w/4) * ceil(h/4) * 16`, pełny rozmiar pliku
+i bezpieczne granice arytmetyki. Klucz powinien zawierać hash źródła, wersję
+formatu, profil/block size/preset enkodera oraz hash pełnej nazwy zasobu.
+Publiczny katalog należy traktować jako niezaufany.
 
 **Rozmiar na dysku:** **do** ~350 MB przy pełnym Khorinisie (górna granica — wynika z tej samej
 bazy ≤345 Mpx co §5.3, a ASTC 4×4 to 1 B/px) — pomijalne obok 3 GB danych gry.
@@ -294,9 +320,10 @@ Dopiero gdy Faza 1 przejdzie: §5.2 + §5.3 + §5.4 + §5.5.
 - pierwszy load: zmierzony czas; drugi load: z powrotem do dzisiejszych ~35 s (trafienia w cache)
 - zero regresji crashy (soak jak dotąd)
 
-**Faza 3 — iOS.** Powielić patche w `ios/patches/apply-patches.sh` + case w Metalu + astcenc
-w buildzie iOS. §5.2 (`resources.cpp`) i cały cache działają bez zmian dzięki gatingowi
-po możliwościach GPU.
+**Faza 3 — iOS.** Wspólna logika zasobów z §5.2 (`resources.cpp`) jest punktem wyjścia, ale port
+nie zadziała bez zmian: trzeba dodać astcenc do buildu iOS, mapowanie formatu w Metalu oraz
+ustalić lokalizację i politykę cache dla sandboxa Apple. Dopiero potem gating po możliwościach
+GPU może współdzielić decyzję o transkodowaniu z Androidem.
 
 ## 6a. WYNIK FAZY 1 (2026-07-16) — ✅ WSZYSTKIE CZTERY RYZYKA ZALICZONE → IDZIEMY W FAZĘ 2
 
@@ -325,7 +352,7 @@ Zmierzone na Tab A9 (Helio G99 / Mali-G57 MC2), commity `8c07a4bd` + `c1597c00` 
   > **⚠️ KOREKTA (2026-07-16):** ta sekcja podawała „✅ 129 s jednowątkowo / **~22 s na 6 rdzeniach**"
   > jako **WYNIK**. Liczba 22 s jest **projekcją, nie pomiarem**, i to złą:
   > **(1) zdarte zastrzeżenie** — plan specyfikował log `" s **if it scales** over 6 cores"`, a kod
-  > ([main_android.cpp:121](game/main_android.cpp:121)) zgubił „if it scales"; ja awansowałem to do
+  > ([main_android.cpp:121](../../../game/main_android.cpp#L121)) zgubił „if it scales"; ja awansowałem to do
   > rangi ✅ wyniku. **(2) „6" nie pasuje do niczego** — Helio G99 to **2× A76 + 6× A55** (8 rdzeni);
   > §5.3 mówiło wcześniej „8 rdzeni", §6a „6". **(3) Benchmark to `thread_count=1`** na jednym kaflu
   > 512×512, **bez przypięcia do rdzenia** (brak `sched_setaffinity`) — nie wiadomo nawet, na jakim
@@ -345,7 +372,7 @@ Zmierzone na Tab A9 (Helio G99 / Mali-G57 MC2), commity `8c07a4bd` + `c1597c00` 
   `-Wno-*` dla zależności trzecich), więc brakujący case w switchu to ostrzeżenie, nie błąd.
   `-Werror` dotyczy wyłącznie targetu gry, a `game/` nie ma żadnego switcha po `TextureFormat`.
 - **Sondowanie możliwości działa „za darmo"**, dokładnie jak przewidziano: generyczna pętla
-  [vdevice.cpp:678](lib/Tempest/Engine/gapi/vulkan/vdevice.cpp:678) zaczęła raportować ASTC4x4
+  [vdevice.cpp:678](https://github.com/Try/Tempest/blob/61b58f710b00f64d190fed2661f5762909397d1a/Engine/gapi/vulkan/vdevice.cpp#L678) zaczęła raportować ASTC4x4
   bez jednego dodatkowego patcha.
 - **Korekta o Adreno** (patrz §4): Adreno **też nie ma BC**, więc transcoder pomaga obu urządzeniom
   jedną ścieżką.
@@ -359,7 +386,7 @@ fundamencie, który mógł nie istnieć. Jeden cykl spalił błąd arności `ast
 (log `[astcdiag]` + `astcBenchmark()` + `#include <astcenc.h>`), **zostawiając** sekcję `(f)` w
 `apply-patches.sh`, submoduł astcenc i konfigurację CMake — to jest fundament Fazy 2.
 
-## 6b. WYNIK FAZY 2 (2026-07-17) — ✅ WSZYSTKIE KRYTERIA ZALICZONE NA MALI; NA ADRENO TRANSCODER CZYSTY, CRASH NIEZALEŻNY
+## 6b. WYNIK FAZY 2 (2026-07-17) — ✅ kryteria funkcjonalne i wydajnościowe zaliczone; cache wymaga utwardzenia
 
 Zmierzone na Tab A9 (Mali-G57) i Galaxy A23 (Adreno 619), build `74d55d2b`
 (commit implementacji `e2d17f4b` + poprawka vexing-parse). Konfiguracja jak w pomiarze
@@ -386,8 +413,9 @@ samo; przetrwa reinstalację APK (leży w `/sdcard/OpenGothic/astc/`).
 z ominiętym transcoderem (`androidTexCap=512` → czysta ścieżka RGBA8) pada **identycznie**
 (3/3 reprodukcje, ten sam backtrace). Miejsce: kompilator shaderów sterownika
 (`libllvm-glnext.so` → `vkCreateGraphicsPipelines`) przy leniwej instancjacji pipeline'u
-`DrawCommands::drawHiZ`. A23 nie był testowany od 2026-07-15 (przed fixem orientacji i merge),
-więc to zaległy, osobny bug — zgłoszony jako oddzielne zadanie.
+`DrawCommands::drawHiZ`. Przed rozpoczęciem tej serii testów Fazy 2 A23 nie
+był sprawdzany od 2026-07-15, dlatego problem pojawił się jako osobne zaległe
+zadanie.
 
 **Odchylenia implementacji od projektu (§5), z pomiaru kodu — nie do pominięcia w Fazie 3:**
 
@@ -420,8 +448,10 @@ więc to zaległy, osobny bug — zgłoszony jako oddzielne zadanie.
 | **Kodowanie dużo wolniejsze niż szacowane 1–3 min** | **wysoka** | **Faza 1** — mikro-benchmark → ekstrapolacja na 345 Mpx; fallback = offline |
 | Ładowanie tekstur jednowątkowe → pierwszy load bardzo długi | średnia | zweryfikować `Workers`; ewentualnie oddać `thread_count` astcenc |
 | Podwójna strata (DXT→RGBA→ASTC) widoczna | średnia | porównanie A/B zrzutów, nie założenie |
-| Przerwane kodowanie zostawia obcięty plik = trwale zepsuta tekstura | średnia | zapis atomowy (tmp + rename), §5.4 |
-| Cache rozjeżdża się z danymi gry / zmianą parametrów astcenc | niska | rozmiar wpisu VDF + wersja enkodera w nagłówku |
+| Przerwane kodowanie zostawia obcięty plik | średnia | zapis atomowy (tmp + rename), a przy odczycie także dokładna walidacja długości |
+| Cache rozjeżdża się z danymi gry / zmianą parametrów astcenc | **wysoka, otwarta** | hash źródła + wersja formatu/profil/preset/enkoder; sam rozmiar VDF nie wystarcza |
+| Uszkodzony lub podmieniony publiczny cache steruje rozmiarem alokacji/uploadu | **wysoka, otwarta** | pełna walidacja nagłówka, wymiarów, mipów, payloadu i limitów przed utworzeniem `Pixmap` |
+| Kolizja nazw po sanitowaniu | średnia, otwarta | hash pełnej nazwy zasobu w nazwie pliku |
 | APK rośnie o astcenc | niska | ~1–2 MB, pomijalne |
 | ~~Adreno niepotrzebnie użyje ASTC (8 bpp > DXT 4 bpp)~~ | **nie istnieje** | Zmierzone: Adreno **też nie ma BC** (`DXT1=0`), więc jego alternatywą jest RGBA8 32 bpp, nie DXT 4 bpp. ASTC jest dla niego czystym zyskiem. Patrz korekta w §4. |
 
@@ -440,18 +470,19 @@ więc to zaległy, osobny bug — zgłoszony jako oddzielne zadanie.
 > bezpieczna wszędzie — ale jej wartość ogranicza się do starszych urządzeń. Priorytet niski;
 > iOS zamrożone do zakończenia portu Android (decyzja użytkownika 2026-07-17).
 
-iOS **miał mieć dokładnie ten sam problem** (ta sama ścieżka device.cpp:199 → RGBA8) — patrz korekta wyżej.
-Dzięki gatingowi po możliwościach GPU, a nie po `#if`:
+iOS może mieć ten sam blow-up na starszych GPU bez BC, ale Faza 3 nie jest
+zaimplementowana. Wspólny `resources.cpp` jest dobrym punktem wyjścia, jednak
+iOS nadal wymaga:
 
-- **Ta sama logika transkodowania i cache'u** działa na obu portach — każde urządzenie buduje
-  sobie cache samo, przy pierwszym uruchomieniu, bez żadnego kroku ręcznego
-- **`resources.cpp` jest wspólny** — logika ładowania cache'u działa na iOS bez zmian
-- Do zrobienia po stronie iOS: powielić patche Tempesta w `ios/patches/apply-patches.sh`
-  + jeden case w backendzie Metal (`MTL::PixelFormatASTC_4x4_LDR`) — backend **już zna ASTC**
-- Metal `createCompressedTexture` ([mttexture.cpp:76](lib/Tempest/Engine/gapi/metal/mttexture.cpp:76))
-  zakłada bloki 4×4 i 16 B → **ASTC 4×4 działa bez zmian**
+- zbudowania i podlinkowania astcenc;
+- zdefiniowania `HAS_ASTCENC`;
+- przeniesienia patchy `TextureFormat`/`Pixmap` do ścieżki iOS;
+- mapowania ASTC 4×4 w backendzie Metal;
+- prywatnego katalogu cache i zasad migracji;
+- pomiaru `hasSamplerFormat(DXT1)` i pamięci na realnym urządzeniu.
 
-Oczekiwany zysk na iOS jest tego samego rzędu co na Androidzie (~1 GB w dół).
+Potencjalny zysk dotyczy głównie starszych układów bez BC i nie został jeszcze
+zmierzony na iOS.
 
 ## 9. Decyzje odrzucone
 

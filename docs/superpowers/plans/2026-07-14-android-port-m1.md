@@ -1,5 +1,10 @@
 # OpenGothic Android Port — M1 (boot-to-menu) Implementation Plan
 
+> **Status: ARCHIVED / COMPLETED.** This plan records the original M1
+> implementation. The active status and backlog are in
+> [`android/TODO.md`](../../../android/TODO.md); real-device results are in
+> [`2026-07-16-android-m2-report.md`](../reports/2026-07-16-android-m2-report.md).
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Boot the shared OpenGothic engine on Android (GameActivity + Vulkan) and render the main menu with basic touch navigation, on the `android` branch, without touching the iOS/desktop targets.

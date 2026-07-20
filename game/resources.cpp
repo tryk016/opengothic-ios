@@ -412,8 +412,9 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
         // adb install, so a hardcoded constant costs ~8 min per experiment).
         //   0 / absent (default) = no cap, full resolution
         //   256 / 512 / 1024     = progressively lower detail, less memory
-        // A DXT->ASTC transcoder is the proper fix -- compressed AND full-res --
-        // and would help iOS too (Apple GPUs also lack BC).
+        // DXT->ASTC is the proper fix on devices without BC -- compressed AND
+        // full-res. Older Apple GPUs may benefit too; newer Apple hardware can
+        // expose BC and would remain on the native compressed path.
         static const uint32_t cap = []() -> uint32_t {
           const int v = Gothic::settingsGetI("INTERNAL","androidTexCap");
           return v>0 ? uint32_t(v) : 0;
@@ -450,8 +451,8 @@ Texture2d Resources::implLoadTextureUncached(std::string_view name, bool forceMi
         // Sits after the cap block so an explicit [INTERNAL] androidTexCap still wins,
         // but ahead of to_dds(): on a GPU without BC that path ends in a full-resolution
         // RGBA8 decompression inside Device::texture (device.cpp:195-203). Gated on GPU
-        // capability rather than __ANDROID__, so iOS gets this unchanged and desktop --
-        // which samples DXT natively -- never enters it.
+        // capability rather than a GPU name. HAS_ASTCENC is currently defined only
+        // by the Android build; a future iOS path still needs encoder/Metal plumbing.
         if(AstcTranscoder::enabled()) {
           auto pm = AstcTranscoder::transcode(nameAlt, tex, srcSize);
           // transcode() returns empty for anything it declines (single-mip sources,

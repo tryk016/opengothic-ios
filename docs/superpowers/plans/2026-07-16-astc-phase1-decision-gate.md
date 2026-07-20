@@ -1,5 +1,10 @@
 # ASTC Transcoder — Phase 1 (Decision Gate) Implementation Plan
 
+> **Status: ARCHIVED / EXECUTED.** This is a historical execution plan, not
+> the active backlog. Unchecked boxes below do not mean the work is pending.
+> Current work is tracked in
+> [`android/TODO.md`](../../../android/TODO.md).
+>
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Prove or kill the on-device DXT→ASTC transcoder in ~2 CI cycles by validating four independent kill-risks, before any cache or loader logic exists.
@@ -7,7 +12,7 @@
 > ## ⚠️ EXECUTED 2026-07-16 — read this before following the steps below
 >
 > This plan was executed. Tasks 1 and 2 are **done**; the steps below are kept as the historical
-> record. Five things were wrong or missing in the plan as written — corrected in the real commits
+> record. Six things were wrong or missing in the plan as written — corrected in the real commits
 > (`8c07a4bd`, `c1597c00`, `cc417ca2`) but **not** rewritten into the step text, so that the gap
 > between plan and reality stays visible:
 >
@@ -26,9 +31,10 @@
 > 5. **Pinned tag is 5.6.0, not 5.3.0** (latest stable at execution time).
 > 6. **The plan's premise that Adreno "has BC" was WRONG — and this is the most consequential of the
 >    six.** Step 7 predicted `A23: DXT1=1 DXT5=1`; the measurement was **`DXT1=0 DXT5=0 ASTC4x4=1`**,
->    identical to Mali. Mobile Vulkan essentially has no BC/S3TC at all — both Mali and Adreno rely on
->    ETC2/ASTC. The CMake comment shipped in Task 2 ("desktop and Adreno sample DXT natively and never
->    need it") is wrong for the same reason and should be corrected in `CMakeLists.txt`. Consequence is
+>    identical to Mali. Both tested mobile GPUs rely on ETC2/ASTC and expose no BC/S3TC through
+>    Vulkan; this is not evidence that every mobile Vulkan implementation behaves identically.
+>    The CMake comment shipped in Task 2 ("desktop and Adreno sample DXT natively and never need it")
+>    is wrong for the same reason and should be corrected in `CMakeLists.txt`. Consequence is
 >    favourable: ASTC helps every tested device through one path.
 >
 > **Verified as written:** the target name guess `astcenc-neon-static` was correct
@@ -165,9 +171,9 @@ Then the new section:
 # --------------------------------------------------------------------------
 # (f) ASTC4x4 texture format support.
 #
-# Mali (and every Apple GPU) lacks BC/S3TC, so device.cpp:199 decompresses
-# every DXT texture to RGBA8 -- measured 1.38GB GPU on a 3.5GB device. ASTC
-# keeps them compressed at FULL resolution (4x smaller than RGBA8).
+# Historical draft: Mali and older Apple GPUs without BC make device.cpp:199
+# decompress DXT to RGBA8. Newer Apple hardware may expose BC. The later
+# measured texture payload was 633MiB RGBA8 versus 158MiB ASTC.
 #
 # ASTC 4x4 is chosen because it is 16 bytes per 4x4 block -- exactly the shape
 # pixmap.cpp/mttexture.cpp already hardcode for DXT3/DXT5 -- so NO block-math
@@ -276,7 +282,8 @@ done
 
 Expected:
 - **Tab A9 (`R83Y81NE23H`, Mali-G57): `[astcdiag] caps: DXT1=0 DXT5=0 ASTC4x4=1`** ← **the kill-risk #2 answer**
-- **A23 (`R5CT92SB0YL`, Adreno 619): `DXT1=1 DXT5=1`** (ASTC4x4 likely 1 too; Adreno supports both). This control proves the probe reports real driver caps rather than a constant.
+- **Historical expectation for A23:** `DXT1=1 DXT5=1`. **Actual measured
+  result:** `DXT1=0 DXT5=0 ASTC4x4=1`; the expectation was wrong.
 
 **If Tab A9 reports `ASTC4x4=0`, STOP.** The whole transcoder is dead; record it in the plan and report. No further Phase-1 work.
 
@@ -322,7 +329,7 @@ Append after the ZenKit block (`target_link_libraries(${PROJECT_NAME} zenkit)`),
 
 ```cmake
 # astcenc — DXT->ASTC transcoding on mobile GPUs that lack BC/S3TC.
-# Android/iOS only: desktop and Adreno sample DXT natively and never need it.
+# Historical draft (wrong for the tested Adreno): mobile GPUs without BC need ASTC.
 if(ANDROID)
   set(ASTCENC_ISA_NEON     ON  CACHE BOOL "" FORCE)   # arm64
   set(ASTCENC_ISA_NATIVE   OFF CACHE BOOL "" FORCE)
