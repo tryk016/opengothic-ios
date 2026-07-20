@@ -126,7 +126,7 @@ Gothic::Gothic() {
   // to something platform-neutral) to keep this block byte-identical to master
   // wherever possible -- every gratuitous difference here is a future merge
   // conflict, and this file is the only one master and android both touch.
-  constexpr int iosProfileVersion = 2;
+  constexpr int iosProfileVersion = 3;
   bool          iosProfileChanged = false;
   if(!hasUserIni) {
     // Keep the copied PC system/Gothic.ini untouched. This small writable
@@ -144,6 +144,7 @@ Gothic::Gothic() {
     iniFile->set("ENGINE",   "shadowResolution", 1024);
 #endif
     iniFile->set("ENGINE",   "zMaxFpsMode",       1);
+    iniFile->set("PERFORMANCE", "sightValue",     2);
     iniFile->set("GAMEPAD",  "deadZone",          0.25f);
     iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
     iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
@@ -165,6 +166,21 @@ Gothic::Gothic() {
 #endif
     if(!iniFile->has("ENGINE","zMaxFpsMode"))
       iniFile->set("ENGINE", "zMaxFpsMode", 1);
+#if defined(__ANDROID__)
+    // Upgrade old Android overlays without overwriting an explicit user
+    // choice. Version 2 predated the effective draw-distance and complete
+    // fallback profile.
+    if(!iniFile->has("INTERNAL","vidResIndex"))
+      iniFile->set("INTERNAL", "vidResIndex", 2);
+    if(!iniFile->has("INTERNAL","androidTexCap"))
+      iniFile->set("INTERNAL", "androidTexCap", 0);
+    if(!iniFile->has("ENGINE","zCloudShadowScale"))
+      iniFile->set("ENGINE", "zCloudShadowScale", 0);
+    if(!iniFile->has("ENGINE","shadowResolution"))
+      iniFile->set("ENGINE", "shadowResolution", 512);
+    if(!iniFile->has("PERFORMANCE","sightValue"))
+      iniFile->set("PERFORMANCE", "sightValue", 2);
+#endif
     iosProfileChanged = true;
     }
   if(iosProfileChanged) {
@@ -208,11 +224,15 @@ Gothic::Gothic() {
   defaults->set("ENGINE",       "zEnvMappingEnabled", 1); // reflections
   defaults->set("ENGINE",       "zCloudShadowScale", gpu.type==Tempest::DeviceType::Discrete); // ssao
   defaults->set("INTERNAL",     "vidResIndex", 0); // full-res
-#if defined(__IOS__)
-  // 0 = uncapped, 1 = 30 FPS, 2 = 60 FPS. The iOS game-options menu maps the
+#if defined(__IOS__) || defined(__ANDROID__)
+  // 0 = uncapped, 1 = 30 FPS, 2 = 60 FPS. The mobile game-options menu maps the
   // requested replacement choice to this runtime setting.
   defaults->set("ENGINE",       "zMaxFpsMode",       1);
+#endif
+#if defined(__IOS__)
   defaults->set("ENGINE",       "shadowResolution", 1024);
+#elif defined(__ANDROID__)
+  defaults->set("ENGINE",       "shadowResolution",  512);
 #endif
 
   defaults->set("VIDEO", "zVidBrightness", 0.5f);

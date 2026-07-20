@@ -289,7 +289,7 @@ void Renderer::setupSettings() {
   // On phones default to 512 - a fraction of the 2048 fill cost, softer
   // shadow edges. resetShadowmap() below picks the change up.
   int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
-#if defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   if(sr<=0)
     sr = 512;
 #endif

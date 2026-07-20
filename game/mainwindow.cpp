@@ -34,8 +34,11 @@
 #include <algorithm>
 #include <array>
 #include <memory>
-#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS) || defined(__ANDROID__)
 #include <chrono>
+#include <thread>
+#endif
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
 #include <limits>
 #endif
 
@@ -511,7 +514,7 @@ void MainWindow::tickMouse(uint64_t dt) {
 
 void MainWindow::onSettings() {
   int zMaxFps = 0;
-#if defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   constexpr int fpsLimits[] = {0,30,60};
   const int fpsMode = std::clamp(Gothic::inst().settingsGetI("ENGINE", "zMaxFpsMode"),0,2);
   zMaxFps = fpsLimits[fpsMode];
@@ -1797,6 +1800,13 @@ void MainWindow::setFullscreen(bool fs) {
 void MainWindow::render(){
   try {
     static uint64_t time=Application::tickCount();
+#if defined(__ANDROID__)
+    // Measure the whole submitted frame. Android uses this monotonic start
+    // time for an exact 33.333 ms software deadline without Tempest's
+    // sleep() tail spin, which wastes several milliseconds of CPU and thermal
+    // budget on mobile SoCs.
+    const auto androidFrameStart = std::chrono::steady_clock::now();
+#endif
 
 #if defined(__IOS__)
     // No render encoder exists at this point. A preview submitted by an older
@@ -1948,6 +1958,16 @@ void MainWindow::render(){
       iosFrameRateTarget = displayFps;
       }
 
+    auto t = Application::tickCount();
+#elif defined(__ANDROID__)
+    uint32_t targetFps = maxFpsTarget;
+    if(targetFps==0 && !Gothic::inst().isInGame() && !video.isActive())
+      targetFps = 60u;
+    if(targetFps>0) {
+      const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                            std::chrono::duration<double>(1.0/double(targetFps)));
+      std::this_thread::sleep_until(androidFrameStart+period);
+      }
     auto t = Application::tickCount();
 #else
     uint64_t targetPeriodMs = 0;

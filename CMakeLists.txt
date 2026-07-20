@@ -157,6 +157,16 @@ elseif(ANDROID)
   # "system/api/androidapi.h") by path relative to Engine/, which is not on
   # the public include path added below (Engine/include only).
   include_directories(lib/Tempest/Engine)
+  # The standard Android profile targets 4 GB budget devices. Keep the
+  # instrumentation enabled while the port is a WIP, make the stock draw
+  # distance setting affect the actual camera far plane, and avoid doing full
+  # skeletal pose work for distant/offscreen NPCs (including during dialogs;
+  # visible actors are refreshed immediately before drawing).
+  target_compile_definitions(${PROJECT_NAME} PRIVATE
+    OPENGOTHIC_PERF_DIAGNOSTICS=1
+    OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE=1
+    OPENGOTHIC_NPC_ANIMATION_CULLING=1
+    OPENGOTHIC_NPC_DIALOG_CULLING=1)
 endif()
 
 if(IOS)

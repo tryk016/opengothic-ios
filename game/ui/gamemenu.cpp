@@ -406,7 +406,7 @@ void GameMenu::initItems() {
   }
 
 void GameMenu::setupIosFpsLimitOption() {
-#if defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   Item* fpsChoice = nullptr;
   size_t fpsChoiceIndex = zenkit::IMenu::item_count;
   for(size_t i=0; i<zenkit::IMenu::item_count; ++i) {
