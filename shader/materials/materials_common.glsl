@@ -136,14 +136,6 @@ layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[]; 
 #endif
 #endif
 
-// TEMP [bisect] step A: slot fragments return before resource usage. The first
-// A23 run still crashed; dead helper IR remained, so that result did not prove
-// declarations/stage linking alone were responsible. Keep the same entry point
-// while the follow-up scalar-descriptor test changes one variable. Remove after.
-#if defined(GL_FRAGMENT_SHADER) && !defined(BINDLESS) && defined(MAT_UV)
-#define TEMP_BISECT_A 1
-#endif
-
 #if defined(GL_FRAGMENT_SHADER) && defined(MAT_UV)
 #if defined(BINDLESS)
 layout(binding = L_Diffuse)          uniform  texture2D textureMain[];
