@@ -369,6 +369,7 @@ void Shaders::compileShaders() {
 bool Shaders::isVsmSupported() {
   auto& gpu = Resources::device().properties();
   if(gpu.compute.maxInvocations>=1024 && gpu.render.maxClipCullDistances>=4 &&
+     gpu.descriptors.nonUniformIndexing &&
      gpu.render.maxViewportSize.w>=8192 && gpu.render.maxViewportSize.h>=8192) {
     return true;
     }
