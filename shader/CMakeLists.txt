@@ -96,7 +96,12 @@ endfunction(add_shader)
 function(add_geom_shader OUTPUT)
   list(SUBLIST ARGV 1 -1 VARS)
 
-  add_shader("${OUTPUT}_slot.vert"      materials/main.vert  -S vert ${VARS})
+  set(SLOT_VERT_VARS ${VARS})
+  if("${OUTPUT}" MATCHES "_d(_at)?$")
+    list(APPEND SLOT_VERT_VARS -DTEMP_BISECT_VERTEX_MODULE)
+  endif()
+
+  add_shader("${OUTPUT}_slot.vert"      materials/main.vert  -S vert ${SLOT_VERT_VARS})
   add_shader("${OUTPUT}_slot.mesh"      materials/main.vert  -S mesh ${VARS})
   add_shader("${OUTPUT}_bindless.vert"  materials/main.vert  -S vert ${VARS} -DBINDLESS)
   add_shader("${OUTPUT}_bindless.mesh"  materials/main.vert  -S mesh ${VARS} -DBINDLESS)

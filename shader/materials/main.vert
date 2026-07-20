@@ -2,6 +2,23 @@
 
 #extension GL_ARB_separate_shader_objects : enable
 #extension GL_GOOGLE_include_directive : enable
+
+#if defined(TEMP_BISECT_VERTEX_MODULE)
+
+out gl_PerVertex {
+  vec4 gl_Position;
+  };
+
+void main() {
+  const uint corner = uint(gl_VertexIndex) % 3u;
+  const vec2 pos = (corner==0u ? vec2(-1.0,-1.0) :
+                    corner==1u ? vec2( 3.0,-1.0) :
+                                 vec2(-1.0, 3.0));
+  gl_Position = vec4(pos,0.0,1.0);
+  }
+
+#else
+
 #extension GL_EXT_control_flow_attributes : enable
 
 #define MATERIALS_VERTEX_STAGE 1
@@ -305,3 +322,5 @@ void main() {
   meshShader(task);
 #endif
   }
+
+#endif
