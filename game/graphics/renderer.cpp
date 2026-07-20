@@ -281,6 +281,7 @@ void Renderer::setupSettings() {
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
   const bool prevSsaoEnabled = settings.zCloudShadowScale;
 #endif
+  const bool prevProjectiveShadows = settings.shadowResolution>0;
   settings.zEnvMappingEnabled = Gothic::settingsGetI("ENGINE","zEnvMappingEnabled")!=0;
   settings.zCloudShadowScale  = Gothic::settingsGetI("ENGINE","zCloudShadowScale") !=0;
 
@@ -304,6 +305,12 @@ void Renderer::setupSettings() {
     settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
 #endif
   }
+#if defined(__ANDROID__)
+  if(settings.shadowResolution==0) {
+    settings.vsmEnabled  = false;
+    settings.rtsmEnabled = false;
+    }
+#endif
   settings.zFogRadial         = Gothic::settingsGetI("RENDERER_D3D","zFogRadial")!=0;
 
   settings.zVidBrightness     = Gothic::settingsGetF("VIDEO","zVidBrightness");
@@ -368,6 +375,9 @@ void Renderer::setupSettings() {
   resetShadowmap();
 
   prepareUniforms();
+  if(prevProjectiveShadows!=(settings.shadowResolution>0))
+    if(auto wview = Gothic::inst().worldView())
+      wview->resetRendering();
   }
 
 void Renderer::toggleGi() {
@@ -1972,6 +1982,15 @@ void Renderer::drawUnderwater(Encoder<CommandBuffer>& cmd, const WorldView& wvie
   }
 
 void Renderer::drawShadowMap(Encoder<CommandBuffer>& cmd, uint8_t fId, WorldView& view) {
+  if(settings.shadowResolution==0) {
+    // Keep the 1x1 sentinel maps initialized for consumers that retain a
+    // shadow binding, but never submit landscape or particle shadow geometry.
+    for(auto& map:shadowMap)
+      if(!map.isEmpty())
+        cmd.setFramebuffer({}, {map, 0.f, Tempest::Preserve});
+    return;
+    }
+
   for(uint8_t i=0; i<Resources::ShadowLayers; ++i) {
     if(shadowMap[i].isEmpty())
       continue;
