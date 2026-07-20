@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -29,44 +33,176 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install glslang (host shader compiler)
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Install host shader tools
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=Host shader tool setup failed::Shader tool installation or version check failed with exit code ${rc}."; exit "$rc"' ERR
+
+          sudo apt-get update
+          sudo apt-get install -y glslang-tools spirv-tools
+          glslangValidator --version
+          spirv-val --version
+          spirv-dis --version
 
       - name: Apply submodule patches
-        run: bash android/patches/apply-patches.sh
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=Submodule patching failed::Patch application failed with exit code ${rc}."; exit "$rc"' ERR
+
+          bash android/patches/apply-patches.sh
 
       - name: Build signed APK
         working-directory: android
         run: |
-          chmod +x gradlew || true
-          gradle wrapper --gradle-version 8.7 || true
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=Android release build failed::assembleRelease failed with exit code ${rc}."; exit "$rc"' ERR
+
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
           ./gradlew assembleRelease -PbuildNum=${{ github.run_number }}
+
+      - name: Validate generated slot shaders
+        run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=Slot shader validation failed::Shader discovery or validation failed with exit code ${rc}."; exit "$rc"' ERR
+
+          shader_root="android/app/.cxx"
+          if [[ ! -d "$shader_root" ]]; then
+            echo "::error file=${shader_root},title=Missing CMake output::Expected generated shaders under ${shader_root}."
+            exit 1
+          fi
+
+          temp_dir="$(mktemp -d)"
+          trap 'rm -rf "$temp_dir"' EXIT
+
+          for abi in arm64-v8a x86_64; do
+            slot_manifest="${temp_dir}/${abi}.slot"
+            pfx_manifest="${temp_dir}/${abi}.pfx"
+
+            find "$shader_root" -type f -path "*/${abi}/*" -name '*_slot.*.sprv' -print0 \
+              | sort -z > "$slot_manifest"
+            find "$shader_root" -type f -path "*/${abi}/*" -name 'main_pfx*.frag.sprv' -print0 \
+              | sort -z > "$pfx_manifest"
+
+            mapfile -d '' -t slot_shaders < "$slot_manifest"
+            mapfile -d '' -t pfx_shaders < "$pfx_manifest"
+
+            if (( ${#slot_shaders[@]} == 0 )); then
+              echo "::error file=${shader_root},title=Missing ${abi} slot shaders::No *_slot.*.sprv modules were generated for ${abi}."
+              exit 1
+            fi
+            if (( ${#pfx_shaders[@]} == 0 )); then
+              echo "::error file=${shader_root},title=Missing ${abi} PFX slot shaders::No main_pfx*.frag.sprv modules were generated for ${abi}."
+              exit 1
+            fi
+
+            shaders=("${slot_shaders[@]}" "${pfx_shaders[@]}")
+            echo "::notice title=${abi} slot shaders::Validating ${#shaders[@]} generated modules (${#slot_shaders[@]} suffixed, ${#pfx_shaders[@]} PFX)."
+
+            for shader in "${shaders[@]}"; do
+              echo "Validating ${shader}"
+              if ! spirv-val "$shader"; then
+                echo "::error file=${shader},title=Invalid SPIR-V::spirv-val rejected this generated slot shader."
+                exit 1
+              fi
+
+              disassembly="${temp_dir}/shader.spvasm"
+              if ! spirv-dis "$shader" -o "$disassembly"; then
+                echo "::error file=${shader},title=SPIR-V disassembly failed::spirv-dis could not disassemble this generated slot shader."
+                exit 1
+              fi
+
+              capability_matches="${temp_dir}/forbidden-capabilities"
+              if grep -nE 'OpCapability[[:space:]]+(RuntimeDescriptorArray(EXT)?|ShaderNonUniform(EXT)?)([[:space:]]|$)' \
+                "$disassembly" > "$capability_matches"; then
+                echo "::error file=${shader},title=Forbidden SPIR-V capability::Slot shader declares RuntimeDescriptorArray(EXT) or ShaderNonUniform(EXT)."
+                cat "$capability_matches"
+                exit 1
+              else
+                grep_status=$?
+                if (( grep_status > 1 )); then
+                  echo "::error file=${shader},title=SPIR-V capability scan failed::Could not inspect the shader disassembly."
+                  exit "$grep_status"
+                fi
+              fi
+            done
+          done
 
       - name: Locate APK
         id: apk
         run: |
-          APK="$(find android -name '*-release.apk' | head -n1)"
-          if [ -z "$APK" ]; then echo "no apk produced"; exit 1; fi
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=APK staging failed::Locating or staging the release APK failed with exit code ${rc}."; exit "$rc"' ERR
+
+          mapfile -t apks < <(find android -type f -name '*-release.apk' -print | sort)
+          if (( ${#apks[@]} == 0 )); then
+            echo "::error title=No release APK::assembleRelease did not produce a *-release.apk file."
+            exit 1
+          fi
+          if (( ${#apks[@]} > 1 )); then
+            echo "::warning title=Multiple release APKs::Using ${apks[0]} from ${#apks[@]} matching files."
+          fi
+
+          APK="${apks[0]}"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          cp "$APK" OpenGothic.apk
+          cp -- "$APK" OpenGothic.apk
 
       - name: Publish to GitHub Release (latest-android)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -Eeuo pipefail
+          trap 'rc=$?; echo "::error title=Android release publish failed::Release publication or verification failed with exit code ${rc}."; exit "$rc"' ERR
+
+          TAG="latest-android"
+          REF_API="repos/${GITHUB_REPOSITORY}/git/refs/tags/${TAG}"
+          RELEASE_API="repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}"
+
           NOTES="## ⚠️ WORK IN PROGRESS — NOT PLAYABLE YET — DO NOT INSTALL ⚠️
 
           This is an automated Android **test build** (\`1.0.${{ github.run_number }}\`, commit ${{ github.sha }}) of the OpenGothic port. It is **incomplete and not ready for players** — it is published only for development/CI purposes.
 
           A proper release with real install instructions will replace this notice once the Android port is ready. Please don't install these builds or file issues against them yet."
           TITLE="OpenGothic Android — WIP test build (do not install)"
-          if gh release view latest-android >/dev/null 2>&1; then
-            gh release edit latest-android --prerelease --title "$TITLE" --notes "$NOTES"
-            gh release upload latest-android OpenGothic.apk --clobber
+
+          if ! gh api "$REF_API" >/dev/null 2>&1; then
+            if gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" -f sha="$GITHUB_SHA" >/dev/null; then
+              echo "::notice title=Android WIP tag created::Created refs/tags/${TAG}."
+            elif gh api "$REF_API" >/dev/null 2>&1; then
+              echo "::warning title=Android WIP tag raced::The tag was created concurrently; continuing with the forced update."
+            else
+              echo "::error title=Unable to create Android WIP tag::Could not ensure refs/tags/${TAG} exists."
+              exit 1
+            fi
+          fi
+
+          if ! gh api --method PATCH "$REF_API" -f sha="$GITHUB_SHA" -F force=true >/dev/null; then
+            echo "::error title=Unable to move Android WIP tag::Could not force refs/tags/${TAG} to ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --target android \
+              --prerelease --title "$TITLE" --notes "$NOTES"
           else
-            gh release create latest-android OpenGothic.apk \
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target android \
               --title "$TITLE" --prerelease --notes "$NOTES"
           fi
+          gh release upload "$TAG" OpenGothic.apk --repo "$GITHUB_REPOSITORY" --clobber
+
+          TAG_SHA="$(gh api "$REF_API" --jq '.object.sha')"
+          if [[ "$TAG_SHA" != "$GITHUB_SHA" ]]; then
+            echo "::error title=Android WIP tag verification failed::refs/tags/${TAG} resolves to ${TAG_SHA}, expected ${GITHUB_SHA}."
+            exit 1
+          fi
+
+          TARGET_COMMITISH="$(gh api "$RELEASE_API" --jq '.target_commitish')"
+          if [[ "$TARGET_COMMITISH" != "android" ]]; then
+            echo "::error title=Android release target verification failed::Release targetCommitish is ${TARGET_COMMITISH}, expected android."
+            exit 1
+          fi
+          echo "::notice title=Android release verified::refs/tags/${TAG} is ${GITHUB_SHA} and targetCommitish is android."
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
