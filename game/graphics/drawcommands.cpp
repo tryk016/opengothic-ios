@@ -99,9 +99,9 @@ void DrawCommands::setBindings(Tempest::Encoder<CommandBuffer>& cmd, const DrawC
     }
 
   if(v==SceneGlobals::V_Main || cx.isTextureInShadowPass()) {
-    // Slot-mode shaders take a combined image+sampler at L_Diffuse and have no
-    // L_Sampler binding (see materials_common.glsl - the separate-sampler form
-    // crashes the Adreno 6xx shader compiler); bindless keeps the split pair.
+    // Slot-mode shaders take one combined image+sampler at L_Diffuse and have no
+    // L_Sampler binding. This is the simplest mobile descriptor shape; it did
+    // not by itself resolve the A23 compiler crash. Bindless keeps the split pair.
     auto smp = SceneGlobals::isShadowView(v) ? Sampler::trillinear() : Sampler::anisotrophy();
     if(cx.isBindless()) {
       cmd.setBinding(L_Diffuse, buckets.textures());

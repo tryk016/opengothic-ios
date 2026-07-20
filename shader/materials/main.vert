@@ -4,6 +4,8 @@
 #extension GL_GOOGLE_include_directive : enable
 #extension GL_EXT_control_flow_attributes : enable
 
+#define MATERIALS_VERTEX_STAGE 1
+
 #if defined(VIRTUAL_SHADOW)
 #include "virtual_shadow/vsm_common.glsl"
 #endif
@@ -149,7 +151,7 @@ uvec2 processMeshlet(const uint meshletId, const uint bucketId) {
 #endif
 
   const uint iboOffset = meshletId * MaxPrim + MaxPrim - 1;
-  const uint bits      = ibo[bId].indexes[iboOffset];
+  const uint bits      = IBO_INDEX(bId, iboOffset);
   uvec4 prim;
   prim.x = ((bits >>  0) & 0xFF);
   prim.y = ((bits >>  8) & 0xFF);
@@ -175,7 +177,7 @@ uvec3 processPrimitive(const uint meshletId, const uint bucketId, const uint out
 #endif
 
   const uint iboOffset = meshletId * MaxPrim + outId;
-  const uint bits      = ibo[bId].indexes[iboOffset];
+  const uint bits      = IBO_INDEX(bId, iboOffset);
   uvec3 prim;
   prim.x = ((bits >>  0) & 0xFF);
   prim.y = ((bits >>  8) & 0xFF);

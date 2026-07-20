@@ -119,15 +119,27 @@ layout(binding = L_Payload,  std430) readonly buffer Pbo  { uvec4   payload[];  
 layout(binding = L_Bucket,   std140) readonly buffer Bbo  { Bucket  bucket[];      };
 #endif
 
-#if (MESH_TYPE!=T_PFX)
+// main.vert marks the slot stages that consume geometry buffers; bindless keeps
+// its existing declarations. Slot accessors ignore bufferId because DrawCommands
+// binds one SSBO at each existing binding.
+#if (MESH_TYPE!=T_PFX) && (defined(MATERIALS_VERTEX_STAGE) || defined(BINDLESS))
+#if defined(BINDLESS)
 layout(binding = L_Ibo,      std430) readonly buffer Ibo  { uint    indexes [];    } ibo[];
 layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[];    } vbo[];
+#define IBO_INDEX(bufferId, offset) ibo[bufferId].indexes[offset]
+#define VBO_VERTEX(bufferId, offset) vbo[bufferId].vertices[offset]
+#else
+layout(binding = L_Ibo,      std430) readonly buffer Ibo  { uint    indexes [];    } ibo;
+layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[];    } vbo;
+#define IBO_INDEX(bufferId, offset) ibo.indexes[offset]
+#define VBO_VERTEX(bufferId, offset) vbo.vertices[offset]
+#endif
 #endif
 
-// TEMP [bisect] step A: slot fragments keep every declaration (varyings,
-// texture, SSBOs) but execute nothing - a binary probe for the Adreno 6xx
-// compiler SIGSEGV. Survives => the crash needs USAGE of one of these;
-// crashes => declarations/stage-linking alone are toxic. Remove after.
+// TEMP [bisect] step A: slot fragments return before resource usage. The first
+// A23 run still crashed; dead helper IR remained, so that result did not prove
+// declarations/stage linking alone were responsible. Keep the same entry point
+// while the follow-up scalar-descriptor test changes one variable. Remove after.
 #if defined(GL_FRAGMENT_SHADER) && !defined(BINDLESS) && defined(MAT_UV)
 #define TEMP_BISECT_A 1
 #endif
@@ -137,21 +149,28 @@ layout(binding = L_Vbo,      std430) readonly buffer Vbo  { float   vertices[]; 
 layout(binding = L_Diffuse)          uniform  texture2D textureMain[];
 layout(binding = L_Sampler)          uniform  sampler   samplerMain;
 #else
-// Combined image+sampler, no array: the slot path binds exactly one texture,
-// and the separate-image+separate-sampler form kills the Adreno 6xx driver's
-// shader compiler (SIGSEGV inside vkCreateGraphicsPipelines) on the first
-// texture-sampling material pipeline - measured on Adreno 619 with the
-// runtime-sized array, a sized [1] array and a bare texture2D alike. The
-// combined form is the most-exercised path of every mobile driver. Bindings
+// Combined image+sampler, no outer descriptor array: slot mode binds one
+// texture. Runtime-sized, sized [1], bare separate texture and combined forms
+// all reproduced the A23 crash, so this shape is retained because it is the
+// simplest mobile path, not because it was proven to fix the driver. Bindings
 // come as a (texture,sampler) pair from DrawCommands::setBindings; L_Sampler
 // is not used in slot mode.
 layout(binding = L_Diffuse)          uniform  sampler2D textureMain;
 #endif
 #endif
 
-#if (MESH_TYPE==T_MORPH)
+#if (MESH_TYPE==T_MORPH) && (defined(MATERIALS_VERTEX_STAGE) || defined(BINDLESS))
+#if defined(BINDLESS)
 layout(binding = L_MorphId,  std430) readonly buffer MId  { int     index[];       } morphId[];
 layout(binding = L_Morph,    std430) readonly buffer MSmp { vec4    samples[];     } morph[];
+#define MORPH_INDEX(bufferId, offset) morphId[bufferId].index[offset]
+#define MORPH_SAMPLE(bufferId, offset) morph[bufferId].samples[offset]
+#else
+layout(binding = L_MorphId,  std430) readonly buffer MId  { int     index[];       } morphId;
+layout(binding = L_Morph,    std430) readonly buffer MSmp { vec4    samples[];     } morph;
+#define MORPH_INDEX(bufferId, offset) morphId.index[offset]
+#define MORPH_SAMPLE(bufferId, offset) morph.samples[offset]
+#endif
 #endif
 
 #if defined(GL_FRAGMENT_SHADER) && defined(FORWARD) && !defined(DEPTH_ONLY)

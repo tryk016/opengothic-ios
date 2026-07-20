@@ -39,21 +39,21 @@ Vertex pullVertex(uint bucketId, uint id) {
   Vertex ret;
 #if (MESH_TYPE==T_SKINING)
   id *=23;
-  ret.normal = vec3(vbo[vi].vertices[id + 0], vbo[vi].vertices[id + 1], vbo[vi].vertices[id + 2]);
-  ret.uv     = vec2(vbo[vi].vertices[id + 3], vbo[vi].vertices[id + 4]);
-  ret.color  = floatBitsToUint(vbo[vi].vertices[id + 5]);
-  ret.pos0   = vec3(vbo[vi].vertices[id +  6], vbo[vi].vertices[id +  7], vbo[vi].vertices[id +  8]);
-  ret.pos1   = vec3(vbo[vi].vertices[id +  9], vbo[vi].vertices[id + 10], vbo[vi].vertices[id + 11]);
-  ret.pos2   = vec3(vbo[vi].vertices[id + 12], vbo[vi].vertices[id + 13], vbo[vi].vertices[id + 14]);
-  ret.pos3   = vec3(vbo[vi].vertices[id + 15], vbo[vi].vertices[id + 16], vbo[vi].vertices[id + 17]);
-  ret.boneId = uvec4(unpackUnorm4x8(floatBitsToUint(vbo[vi].vertices[id + 18]))*255.0);
-  ret.weight = vec4(vbo[vi].vertices[id + 19], vbo[vi].vertices[id + 20], vbo[vi].vertices[id + 21], vbo[vi].vertices[id + 22]);
+  ret.normal = vec3(VBO_VERTEX(vi, id + 0), VBO_VERTEX(vi, id + 1), VBO_VERTEX(vi, id + 2));
+  ret.uv     = vec2(VBO_VERTEX(vi, id + 3), VBO_VERTEX(vi, id + 4));
+  ret.color  = floatBitsToUint(VBO_VERTEX(vi, id + 5));
+  ret.pos0   = vec3(VBO_VERTEX(vi, id +  6), VBO_VERTEX(vi, id +  7), VBO_VERTEX(vi, id +  8));
+  ret.pos1   = vec3(VBO_VERTEX(vi, id +  9), VBO_VERTEX(vi, id + 10), VBO_VERTEX(vi, id + 11));
+  ret.pos2   = vec3(VBO_VERTEX(vi, id + 12), VBO_VERTEX(vi, id + 13), VBO_VERTEX(vi, id + 14));
+  ret.pos3   = vec3(VBO_VERTEX(vi, id + 15), VBO_VERTEX(vi, id + 16), VBO_VERTEX(vi, id + 17));
+  ret.boneId = uvec4(unpackUnorm4x8(floatBitsToUint(VBO_VERTEX(vi, id + 18)))*255.0);
+  ret.weight = vec4(VBO_VERTEX(vi, id + 19), VBO_VERTEX(vi, id + 20), VBO_VERTEX(vi, id + 21), VBO_VERTEX(vi, id + 22));
 #elif (MESH_TYPE==T_LANDSCAPE) || (MESH_TYPE==T_OBJ) || (MESH_TYPE==T_MORPH)
   id *= 9;
-  ret.pos    = vec3(vbo[vi].vertices[id + 0], vbo[vi].vertices[id + 1], vbo[vi].vertices[id + 2]);
-  ret.normal = vec3(vbo[vi].vertices[id + 3], vbo[vi].vertices[id + 4], vbo[vi].vertices[id + 5]);
-  ret.uv     = vec2(vbo[vi].vertices[id + 6], vbo[vi].vertices[id + 7]);
-  ret.color  = floatBitsToUint(vbo[vi].vertices[id + 8]);
+  ret.pos    = vec3(VBO_VERTEX(vi, id + 0), VBO_VERTEX(vi, id + 1), VBO_VERTEX(vi, id + 2));
+  ret.normal = vec3(VBO_VERTEX(vi, id + 3), VBO_VERTEX(vi, id + 4), VBO_VERTEX(vi, id + 5));
+  ret.uv     = vec2(VBO_VERTEX(vi, id + 6), VBO_VERTEX(vi, id + 7));
+  ret.color  = floatBitsToUint(VBO_VERTEX(vi, id + 8));
 #else
 #error "unknown mesh type"
 #endif
@@ -75,14 +75,14 @@ vec3 morphOffset(uint bucketId, uint animPtr, uint vertexIndex) {
     return vec3(0);
 
   uint  vId   = vertexIndex + md.indexOffset;
-  int   index = morphId[i].index[vId];
+  int   index = MORPH_INDEX(i, vId);
   if(index<0)
     return vec3(0);
 
   uint  f0 = md.sample0;
   uint  f1 = md.sample1;
-  vec3  a  = morph[i].samples[f0 + index].xyz;
-  vec3  b  = morph[i].samples[f1 + index].xyz;
+  vec3  a  = MORPH_SAMPLE(i, f0 + index).xyz;
+  vec3  b  = MORPH_SAMPLE(i, f1 + index).xyz;
 
   return mix(a,b,alpha) * intensity;
   }
