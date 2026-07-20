@@ -586,40 +586,55 @@ const RenderPipeline* Shaders::materialPipeline(const Material& mat, DrawCommand
   b.trivial      = trivial;
 
   auto& device = Resources::device();
+  // A fragment stage is optional for a depth-only Vulkan pipeline. Omitting it
+  // also avoids a known Adreno compiler crash while preserving alpha-test discard.
+  const bool vertexOnlyDepth = (pt==T_Depth && alpha==Material::Solid);
   if(mat.isTesselated() && device.properties().tesselationShader && t==DrawCommands::Landscape && true) {
     auto shVs = GothicShader::get(string_frm("main_", vsTok, typeVs, bindless, ".vert.sprv"));
     auto shTc = GothicShader::get(string_frm("main_", vsTok, typeVs, bindless, ".tesc.sprv"));
     auto shTe = GothicShader::get(string_frm("main_", vsTok, typeVs, bindless, ".tese.sprv"));
-    auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
 
     auto vs = device.shader(shVs.data,shVs.len);
     auto tc = device.shader(shTc.data,shTc.len);
     auto te = device.shader(shTe.data,shTe.len);
-    auto fs = device.shader(shFs.data,shFs.len);
+    Shader fs;
+    if(!vertexOnlyDepth) {
+      auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
+      fs = device.shader(shFs.data,shFs.len);
+    }
     b.pipeline = device.pipeline(Triangles, state, vs, tc, te, fs);
     }
   else if(Gothic::options().doMeshShading && t!=DrawCommands::Pfx) {
     auto shMs = GothicShader::get(string_frm("main_", vsTok, typeVs, bindless, ".mesh.sprv"));
-    auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
 
     auto ms = device.shader(shMs.data,shMs.len);
-    auto fs = device.shader(shFs.data,shFs.len);
+    Shader fs;
+    if(!vertexOnlyDepth) {
+      auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
+      fs = device.shader(shFs.data,shFs.len);
+    }
     b.pipeline = device.pipeline(state, Shader(), ms, fs);
     }
   else if(t!=DrawCommands::Pfx) {
     auto shVs = GothicShader::get(string_frm("main_", vsTok, typeVs, bindless, ".vert.sprv"));
-    auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
 
     auto vs = device.shader(shVs.data,shVs.len);
-    auto fs = device.shader(shFs.data,shFs.len);
+    Shader fs;
+    if(!vertexOnlyDepth) {
+      auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, bindless, ".frag.sprv"));
+      fs = device.shader(shFs.data,shFs.len);
+    }
     b.pipeline = device.pipeline(Triangles, state, vs, fs);
     }
   else {
     auto shVs = GothicShader::get(string_frm("main_", vsTok, typeVs, ".vert.sprv"));
-    auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, ".frag.sprv"));
 
     auto vs = device.shader(shVs.data,shVs.len);
-    auto fs = device.shader(shFs.data,shFs.len);
+    Shader fs;
+    if(!vertexOnlyDepth) {
+      auto shFs = GothicShader::get(string_frm("main_", fsTok, typeFs, ".frag.sprv"));
+      fs = device.shader(shFs.data,shFs.len);
+    }
     b.pipeline = device.pipeline(Triangles, state, vs, fs);
     }
 
