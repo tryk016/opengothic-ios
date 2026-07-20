@@ -56,11 +56,13 @@ function(add_shader OUTPUT SOURCE)
     list(APPEND VARS "-DWORKGROUP_SIZE=64")
   endif()
 
-  # debug info in shaders
-  if(${CMAKE_BUILD_TYPE} MATCHES "Debug")
+  # Keep source-level SPIR-V debug records only in exact Debug builds.
+  # Android release variants use RelWithDebInfo; -g0 keeps vendor compilers
+  # from parsing non-semantic OpSource/OpLine records in production shaders.
+  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     list(APPEND VARS "-g")
   else()
-    list(APPEND VARS "-g")
+    list(APPEND VARS "-g0")
   endif()
 
   set(GLSL_CMD ${GLSLANGVALIDATOR})
