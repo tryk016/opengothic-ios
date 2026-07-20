@@ -1130,10 +1130,16 @@ void MainWindow::resetPerfWindow(uint64_t nowUs) {
   perfWindow.tickUs.clear();
   perfWindow.animationUs.clear();
   perfWindow.poseRefreshUs.clear();
+  perfWindow.renderEncodeUs.clear();
+  perfWindow.submitUs.clear();
+  perfWindow.presentUs.clear();
   perfWindow.frameUs.reserve(2048);
   perfWindow.tickUs.reserve(2048);
   perfWindow.animationUs.reserve(2048);
   perfWindow.poseRefreshUs.reserve(2048);
+  perfWindow.renderEncodeUs.reserve(2048);
+  perfWindow.submitUs.reserve(2048);
+  perfWindow.presentUs.reserve(2048);
   perfWindow.startedUs       = nowUs;
   perfWindow.lastSubmittedUs = 0;
   perfWindow.framesStarted   = 0;
@@ -1230,6 +1236,9 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
                         " cpu_tick_p95_ms=",percentileMs(perfWindow.tickUs,95u),
                         " cpu_anim_p95_ms=",percentileMs(perfWindow.animationUs,95u),
                         " cpu_pose_refresh_p95_ms=",percentileMs(perfWindow.poseRefreshUs,95u),
+                        " cpu_render_encode_p95_ms=",percentileMs(perfWindow.renderEncodeUs,95u),
+                        " cpu_submit_p95_ms=",percentileMs(perfWindow.submitUs,95u),
+                        " cpu_present_p95_ms=",percentileMs(perfWindow.presentUs,95u),
                         " frame_started=",perfWindow.framesStarted,
                         " frame_submitted=",perfWindow.framesSubmitted,
                         " fence_miss=",perfWindow.fenceMisses,
@@ -1923,6 +1932,9 @@ void MainWindow::render(){
 #endif
 
     CommandBuffer& cmd = commands[cmdId];
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    const uint64_t renderEncodeStart = perfNowUs();
+#endif
     {
     auto enc = cmd.startEncoding(device);
     renderer.draw(enc,cmdId,swapchain.currentImage(),uiMesh[cmdId],numMesh[cmdId],inventory,video);
@@ -1931,14 +1943,27 @@ void MainWindow::render(){
       renderer.drawSavePreview(enc,pendingSave.preview);
 #endif
     }
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.renderEncodeUs.push_back(perfSample(perfNowUs()-renderEncodeStart));
+    const uint64_t submitStart = perfNowUs();
+#endif
     sync = device.submit(cmd);
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.submitUs.push_back(perfSample(perfNowUs()-submitStart));
+#endif
 #if defined(__IOS__)
     if(captureSavePreview) {
       pendingSave.frameId = cmdId;
       pendingSave.stage   = PendingSave::Stage::AwaitingGpu;
       }
 #endif
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    const uint64_t presentStart = perfNowUs();
+#endif
     device.present(swapchain);
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    perfWindow.presentUs.push_back(perfSample(perfNowUs()-presentStart));
+#endif
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
     submitPerfFrame(perfNowUs());
 #endif

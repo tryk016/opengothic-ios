@@ -187,6 +187,9 @@ class Renderer final {
     bool                      metalFxTemporalEncodeConfirmed = false;
 #endif
     Tempest::ZBuffer          zbuffer, shadowMap[Resources::ShadowLayers];
+#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
+    uint64_t                  mobileShadowFrame = 0;
+#endif
     Tempest::ZBuffer          zbufferUi;
 
     Tempest::Attachment       sceneOpaque;

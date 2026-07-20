@@ -290,6 +290,10 @@ void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
     const auto viewport = SceneGlobals::VisCamera(v);
     if(viewport==SceneGlobals::V_HiZ && pass!=0)
       continue;
+#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
+    if(viewport==SceneGlobals::V_HiZ)
+      continue;
+#endif
     if(viewport!=SceneGlobals::V_HiZ && pass==0)
       continue;
     if(viewport==SceneGlobals::V_Vsm)
@@ -304,7 +308,13 @@ void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
 
     auto* pso = &Shaders::inst().visibilityPassSh;
     if(viewport==SceneGlobals::V_Main)
+#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
+      // Tile-based mobile GPUs already reject hidden fragments efficiently.
+      // Use frustum-only visibility and omit the duplicate depth prepass.
+      pso = &Shaders::inst().visibilityPassSh;
+#else
       pso = &Shaders::inst().visibilityPassHiZ;
+#endif
     else if(viewport==SceneGlobals::V_HiZ)
       pso = &Shaders::inst().visibilityPassHiZCr;
 
