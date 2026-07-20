@@ -281,7 +281,6 @@ void Renderer::setupSettings() {
 #if defined(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
   const bool prevSsaoEnabled = settings.zCloudShadowScale;
 #endif
-  const bool prevProjectiveShadows = settings.shadowResolution>0;
   settings.zEnvMappingEnabled = Gothic::settingsGetI("ENGINE","zEnvMappingEnabled")!=0;
   settings.zCloudShadowScale  = Gothic::settingsGetI("ENGINE","zCloudShadowScale") !=0;
 
@@ -290,27 +289,13 @@ void Renderer::setupSettings() {
   // On phones default to 512 - a fraction of the 2048 fill cost, softer
   // shadow edges. resetShadowmap() below picks the change up.
   int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
-#if defined(__ANDROID__)
-  // Zero is an explicit no-dynamic-shadows diagnostic/performance mode.
-  // The mobile profile still defaults to 512; resetShadowmap() creates 1x1
-  // sentinel maps so existing renderer consumers remain valid.
-  settings.shadowResolution = sr<=0 ? 0u : uint32_t(std::clamp(sr, 256, 4096));
-#elif defined(__IOS__)
+#if defined(__IOS__) || defined(__ANDROID__)
   if(sr<=0)
     sr = 512;
-  if(sr>0)
-    settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
-#else
-  if(sr>0)
-    settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
 #endif
+  if(sr>0)
+    settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
   }
-#if defined(__ANDROID__)
-  if(settings.shadowResolution==0) {
-    settings.vsmEnabled  = false;
-    settings.rtsmEnabled = false;
-    }
-#endif
   settings.zFogRadial         = Gothic::settingsGetI("RENDERER_D3D","zFogRadial")!=0;
 
   settings.zVidBrightness     = Gothic::settingsGetF("VIDEO","zVidBrightness");
@@ -375,9 +360,6 @@ void Renderer::setupSettings() {
   resetShadowmap();
 
   prepareUniforms();
-  if(prevProjectiveShadows!=(settings.shadowResolution>0))
-    if(auto wview = Gothic::inst().worldView())
-      wview->resetRendering();
   }
 
 void Renderer::toggleGi() {
@@ -640,7 +622,6 @@ void Renderer::resetShadowmap() {
     Resources::recycle(std::move(shadowMap[i]));
 
   const bool forceSm1 = (settings.giMethod==GiMethod::Probes || settings.pathTraceEnabled || sky.quality==PathTrace);
-  const uint32_t shadowSize = std::max(1u,settings.shadowResolution);
   for(int i=0; i<Resources::ShadowLayers; ++i) {
     if(!(i==1 && forceSm1)) {
       if(settings.vsmEnabled && !(settings.rtsmEnabled && i==1))
@@ -648,7 +629,7 @@ void Renderer::resetShadowmap() {
       if(settings.rtsmEnabled && !(sky.quality!=None && i==1))
         continue; //TODO: support vsm in gi code
       }
-    shadowMap[i] = device.zbuffer(shadowFormat, shadowSize, shadowSize);
+    shadowMap[i] = device.zbuffer(shadowFormat, settings.shadowResolution, settings.shadowResolution);
     }
   }
 
@@ -1982,15 +1963,6 @@ void Renderer::drawUnderwater(Encoder<CommandBuffer>& cmd, const WorldView& wvie
   }
 
 void Renderer::drawShadowMap(Encoder<CommandBuffer>& cmd, uint8_t fId, WorldView& view) {
-  if(settings.shadowResolution==0) {
-    // Keep the 1x1 sentinel maps initialized for consumers that retain a
-    // shadow binding, but never submit landscape or particle shadow geometry.
-    for(auto& map:shadowMap)
-      if(!map.isEmpty())
-        cmd.setFramebuffer({}, {map, 0.f, Tempest::Preserve});
-    return;
-    }
-
   for(uint8_t i=0; i<Resources::ShadowLayers; ++i) {
     if(shadowMap[i].isEmpty())
       continue;
