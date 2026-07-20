@@ -31,29 +31,37 @@ is welcome, but must not block an Android fix or force changes into `master`.
 
 ## Current status
 
-Code baseline audited on 2026-07-20, before this documentation refresh:
+Code baseline audited on 2026-07-20 after the Helio performance pass:
 
-- local and remote `android` were at `7fdab747`;
-- `master`: `97f7db4e`, an ancestor of `android`;
-- Android contained `master` plus its own Android-only history;
-- latest code-affecting CI build: `5c0d5bf8`, successful;
+- Android code HEAD: `0e1f0a6b`;
+- `master`: `97f7db4e`, an ancestor of `android` with no master-only commits;
+- Android contains `master` plus its Android-only history;
 - `latest-android` remains a WIP prerelease;
-- the worktree also contains an uncommitted `TEMP_BISECT_A` shader
-  experiment. It is not part of HEAD, has not run through CI and must not be
-  mistaken for a fix.
+- full production shaders are restored;
+- there are no uncommitted `TEMP_BISECT_*` modules or Tempest submodule
+  changes in this worktree.
+
+Final safety build [CI run 29746062340](https://github.com/tryk016/opengothic-ios/actions/runs/29746062340)
+completed successfully, validated all 84 generated shader modules and moved
+`latest-android` to `0e1f0a6b`. The published APK has SHA-256
+`CBC5DBAF822467C66855682CC5EC2B3453AB529AFDC278C5C016BDC54D7D4365`.
+That exact artifact was installed on the SM-X115 and verified through menu,
+new-game world entry and Home/resume with the same process ID.
 
 ### Hardware matrix
 
 | Device | GPU | Verified result |
 |---|---|---|
-| Samsung Galaxy Tab A9 / SM-X115, Android 15, ~3.5 GB usable RAM | Mali-G57 MC2 | Full Khorinis load, landscape presentation, touch, dialogue, background/resume, ASTC cache and sustained gameplay |
+| Samsung Galaxy Tab A9 / SM-X115, Android 15, ~3.5 GB usable RAM | Mali-G57 MC2 | Full Khorinis load, landscape presentation, touch, dialogue, background/resume and ASTC cache; about 15–16 FPS in the measured Xardas-room scene |
 | Samsung Galaxy A23 5G / SM-A236B, Android 14, ~3.4 GB usable RAM | Adreno 619, Samsung driver 512.548.0 | Deterministic SIGSEGV in Qualcomm `libllvm-glnext.so` while compiling the first textured 3D graphics pipeline |
 | Pixel Tablet AVD / API 35 | host Vulkan, x86_64 | Boot, menu, intro, touch and lifecycle smoke tests |
 
-The Adreno failure is a confirmed shader-compiler crash, but an
-application-side workaround is still under investigation. The current
-non-bindless path is not yet a true scalar slot path: IBO, VBO and morph
-buffers still use descriptor-array declarations. See
+The Adreno failure is a confirmed shader-compiler crash. The scalar slot path,
+VSM capability gate, stripped Release SPIR-V and several minimal shader
+variants were tested without reaching the first 3D frame. The final
+depth-only variant passed HiZ and moved the crash to the next material
+pipeline, so this is not a single-HiZ-shader failure. Full shaders are
+restored and the A23 investigation is deferred. See
 [`2026-07-17-adreno-compiler-crash-investigation.md`](../docs/superpowers/reports/2026-07-17-adreno-compiler-crash-investigation.md).
 
 ## Build architecture
@@ -182,11 +190,12 @@ The copied `system/Gothic.ini` is not modified. A pre-existing writable
 `Gothic.ini` is preserved and does not necessarily receive every newer
 Android default.
 
-The shared profile also writes `zMaxFpsMode=1`, but
-`MainWindow::onSettings()` reads that selector only under `__IOS__`.
-Android's effective limit comes from `Gothic::options().fpsLimit`
-(`SystemPack.ini` `PARAMETERS/FPS_Limit`) and then `ENGINE/zMaxFps`. A 30 FPS
-Android default is therefore not implemented yet.
+`zMaxFpsMode=1` is active on Android and targets 30 FPS. Android uses an exact
+monotonic `sleep_until` deadline and does not use Tempest's desktop
+busy-spin tail. The limit is only a cap: the measured Xardas-room scene
+remains GPU-bound at about 15–16 FPS, while the menu holds about 29.7 FPS.
+See
+[`2026-07-20-helio-g99-performance.md`](../docs/superpowers/reports/2026-07-20-helio-g99-performance.md).
 
 ## Texture memory and ASTC
 
@@ -224,24 +233,18 @@ The tested A23 crashes in Qualcomm's compiler during
 `vkCreateGraphicsPipelines`. ASTC was excluded as the trigger by reproducing
 the same crash with `androidTexCap=512`.
 
-The previous report's wording that the issue was “unworkaroundable” was too
-strong. Before declaring this exact driver combination unsupported, the
-current plan is:
+The application-side shader ladder was executed and removed. The repository
+now retains the generally correct parts: a scalar slot path, capability-gated
+VSM, Release shaders without debug information and CI validation that rejects
+runtime descriptor arrays/non-uniform capabilities in every generated slot
+module. None fixed Samsung driver 512.548.0.
 
-1. run the existing `TEMP_BISECT_A`;
-2. bisect the fragment shader: constant output → varying → texture → SSBO →
-   full material;
-3. test Release SPIR-V without debug information;
-4. create a real scalar non-bindless path without IBO/VBO/morph descriptor
-   arrays;
-5. gate VSM and all `nonuniformEXT` shaders on the required capabilities;
-6. eliminate Vulkan Validation errors for descriptor features, layout flags
-   and SPIR-V extension dependencies;
-7. test `VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT`;
-8. pin and log the shader toolchain version.
-
-A separate Android renderer is not justified yet. A conventional Vulkan
-slot path in the existing renderer is the preferred direction.
+If the investigation resumes, start with zero relevant Vulkan Validation
+errors and a standalone reproducer for the first pipeline that still crashes
+after the depth-only variant. Do not repeat the removed `TEMP_BISECT_*`
+sequence. A separate Android backend is not justified; the preferred
+architecture is a measured mobile pass profile in the existing Vulkan
+renderer.
 
 ## CI and distribution
 
@@ -255,20 +258,21 @@ The job:
 2. installs JDK 17, Android SDK and host `glslang-tools`;
 3. applies Tempest patches;
 4. builds a signed Release APK;
-5. replaces `OpenGothic.apk` in the `latest-android` prerelease.
+5. validates 84 generated slot/PFX SPIR-V modules for both ABIs;
+6. moves `latest-android` to the exact Android commit and verifies its target;
+7. replaces `OpenGothic.apk` and uploads the same artifact.
 
 Green CI proves compilation and linkage, not runtime correctness. Runtime
 verification on the real devices remains mandatory.
 
 Known CI/release issues:
 
-- `ubuntu-latest` and `glslang-tools` are not version-pinned, so identical
-  source can produce different SPIR-V after runner updates;
-- Gradle Wrapper is generated on the runner and failures are ignored instead
-  of committing a known wrapper;
-- the `latest-android` asset is the correct APK, but the release tag/source
-  archive currently targets `master` because release creation does not pass
-  `--target android`.
+- `ubuntu-latest`, `glslang-tools` and SPIRV-Tools are not version-pinned, so
+  identical source can still produce different SPIR-V after runner updates;
+- tool versions are printed and wrapper generation is fail-loud, but Gradle
+  Wrapper is still generated on the runner instead of committed;
+- the current action versions emit a Node.js 20 deprecation warning on the
+  hosted runner.
 
 ### Signing model
 
@@ -300,11 +304,13 @@ The output is a signed `*-release.apk` under `android/`.
 
 ## Current priorities
 
-1. Complete the Adreno shader bisect.
-2. Implement a true scalar non-bindless descriptor path.
-3. Reach zero relevant Vulkan Validation errors.
-4. Harden ASTC cache validation and cache keys.
-5. Fix the release tag target and pin the shader toolchain.
+1. Profile individual GPU passes on Mali with AGI/Perfetto or timestamp
+   queries before attempting another renderer shortcut.
+2. Design a correctness-preserving mobile HiZ/depth and direct-light path;
+   the measured 30 FPS target is not yet met.
+3. Harden ASTC cache validation and cache keys.
+4. Reach zero relevant Vulkan Validation errors before resuming Adreno.
+5. Pin the shader toolchain and commit a known Gradle Wrapper.
 6. Gate native startup on storage permission and show visible Android errors.
 7. Harden full Activity recreation and narrow `SUBOPTIMAL` suppression.
 8. Add multitouch, Android controller support and haptics.

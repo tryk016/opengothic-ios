@@ -5,7 +5,9 @@
 > The Android port is playable on the tested Samsung Galaxy Tab A9
 > (Helio G99 / Mali-G57 MC2): it loads Khorinis, renders in landscape,
 > accepts touch input, survives background/resume, and has completed sustained
-> gameplay tests. The tested Galaxy A23 (Adreno 619, Samsung driver
+> gameplay tests. Performance is not yet release quality: the measured
+> Xardas-room scene runs at about 15–16 FPS despite the 30 FPS target. The
+> tested Galaxy A23 (Adreno 619, Samsung driver
 > 512.548.0) currently crashes inside Qualcomm's Vulkan shader compiler before
 > the first 3D gameplay frame. Compatibility with other GPUs is unknown.
 >
@@ -99,10 +101,11 @@ The copied `system/Gothic.ini` remains untouched. The writable override is
 loaded across relaunches; persistence of every individual option changed
 through the in-game menu still needs dedicated coverage.
 
-The profile currently also writes `zMaxFpsMode=1`, but that selector is read
-only by the iOS path. Android's effective cap still comes from
-`SystemPack.ini` `PARAMETERS/FPS_Limit`, then `ENGINE/zMaxFps`. Therefore the
-port does **not** currently guarantee a 30 FPS default.
+`zMaxFpsMode=1` is an effective 30 FPS target on Android. The renderer uses an
+exact monotonic software deadline and does not use Tempest's desktop
+busy-spin tail. This is a cap, not a performance guarantee: the tested
+Xardas-room scene on Mali-G57 remains GPU-bound at about 15–16 FPS with
+dynamic shadows enabled. The menu holds about 29.7 FPS.
 
 On GPUs without BC/S3TC but with ASTC, the first world load builds a compressed
 texture cache under `/sdcard/OpenGothic/astc/`. On the tested Mali-G57:
@@ -140,7 +143,7 @@ Current limitations:
 
 | Device | GPU | Result |
 |---|---|---|
-| Samsung Galaxy Tab A9 / SM-X115 | Mali-G57 MC2 | Khorinis loads and runs; landscape, touch, lifecycle and ASTC verified |
+| Samsung Galaxy Tab A9 / SM-X115 | Mali-G57 MC2 | Khorinis loads and runs; landscape, touch, lifecycle and ASTC verified; about 15–16 FPS in the measured Xardas-room scene |
 | Samsung Galaxy A23 5G / SM-A236B | Adreno 619 | Deterministic Qualcomm shader-compiler crash before the first 3D gameplay frame; workaround investigation remains open |
 | Pixel Tablet AVD | host Vulkan / x86_64 | Boot, menu, intro, touch and lifecycle smoke-tested |
 
@@ -148,6 +151,8 @@ Current limitations:
 
 - This is still a pre-alpha build; compatibility beyond the devices above is
   unknown.
+- Stable 30 FPS in the world has not been achieved on the target Helio G99;
+  the current 30 FPS setting is a cap, not a guarantee.
 - Adreno 619 with the tested Samsung driver is currently blocked.
 - The ASTC cache is public and not yet fully validated against corrupted or
   malicious files.

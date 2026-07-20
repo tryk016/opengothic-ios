@@ -5,8 +5,9 @@ Data pierwotnego śledztwa: 2026-07-17
 Status zaktualizowany: 2026-07-20
 
 **Status: potwierdzony deterministyczny crash kompilatora shaderów sterownika
-Qualcomm. Jedenaście wykonanych prób nie znalazło obejścia, ale dochodzenie po
-stronie aplikacji i Tempesta pozostaje otwarte.**
+Qualcomm. Rozszerzona bisekcja nie znalazła obejścia. Pełne shadery zostały
+przywrócone, a dalsze prace nad tym urządzeniem są odłożone za optymalizacją
+docelowego Mali-G57.**
 
 Sterownik nie powinien kończyć procesu przez SIGSEGV, więc jest to rzeczywisty
 błąd sterownika. Dotychczasowe testy nie dowodzą jednak, że zmiana SPIR-V,
@@ -89,62 +90,62 @@ Zweryfikowane na Mali-G57:
 
 Zmiany te nie rozwiązują Adreno, ale nie spowodowały regresji na Mali.
 
-## Najważniejszy niewykonany eksperyment
+## Scalar slot-mode
 
-Ścieżka `!BINDLESS` nie jest jeszcze prawdziwą ścieżką scalar slot. Tekstura
-jest pojedynczym combined samplerem, lecz shadery nadal deklarują tablice
-deskryptorów:
+Pierwotnie ścieżka `!BINDLESS` nie była prawdziwą ścieżką scalar slot.
+Tekstura była pojedynczym combined samplerem, lecz shadery nadal deklarowały
+tablice deskryptorów:
 
 - `ibo[]`;
 - `vbo[]`;
 - `morphId[]`;
 - `morph[]`.
 
-Używanie w nich stałego indeksu `0` nie usuwa capability
-`RuntimeDescriptorArray` z wygenerowanego SPIR-V. Najbardziej obiecującym
-workaroundem jest wariant bez zewnętrznych tablic deskryptorów dla wszystkich
-tych buforów, pozostawiający tablice wyłącznie pod `BINDLESS`.
+Używanie w nich stałego indeksu `0` nie usuwało capability
+`RuntimeDescriptorArray` z wygenerowanego SPIR-V. Commit `24d7a44f` przeniósł
+IBO, VBO i bufory morph poza tablice w wariancie slot. CI od `01099bbf`
+waliduje wszystkie wygenerowane moduły slot dla obu ABI i odrzuca
+`RuntimeDescriptorArray` oraz `ShaderNonUniform`.
 
-W bieżącym reproduktorze landscape najważniejsze są IBO/VBO. Bufory morph
-dotyczą wariantów obiektów morfowanych i nie zostały wskazane jako bezpośredni
-składnik pierwszego crashującego pipeline'u.
+Ta poprawka usunęła rzeczywisty błąd przenośności SPIR-V, ale nie ominęła
+crasha sterownika.
 
-## Lokalny stan diagnostyczny po raporcie
+## Dalsza bisekcja z 2026-07-20
 
-Worktree zawiera niezacommitowany eksperyment `TEMP_BISECT_A` w:
+Eksperymenty zostały zbudowane przez CI i uruchomione na A23 pojedynczo:
 
-- `shader/materials/main.frag`;
-- `shader/materials/materials_common.glsl`.
+- pusty/minimalny slot fragment shader;
+- scalar slot IBO/VBO/morph bez runtime descriptor arrays;
+- wyłączenie VSM na urządzeniu bez wymaganych descriptor features;
+- minimalne moduły fragment shadera;
+- Release SPIR-V bez informacji debugowych;
+- depth-only pipeline bez fragment stage;
+- minimalny depth vertex shader.
 
-Eksperyment kończy slotowy fragment shader przed użyciem tekstury, varyingów
-i SSBO. Nie został zbudowany przez CI ani uruchomiony na Adreno, więc nie jest
-wynikiem i nie należy go traktować jako poprawki.
+Minimalny depth-only vertex shader bez fragment stage przeszedł wcześniejszy
+punkt HiZ. Crash przeniósł się do kolejnego tworzenia pipeline'u w
+`DrawCommands::drawCommon`. To ważna korekta: problem nie jest przypisany do
+jednego konkretnego shadera HiZ. Sterownik wpada w wadliwą ścieżkę ponownie,
+gdy renderer dochodzi do następnego pipeline'u materiałowego.
 
-Sam pusty `return` może pozwolić kompilatorowi usunąć niemal całe ciało
-fragment shadera. Kolejny wariant powinien zapisywać prawidłowe stałe wartości
-do wymaganych attachmentów.
+Żaden wariant nie doprowadził A23 do pierwszej poprawnej klatki świata.
+Commit `4665cd0c` usunął wszystkie moduły `TEMP_BISECT_*` i przywrócił pełne
+shadery. Worktree jest czysty; nie istnieje lokalna „prawie poprawka”, którą
+należałoby przypadkiem zachować.
 
-## Skorygowany plan
+## Stan i ewentualny następny krok
 
-1. Uruchomić istniejący `TEMP_BISECT_A` bez innych zmian.
-2. Wykonać drabinkę fragment shadera:
-   - stałe wyjścia;
-   - varying bez tekstury;
-   - tekstura ze stałym UV;
-   - tekstura z varying UV;
-   - SSBO bez tekstury;
-   - pełny materiał.
-3. Zbudować Release SPIR-V bez `-g` i osobno ze `--strip-debug`.
-4. Utworzyć prawdziwy scalar slot-mode bez tablic IBO/VBO/morph.
-5. Zalogować finalny wynik refleksji Tempesta i wszystkie bindingi
-   `VkDescriptorSetLayout`.
-6. Wyłączyć VSM oraz inne shadery `nonuniformEXT`, gdy urządzenie nie ma
-   wymaganych capabilities.
-7. Usunąć wszystkie istotne błędy Vulkan Validation.
-8. Sprawdzić `VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT`.
-9. Przypiąć i logować wersję glslang/SPIRV-Tools w CI.
-10. Jeżeli uproszczona, validation-clean ścieżka nadal crashuje, przygotować
-    minimalny reproducer dla Qualcomm/upstream.
+Adreno pozostaje problemem zgodności, nie priorytetem bieżącej optymalizacji
+Helio G99. Jeśli śledztwo zostanie wznowione, nie należy powtarzać powyższej
+drabinki. Następny użyteczny etap to:
+
+1. dojść do zera istotnych komunikatów Vulkan Validation na A23;
+2. wyeksportować dokładny SPIR-V, reflected layout i stan tworzenia pierwszego
+   pipeline'u, który nadal crashuje po wariancie depth-only;
+3. sprawdzić `VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT`;
+4. zbudować minimalny reproducer poza OpenGothic;
+5. porównać reproducer z Turnip/libadrenotools jako ręcznym, opt-in
+   eksperymentem — bez automatycznego dołączania obcego sterownika do APK.
 
 ## Kryterium zakończenia śledztwa
 
@@ -163,7 +164,8 @@ nieobsługiwanej.
 
 ## Werdykt architektoniczny
 
-Osobny renderer Android nie jest obecnie uzasadniony. Najpierw należy
-zbudować poprawną, prostą ścieżkę Vulkan non-bindless w istniejącym
-rendererze. Ma to mniejszy koszt i większą szansę powodzenia niż portowanie
-silnika na GLES/ANGLE lub tworzenie drugiego backendu.
+Osobny backend Android nie jest obecnie uzasadniony. Poprawna ścieżka Vulkan
+non-bindless już istnieje i jest walidowana przez CI; błąd pozostał specyficzny
+dla testowanego sterownika Qualcomm. Dalszy rozwój powinien upraszczać profil
+renderowania mobilnego w istniejącym rendererze Tempesta, zamiast portować
+silnik na GLES/ANGLE lub utrzymywać drugi backend.

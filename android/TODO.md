@@ -11,19 +11,14 @@ measured M2 results are in
 ## Repository state at the audit baseline
 
 - Branch: `android`
-- Local and remote HEAD before this documentation refresh: `7fdab747`
-- `master`: `97f7db4e`, already contained in `android`
+- Android code HEAD after the performance pass: `0e1f0a6b`
+- `master`: `97f7db4e`, already contained in `android` with no master-only
+  commits
 - History: `android` contains `master` plus Android-only commits
-- Last code-affecting CI build: `5c0d5bf8`, successful
 - Release: `latest-android`, WIP prerelease
-- Before this documentation audit, the only local uncommitted files were:
-  - `shader/materials/main.frag`
-  - `shader/materials/materials_common.glsl`
-
-Those pre-existing changes are the unfinished `TEMP_BISECT_A` Adreno
-experiment. They are not part of HEAD, have not passed CI and must not be
-committed as a final fix without device results. Documentation files modified
-by the 2026-07-20 audit are intentionally additional worktree changes.
+- Full shaders restored; all `TEMP_BISECT_*` modules removed
+- Tempest remains patch-script-managed and is not committed as a dirty
+  submodule
 
 ## Completed
 
@@ -73,7 +68,7 @@ was caused by generic memory pressure, and that `Gothic.ini` was not loaded
 are obsolete. The crash was caused by invalid null descriptors in padded
 bindless arrays and was fixed; ASTC then reduced memory pressure further.
 
-## P0 — Adreno 619 compatibility
+## Deferred — Adreno 619 compatibility
 
 The Galaxy A23 / Adreno 619 / Samsung driver 512.548.0 deterministically
 crashes inside Qualcomm's `libllvm-glnext.so` while creating the first
@@ -83,32 +78,29 @@ application-side workaround has not been exhausted.
 Reference:
 [`2026-07-17-adreno-compiler-crash-investigation.md`](../docs/superpowers/reports/2026-07-17-adreno-compiler-crash-investigation.md).
 
-- [ ] Build and run the existing `TEMP_BISECT_A` without mixing in other
-      changes.
-- [ ] Replace the empty early return with a valid constant-output fragment
-      shader so the compiler cannot erase the entire stage.
-- [ ] Run the fragment-shader ladder:
-      constant output → varying only → texture with constant UV → texture
-      with varying UV → SSBO only → full material.
-- [ ] Build Android Release shaders without `-g`; separately test
-      `spirv-opt --strip-debug`.
-- [ ] Implement a true scalar `!BINDLESS` path:
-      no descriptor arrays for IBO, VBO, morph IDs or morph buffers.
-- [ ] Log Tempest's final reflected layout and every Vulkan descriptor
-      binding for the crashing pipeline.
-- [ ] Gate VSM and other `nonuniformEXT` shaders on the exact descriptor
-      features they require.
-- [ ] Eliminate Vulkan Validation errors for descriptor capabilities,
-      update-after-bind/partially-bound flags and SPIR-V extension
-      dependencies.
+- [x] Build and run the shader-bisect ladder on the A23.
+- [x] Build Android Release shaders without debug information.
+- [x] Implement a true scalar `!BINDLESS` path without IBO/VBO/morph runtime
+      descriptor arrays.
+- [x] Gate VSM on the exact descriptor capabilities it requires.
+- [x] Validate generated slot/PFX SPIR-V in CI and reject runtime descriptor
+      arrays/non-uniform capabilities.
+- [x] Test depth-only pipelines without a fragment stage and with a minimal
+      vertex module. This passed HiZ and moved the crash to the next material
+      pipeline; it did not reach a 3D frame.
+- [x] Remove every `TEMP_BISECT_*` module and restore production shaders.
+- [ ] Eliminate all remaining relevant Vulkan Validation errors.
+- [ ] Log/export Tempest's final reflected layout and every Vulkan descriptor
+      binding for a standalone crashing pipeline.
 - [ ] Test `VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT`.
-- [ ] Log and pin the `glslangValidator`/SPIRV-Tools versions used by CI.
+- [x] Log `glslangValidator`/SPIRV-Tools versions used by CI.
+- [ ] Pin the shader toolchain versions.
 - [ ] If the simplified, validation-clean path still crashes, produce a
       minimal standalone reproducer before declaring this exact driver
       combination known-broken.
 
-Do not write a separate Android renderer yet. A conventional scalar Vulkan
-slot path in the existing renderer is the preferred solution.
+Do not write a separate Android backend. The scalar Vulkan slot path now
+exists; further Adreno work needs a validation-clean standalone reproducer.
 
 ## P1 — ASTC cache hardening
 
@@ -140,16 +132,17 @@ ASTC mip payloads. Its `.astc` extension does not mean it is the standard
 
 ## P1 — CI and release correctness
 
-- [ ] Create/update `latest-android` with target `android`, so the tag and
+- [x] Create/update `latest-android` with target `android`, so the tag and
       source archive correspond to the APK rather than `master`.
 - [ ] Commit a known Gradle Wrapper instead of generating it on the runner
-      with ignored failures.
+      (generation is now fail-loud).
 - [ ] Pin or containerize the shader toolchain.
-- [ ] Print `glslangValidator --version` and SPIRV-Tools version in every CI
+- [x] Print `glslangValidator --version` and SPIRV-Tools version in every CI
       run.
+- [x] Validate every generated slot/PFX module for both Android ABIs.
 - [ ] Keep the release prerelease/WIP warning, but describe the actual
       compatibility matrix: Mali tested, Adreno 619 blocked.
-- [ ] Repair local `origin/android` tracking configuration; the true remote
+- [x] Repair local `origin/android` tracking configuration; the true remote
       tip must not be inferred from the stale local remote-tracking ref.
 
 ## P1 — Android platform hardening
@@ -182,14 +175,21 @@ ASTC mip payloads. Its `.astc` extension does not mean it is the standard
 
 ## P2 — performance follow-up
 
-The measured Xardas room is CPU/geometry-bound: lowering `vidResIndex` did
-not improve FPS there. Do not generalize that result to outdoor Khorinis.
+The measured Xardas room is not fragment-fill-rate-bound: lowering
+`vidResIndex` did not improve FPS there. Queue telemetry narrows the wait to
+GPU present/acquire, while CPU tick/animation/render encoding remain below
+the 33.3 ms budget. Do not generalize the indoor result to outdoor Khorinis.
 
 - [ ] Measure a fixed outdoor scene at full, 75% and half resolution.
-- [ ] Measure `modelDetail` and `sightValue` independently.
+- [x] Measure `sightValue` 2 (60 km) versus 0 (20 km) in the Xardas room:
+      no material improvement.
+- [ ] Measure `modelDetail` in an outdoor scene where it is proven active.
 - [ ] Record thermals and throttling with every comparison.
 - [ ] Measure peak PSS/RSS during the largest first-time ASTC encodes.
-- [ ] Add a reliable in-game or external native-Vulkan FPS procedure.
+- [x] Add a repeatable SurfaceFlinger BLAST-layer latency procedure and
+      render/submit/present telemetry.
+- [ ] Profile individual passes using GPU timestamps or AGI/Perfetto before
+      changing the render graph again.
 
 ## Optional iOS reuse — not an Android requirement
 
