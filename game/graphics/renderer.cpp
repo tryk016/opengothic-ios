@@ -289,12 +289,20 @@ void Renderer::setupSettings() {
   // On phones default to 512 - a fraction of the 2048 fill cost, softer
   // shadow edges. resetShadowmap() below picks the change up.
   int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
-#if defined(__IOS__) || defined(__ANDROID__)
+#if defined(__ANDROID__)
+  // Zero is an explicit no-dynamic-shadows diagnostic/performance mode.
+  // The mobile profile still defaults to 512; resetShadowmap() creates 1x1
+  // sentinel maps so existing renderer consumers remain valid.
+  settings.shadowResolution = sr<=0 ? 0u : uint32_t(std::clamp(sr, 256, 4096));
+#elif defined(__IOS__)
   if(sr<=0)
     sr = 512;
-#endif
   if(sr>0)
     settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
+#else
+  if(sr>0)
+    settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
+#endif
   }
   settings.zFogRadial         = Gothic::settingsGetI("RENDERER_D3D","zFogRadial")!=0;
 
@@ -622,6 +630,7 @@ void Renderer::resetShadowmap() {
     Resources::recycle(std::move(shadowMap[i]));
 
   const bool forceSm1 = (settings.giMethod==GiMethod::Probes || settings.pathTraceEnabled || sky.quality==PathTrace);
+  const uint32_t shadowSize = std::max(1u,settings.shadowResolution);
   for(int i=0; i<Resources::ShadowLayers; ++i) {
     if(!(i==1 && forceSm1)) {
       if(settings.vsmEnabled && !(settings.rtsmEnabled && i==1))
@@ -629,7 +638,7 @@ void Renderer::resetShadowmap() {
       if(settings.rtsmEnabled && !(sky.quality!=None && i==1))
         continue; //TODO: support vsm in gi code
       }
-    shadowMap[i] = device.zbuffer(shadowFormat, settings.shadowResolution, settings.shadowResolution);
+    shadowMap[i] = device.zbuffer(shadowFormat, shadowSize, shadowSize);
     }
   }
 
