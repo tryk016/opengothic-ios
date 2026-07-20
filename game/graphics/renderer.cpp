@@ -618,9 +618,6 @@ void Renderer::prepareUniforms() {
 void Renderer::resetShadowmap() {
   auto& device = Resources::device();
 
-#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
-  mobileShadowFrame = 0;
-#endif
   for(int i=0; i<Resources::ShadowLayers; ++i)
     Resources::recycle(std::move(shadowMap[i]));
 
@@ -877,10 +874,8 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   wview->visibilityPass(cmd, 0);
   prepareSky(cmd,*wview);
 
-#if !defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
   drawHiZ (cmd, *wview);
   buildHiZ(cmd);
-#endif
 
   wview->visibilityPass(cmd, 1);
   drawGBuffer(cmd,fId,*wview);
@@ -1969,13 +1964,6 @@ void Renderer::drawUnderwater(Encoder<CommandBuffer>& cmd, const WorldView& wvie
 
 void Renderer::drawShadowMap(Encoder<CommandBuffer>& cmd, uint8_t fId, WorldView& view) {
   for(uint8_t i=0; i<Resources::ShadowLayers; ++i) {
-#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
-    // Initialize both maps together, then update one cascade per frame. This
-    // halves repeated landscape draw submission on the CPU-heavy mobile
-    // Vulkan path while keeping each cascade at 15 Hz under the 30 FPS cap.
-    if(mobileShadowFrame>0 && i!=(mobileShadowFrame%Resources::ShadowLayers))
-      continue;
-#endif
     if(shadowMap[i].isEmpty())
       continue;
     cmd.setDebugMarker(string_frm("ShadowMap #",i));
@@ -1983,9 +1971,6 @@ void Renderer::drawShadowMap(Encoder<CommandBuffer>& cmd, uint8_t fId, WorldView
     if(view.mainLight().dir().y > Camera::minShadowY)
       view.drawShadow(cmd,fId,i);
     }
-#if defined(OPENGOTHIC_ANDROID_MOBILE_RENDER_PROFILE)
-  ++mobileShadowFrame;
-#endif
   }
 
 void Renderer::drawShadowResolve(Encoder<CommandBuffer>& cmd, const WorldView& wview) {
