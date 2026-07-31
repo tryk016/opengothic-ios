@@ -59,22 +59,14 @@ Pierwotny Etap 2 (jedna komenda indeksowana na meshlet) jest **martwy**:
 patchy było gotowych i zweryfikowanych; bramka 2.2 je zatrzymała. Kolejność
 poniżej idzie za zmierzonym zyskiem, nie za elegancją.
 
-### 2A. Nakładanie CPU/GPU (~14 ms, zero kosztu jakości) — **najwyższy priorytet**
+### 2A. Nakładanie CPU/GPU ❌ SPRAWDZONE I ODRZUCONE
 
-Klatka to dokładnie `CPU 14 + present 51 = 65`. `VSwapchain::present()` kończy
-się zachłannym `acquireNextImage()`, który blokuje na dwóch fence'ach i akwizycji,
-więc pętla gry stoi zamiast liczyć następną klatkę.
+Hipoteza o braku nakładania CPU/GPU i ~14 ms do wzięcia **nie potwierdziła się**:
+odroczenie akwizycji swapchaina dało `frame_p50 = 65.2` przy baseline 65.1,
+a `fence_miss` pozostał zerowy. Patch wycofany. Szczegóły i błąd metodologiczny
+(sumowanie p95 i porównywanie do p50) opisane w raporcie, §5a.
 
-- [ ] **2A.1** Przenieść `acquireNextImage()` z końca `present()` na początek
-  następnej klatki (tuż przed enkodowaniem), patchem w `apply-patches.sh`.
-- [ ] **2A.2** Zweryfikować poprawność: `fence_miss` przestanie być zerem —
-  to oczekiwane i pożądane. Sprawdzić brak artefaktów i brak warstw walidacyjnych
-  skarżących się na czas życia semaforów.
-- [ ] **2A.3** Pomiar. Oczekiwanie: 65 → ~51 ms. **Bramka:** jeśli zysk < 5 ms,
-  model jest zły — wycofać patch, nie kombinować dalej.
-
-Ryzyko: to dotyka synchronizacji swapchaina, czyli najłatwiejszego miejsca na
-zawieszenie lub artefakty. Robimy to jako osobny commit, łatwy do wycofania.
+Nie wracamy tu bez nowego, twardszego dowodu.
 
 ### 2B. Tańszy wierzchołek (część z 22 ms, bez zmian w Tempeście)
 

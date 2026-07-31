@@ -177,37 +177,37 @@ odpada; zostają tańsze warianty opisane w planie.
 - **Przebudowa na forward nadal nie ma sensu** — celuje w koszt fragmentowy
   i przepustowość, które zmierzone są bliskie zeru.
 
-## 5a. Największe znalezisko: CPU i GPU w ogóle się nie nakładają
+## 5a. Hipoteza „CPU i GPU się nie nakładają" — **zmierzona i obalona**
 
-Klatka rozkłada się dokładnie addytywnie:
+Wyglądało to na największe znalezisko sesji, więc zapisuję i wynik, i błąd,
+który do niego doprowadził.
 
-```
-tick 7.7 + anim 4.7 + pose 2.2 + encode 5.5 + submit 0.4 + present 51.2 ≈ 65.1
-```
+**Rozumowanie:** klatka rozkłada się pozornie dokładnie addytywnie —
+`tick 7.7 + anim 4.7 + pose 2.2 + encode 5.5 + submit 0.4 + present 51.2 ≈ 65.1`.
+Przy `MaxFramesInFlight=2` powinno być `max(CPU, GPU)`, nie suma. Winowajcą
+miało być `VSwapchain::present()`, które kończyło się zachłannym
+`acquireNextImage()` blokującym na dwóch fence'ach i akwizycji.
 
-Przy `MaxFramesInFlight=2` praca CPU następnej klatki powinna iść równolegle
-z pracą GPU bieżącej, a klatka wynosiłaby `max(CPU, GPU) ≈ 51 ms`, nie ich
-sumę. Nakładania nie ma **żadnego**.
+**Eksperyment:** patch `(j)` przeniósł akwizycję z końca `present()` do
+pierwszego użycia indeksu obrazu, czyli za `tick`/`anim`/`pose`.
 
-Przyczyna jest w `VSwapchain::present()` — kończy się wywołaniem
-`acquireNextImage()`, które blokuje synchronicznie:
+**Wynik:** `frame_p50 = 65.2 ms` przy baseline 65.1 — **zero zmiany**.
+`present_p95` bez zmian (~50 ms), a `fence_miss` **dalej zerowy**, czyli
+nakładanie w ogóle nie powstało. Blokada po prostu przeniosła się w obrębie
+`present()` z `acquireNextImage()` do `vkQueuePresentKHR`, który w trybie FIFO
+i tak czeka na zwolnienie obrazu. Patch wycofany zgodnie z zapowiedzianą bramką
+(zysk < 5 ms ⇒ revert, nie strojenie).
 
-```cpp
-vkWaitForFences(dev, 1, &aquireFence[frameId],  VK_TRUE, UINT64_MAX);
-vkWaitForFences(dev, 1, &presentFence[frameId], VK_TRUE, UINT64_MAX);
-vkAcquireNextImageKHR(..., UINT64_MAX, ...);
-```
+**Błąd metodologiczny, który to napędził:** sumowałem wartości **p95**
+poszczególnych faz i porównywałem je do **p50** klatki. To nie jest poprawne —
+p95 sumy nie jest sumą p95. Zgodność 65.1 ≈ 65.1 była zbiegiem okoliczności,
+a ja awansowałem ją na fakt („zero nakładania") zamiast na hipotezę do sprawdzenia.
+Do dowodzenia braku nakładania trzeba mierzyć te same percentyle albo, lepiej,
+korelację w obrębie pojedynczych klatek.
 
-Akwizycja obrazu dla **następnej** klatki dzieje się zachłannie na końcu
-prezentacji bieżącej, więc pętla gry stoi w `present()` zamiast liczyć logikę.
-Potwierdza to `fence_miss=0` w `PERF-SYS`: zanim pętla dojdzie do nieblokującej
-bramki `sync.wait(0)`, GPU jest już zawsze gotowe — bo czekaliśmy na nie
-wcześniej, w `present()`.
-
-**Potencjał: ~14 ms (22% klatki), niezależnie od czegokolwiek innego.**
-To zmiana w Tempeście (`vswapchain.cpp`), z ryzykiem po stronie czasu życia
-semaforów i fence'ów, więc wymaga ostrożności — ale jest to największa
-pojedyncza pozycja poza geometrią i nie kosztuje ani jednego piksela jakości.
+Co z tego zostaje: **nie ma dowodu na 14 ms do wzięcia z pipeliningu**, a fakt
+że `present` pochłania ~50 ms z 65 ms klatki jest po prostu kolejnym sposobem
+powiedzenia, że jesteśmy GPU-bound — co już wiedzieliśmy z `top -H`.
 
 ## 6. NPC: AI i ruch liczone dla całej wyspy
 
