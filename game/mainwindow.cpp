@@ -396,7 +396,7 @@ void MainWindow::resizeEvent(SizeEvent&) {
   swapchain.reset();
   renderer.resetSwapchain();
   if(auto camera = Gothic::inst().camera())
-    camera->setViewport(swapchain.w(),swapchain.h());
+    camera->setViewport(uint32_t(renderer.presentLogicalSize().w),uint32_t(renderer.presentLogicalSize().h));
 
   const bool fs = SystemApi::isFullscreen(hwnd());
   auto rect = SystemApi::windowClientRect(hwnd());
@@ -428,7 +428,7 @@ void MainWindow::onSurfaceCreated(Tempest::SystemApi::Window* w) {
   swapchain = device.swapchain(w);
   renderer.resetSwapchain();
   if(auto camera = Gothic::inst().camera())
-    camera->setViewport(swapchain.w(),swapchain.h());
+    camera->setViewport(uint32_t(renderer.presentLogicalSize().w),uint32_t(renderer.presentLogicalSize().h));
   }
 #endif
 
@@ -531,7 +531,7 @@ void MainWindow::onSettings() {
   // settingsSetI() emits onSettingsChanged immediately, so rebuilding the
   // projection here makes the stock Draw distance choice live in-game.
   if(auto* camera = Gothic::inst().camera())
-    camera->setViewport(swapchain.w(),swapchain.h());
+    camera->setViewport(uint32_t(renderer.presentLogicalSize().w),uint32_t(renderer.presentLogicalSize().h));
 #endif
   }
 

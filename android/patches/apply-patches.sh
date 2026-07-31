@@ -814,4 +814,46 @@ else
   fi
 fi
 
+# --------------------------------------------------------------------------
+# (k) Android pre-rotation: portrait swapchain so the compositor can scan out.
+#
+# Measured before this patch (dumpsys SurfaceFlinger, in-world):
+#   clientCompositionFrames = 188781 / 190828   (98.9%)
+#   Layer: CLIENT | ROT_90 | displayFrame 800x1340 | sourceCrop 1340x800
+# The buffer was landscape while the display frame is portrait, so HWC could not
+# scan it out and SurfaceFlinger ran a full-screen GPU composition pass on the
+# same Mali for essentially every frame -- invisible to every in-app counter and
+# always at full panel resolution, which is also why lowering the internal
+# render resolution had measured as zero.
+#
+# A probe of exactly this patch moved the layer to DEVICE | transform 0 with
+# clientCompositionFrames at 31/3494 (0.9%), so the direction is verified.
+#
+# This supersedes (c3)'s deliberate IDENTITY: that choice handed the rotation to
+# the compositor because the engine did not pre-rotate. The engine now does --
+# Renderer keeps every internal target, the camera aspect, the UI mesh and touch
+# in landscape and rotates once in drawPresentRotate. findSwapExtent returns
+# capabilities.currentExtent verbatim on Android, so the swap has to happen here
+# rather than via the window rect.
+#
+# The SUBOPTIMAL swallows from (c3) are deliberately left in place: with
+# preTransform==currentTransform they should never fire, and keeping them costs
+# nothing while removing the risk of a recreate loop in a build that has to stay
+# playable.
+# --------------------------------------------------------------------------
+
+if grep -q 'android-prerotate' "$SW"; then
+  echo "skip: vswapchain.cpp pre-rotation (already patched)"
+else
+  perl -0777 -pi -e 's/(  VkExtent2D         extent        = findSwapExtent       \(swapChainSupport\.capabilities,uint32_t\(rect\.w\),uint32_t\(rect\.h\)\);\r?\n)/${1}#if defined(__ANDROID__)\n  \/\/ android-prerotate: the buffer must match the panel for HWC to scan it out.\n  {\n    const auto curTr = swapChainSupport.capabilities.currentTransform;\n    if((curTr \& (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR|VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR))!=0) {\n      const uint32_t t = extent.width;\n      extent.width  = extent.height;\n      extent.height = t;\n      }\n    Tempest::Log::i("[prerotate] currentTransform=",uint32_t(curTr)," extent=",extent.width,"x",extent.height);\n  }\n#endif\n/' "$SW"
+  perl -0777 -pi -e 's/  createInfo\.preTransform   = \(swapChainSupport\.capabilities\.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR\)!=0\r?\n                                \? VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR\r?\n                                : swapChainSupport\.capabilities\.currentTransform;/  createInfo.preTransform   = swapChainSupport.capabilities.currentTransform;/' "$SW"
+  perl -0777 -pi -e 's/(#include "vswapchain\.h"\r?\n)/${1}\n#include <Tempest\/Log>\n/' "$SW"
+  if [ "$(grep -c 'android-prerotate' "$SW")" = "1" ] && [ "$(grep -c 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW")" = "0" ]; then
+    echo "patched: vswapchain.cpp pre-rotation (extent swap + preTransform=currentTransform)"
+  else
+    echo "ERROR: failed to patch vswapchain.cpp pre-rotation (marker=$(grep -c 'android-prerotate' "$SW") identity=$(grep -c 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW"))" >&2
+    exit 1
+  fi
+fi
+
 echo "apply-patches.sh: done"

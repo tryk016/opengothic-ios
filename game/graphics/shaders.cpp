@@ -58,6 +58,7 @@ void Shaders::compileShaders() {
   patch     = computeShader("patch.comp.sprv");
 
   stash     = postEffect("stash");
+  presentRotate = postEffect("present_rotate");
 
   clusterInit         = computeShader("cluster_init.comp.sprv");
   clusterPatch        = computeShader("cluster_patch.comp.sprv");

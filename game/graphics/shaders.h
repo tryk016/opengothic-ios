@@ -39,6 +39,9 @@ class Shaders {
     Tempest::ComputePipeline patch;
     Tempest::RenderPipeline  copy, downscale;
     Tempest::RenderPipeline  stash;
+    // Android pre-rotation: rotates the finished landscape frame into the
+    // portrait swapchain image so the compositor can scan it out directly.
+    Tempest::RenderPipeline  presentRotate;
     Tempest::RenderPipeline  bink;
 
     Tempest::ComputePipeline ssao, ssaoBlur;

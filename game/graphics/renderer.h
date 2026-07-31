@@ -27,6 +27,12 @@ class Renderer final {
     void onWorldChanged();
     bool ssaoBuffersAllocated() const;
 
+    // Android pre-rotation: the swapchain image is portrait so the compositor
+    // can scan it out directly, while the whole engine - camera aspect, render
+    // targets, UI layout, touch - keeps working in landscape. Everything that
+    // used to size itself off the swapchain must use this instead.
+    Tempest::Size presentLogicalSize() const;
+
     void draw(Tempest::Encoder<Tempest::CommandBuffer>& cmd, uint8_t cmdId, size_t imgId,
               Tempest::VectorImage::Mesh& uiLayer, Tempest::VectorImage::Mesh& numOverlay,
               InventoryMenu &inventory, VideoWidget& video);
@@ -65,6 +71,8 @@ class Renderer final {
     static uint32_t passSkipMask();
     int             hasWaterLogged = -1;
 
+    void          drawPresentRotate(Tempest::Encoder<Tempest::CommandBuffer>& cmd, Tempest::Attachment& dst);
+    static int32_t presentRotateCcw();
     Tempest::Size internalResolution() const;
     float         internalResolutionScale() const;
 
@@ -183,6 +191,10 @@ class Renderer final {
     Tempest::Vec3             clipInfo;
 
     Tempest::Attachment       sceneLinear;
+    // Landscape target that scene, UI and inventory all render into under
+    // Android pre-rotation; drawPresentRotate turns it into the portrait
+    // swapchain image. Empty when no rotation is needed.
+    Tempest::Attachment       presentBuf;
 #if defined(OPENGOTHIC_METALFX_SPATIAL)
     Tempest::StorageImage     metalFxOutput;
     Tempest::SpatialScaler    metalFxScaler;

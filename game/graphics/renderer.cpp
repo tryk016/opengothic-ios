@@ -189,9 +189,20 @@ void Renderer::resetSwapchain() {
     }
 
   zbuffer = device.zbuffer(zBufferFormat,w,h);
-  if(w!=swapchain.w() || h!=swapchain.h())
-    zbufferUi = device.zbuffer(zBufferFormat, swapchain.w(), swapchain.h()); else
+  // The UI and inventory draw into the present target, so their depth buffer
+  // has to match it -- Tempest throws IncompleteFboException when attachments
+  // in one setFramebuffer disagree on size.
+  const auto pres = presentLogicalSize();
+  if(int(w)!=pres.w || int(h)!=pres.h)
+    zbufferUi = device.zbuffer(zBufferFormat, uint32_t(pres.w), uint32_t(pres.h)); else
     zbufferUi = ZBuffer();
+
+  // Landscape staging image for the rotated present. Allocated only when the
+  // swapchain is actually rotated; format matches the swapchain's
+  // B8G8R8A8_UNORM so nothing gamma-converts twice on the way through.
+  if(int(swapchain.w())!=pres.w || int(swapchain.h())!=pres.h)
+    presentBuf = device.attachment(TextureFormat::RGBA8, uint32_t(pres.w), uint32_t(pres.h)); else
+    presentBuf = Attachment();
 
 #if defined(OPENGOTHIC_METALFX_TEMPORAL)
   metalFxTemporalScaler = TemporalScaler();
@@ -779,7 +790,13 @@ void Renderer::prepareSky(Tempest::Encoder<Tempest::CommandBuffer>& cmd, WorldVi
 void Renderer::draw(Encoder<CommandBuffer>& cmd, uint8_t cmdId, size_t imgId,
                     VectorImage::Mesh& uiLayer, VectorImage::Mesh& numOverlay,
                     InventoryMenu& inventory, VideoWidget& video) {
-  auto& result = swapchain[imgId];
+  // Under pre-rotation everything below - scene, UI, inventory - renders into
+  // a landscape staging image, and drawPresentRotate at the end turns it into
+  // the portrait swapchain image. The UI mesh is pure NDC built from the
+  // (landscape) window size, so drawing it straight into a portrait target
+  // would squash it rather than rotate it.
+  const bool rotate = !presentBuf.isEmpty();
+  auto& result = rotate ? presentBuf : swapchain[imgId];
 
   if(!video.isActive()) {
     draw(result, cmd, cmdId);
@@ -803,6 +820,9 @@ void Renderer::draw(Encoder<CommandBuffer>& cmd, uint8_t cmdId, size_t imgId,
     cmd.setDebugMarker("Inventory-counters");
     numOverlay.draw(cmd);
     }
+
+  if(rotate)
+    drawPresentRotate(cmd, swapchain[imgId]);
   }
 
 void Renderer::drawSavePreview(Encoder<CommandBuffer>& cmd, Attachment& result) {
@@ -1006,6 +1026,30 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   //drawHashDbg(result, cmd, *wview);
 
   wview->postFrameupdate();
+  }
+
+void Renderer::drawPresentRotate(Encoder<CommandBuffer>& cmd, Attachment& dst) {
+  // Sole consumer of the fact that the swapchain image is portrait. Everything
+  // upstream stayed landscape, so this is a plain full-screen triangle with a
+  // rotated texel fetch -- see shader/present_rotate.frag.
+  struct Push { int32_t ccw; } push = {};
+  push.ccw = presentRotateCcw();
+
+  cmd.setFramebuffer({{dst, Tempest::Discard, Tempest::Preserve}});
+  cmd.setDebugMarker("PresentRotate");
+  cmd.setBinding(0, presentBuf, Sampler::nearest(ClampMode::ClampToEdge));
+  cmd.setPushData(push);
+  cmd.setPipeline(shaders.presentRotate);
+  cmd.draw(nullptr, 0, 3);
+  }
+
+int32_t Renderer::presentRotateCcw() {
+  // Which of the two 90-degree rotations is correct depends on how the panel's
+  // native orientation maps onto the window; one on-device build settles it far
+  // more cheaply than reasoning about it. Default 0, override with
+  // [INTERNAL] androidPreRotateCcw.
+  static const int32_t v = int32_t(Gothic::settingsGetI("INTERNAL","androidPreRotateCcw")!=0 ? 1 : 0);
+  return v;
   }
 
 void Renderer::drawTonemapping(Attachment& result, Encoder<CommandBuffer>& cmd, const WorldView& wview) {
@@ -2924,11 +2968,26 @@ float Renderer::internalResolutionScale() const {
   return 0.5;
   }
 
+Size Renderer::presentLogicalSize() const {
+  const int w = int(swapchain.w());
+  const int h = int(swapchain.h());
+#if defined(__ANDROID__)
+  // Pre-rotation makes the swapchain image portrait so SurfaceFlinger can scan
+  // it out instead of running a full-screen GPU composition pass for us. The
+  // app is locked to landscape, so a taller-than-wide swapchain can only mean
+  // the rotation is in effect; everything else in the engine stays landscape.
+  if(h>w)
+    return Size(h,w);
+#endif
+  return Size(w,h);
+  }
+
 Size Renderer::internalResolution() const {
+  const auto sz = presentLogicalSize();
   if(settings.vidResIndex==0)
-     return Size(int(swapchain.w()), int(swapchain.h()));
+     return sz;
   if(settings.vidResIndex==1)
-    return Size(int(3*swapchain.w()/4), int(3*swapchain.h()/4));
-  return Size(int(swapchain.w()/2), int(swapchain.h()/2));
+    return Size(3*sz.w/4, 3*sz.h/4);
+  return Size(sz.w/2, sz.h/2);
   }
 
