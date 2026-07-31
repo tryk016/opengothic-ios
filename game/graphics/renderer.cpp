@@ -615,6 +615,19 @@ void Renderer::prepareUniforms() {
   wview->setSceneImages(textureCast<const Texture2d&>(sceneOpaque), textureCast<const Texture2d&>(sceneDepth), zbuffer);
   }
 
+uint32_t Renderer::passSkipMask() {
+  // Read once per process so a sweep is "edit Gothic.ini, restart" rather than
+  // a rebuild per data point. See PassSkip in the header for the bit meanings.
+  static const uint32_t mask = [](){
+    const int v = Gothic::settingsGetI("INTERNAL","androidPassSkip");
+    if(v<=0)
+      return uint32_t(0);
+    Tempest::Log::i("androidPassSkip=",v," - passes are deliberately dropped, measurement build only");
+    return uint32_t(v);
+    }();
+  return mask;
+  }
+
 void Renderer::resetShadowmap() {
   auto& device = Resources::device();
 
@@ -887,17 +900,22 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
     return;
     }
 
+  const uint32_t skip = passSkipMask();
+
   wview->visibilityPass(cmd, 0);
   prepareSky(cmd,*wview);
 
-  drawHiZ (cmd, *wview);
-  buildHiZ(cmd);
+  if(!(skip & PS_HiZ)) {
+    drawHiZ (cmd, *wview);
+    buildHiZ(cmd);
+    }
 
   wview->visibilityPass(cmd, 1);
   drawGBuffer(cmd,fId,*wview);
 
   drawShadowMap(cmd,fId,*wview);
-  prepareEpipolar(cmd, *wview);
+  if(!(skip & PS_Fog))
+    prepareEpipolar(cmd, *wview);
 
   drawVsm(cmd, *wview);
   drawSwr(cmd, *wview);
@@ -908,26 +926,33 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
 
   prepareIrradiance(cmd,*wview);
   prepareExposure(cmd,*wview);
-  prepareSSAO(cmd,*wview);
-  prepareFog (cmd,*wview);
+  if(!(skip & PS_Ssao))
+    prepareSSAO(cmd,*wview);
+  if(!(skip & PS_Fog))
+    prepareFog (cmd,*wview);
   prepareGi  (cmd,*wview);
   prepareSurfels(cmd,*wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Discard, Tempest::Preserve}}, {zbuffer, Tempest::Readonly});
-  drawShadowResolve(cmd,*wview);
+  if(!(skip & PS_ShadowResolve))
+    drawShadowResolve(cmd,*wview);
   drawAmbient(cmd,*wview);
-  drawLights(cmd,*wview);
+  if(!(skip & PS_Lights))
+    drawLights(cmd,*wview);
   drawSky(cmd,*wview);
 
   stashSceneAux(cmd);
 
-  drawGWater(cmd, *wview);
+  if(!(skip & PS_Translucent))
+    drawGWater(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}}, {zbuffer, Tempest::Preserve, Tempest::Preserve});
   cmd.setDebugMarker("Sun&Moon");
   drawSunMoon(cmd, *wview);
-  cmd.setDebugMarker("Translucent");
-  wview->drawTranslucent(cmd, fId);
+  if(!(skip & PS_Translucent)) {
+    cmd.setDebugMarker("Translucent");
+    wview->drawTranslucent(cmd, fId);
+    }
 
   //drawHashDbg(sceneLinear, cmd, *wview);
   drawProbesDbg(cmd, *wview);
@@ -939,16 +964,17 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   drawRayQueryDbg(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}});
-  drawReflections(cmd, *wview);
+  if(!(skip & PS_Translucent))
+    drawReflections(cmd, *wview);
   if(camera->isInWater()) {
     cmd.setDebugMarker("Underwater");
     drawUnderwater(cmd, *wview);
-    } else {
+    } else if(!(skip & PS_Fog)) {
     cmd.setDebugMarker("Fog");
     drawFog(cmd, *wview);
     }
 
-  if(settings.aaEnabled) {
+  if(settings.aaEnabled && !(skip & PS_Aa)) {
     cmd.setDebugMarker("CMAA2 & Tonemapping");
     drawCMAA2(result, cmd, *wview);
     } else {

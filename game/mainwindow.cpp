@@ -1220,40 +1220,58 @@ void MainWindow::flushPerfWindow(uint64_t nowUs, bool force) {
   constexpr const char* framePacer = "software_sleep";
 #endif
 
-  string_frm<1024> line("PERF v=1 scene=",perfWindow.scene,
-                        " perf_exp=",perfExperiment,
+  // Tempest::Log formats into a fixed-size Context::buffer and drops the rest
+  // without any marker. This used to be one ~600-char line against a 256-byte
+  // buffer, so everything from cpu_tick_p95_ms onwards was silently discarded
+  // and never once reached logcat or log.txt. apply-patches.sh (h) raises the
+  // buffer; these lines stay short so the telemetry survives regardless. Grep
+  // one prefix at a time.
+  static bool cfgLogged = false;
+  if(!cfgLogged) {
+    cfgLogged = true;
+    string_frm<512> cfg("PERF-CFG v=1 perf_exp=",perfExperiment,
                         " gpu_exp=",gpuExperiment,
                         " direct_drawable=",directDrawable,
                         " world_far_plane=",worldFarPlane,
                         " draw_distance_percent=",drawDistancePercent,
                         " fps_limit=",maxFpsTarget,
                         " frame_pacer=",framePacer,
-                        " window_ms=",size_t(elapsedUs/1000u),
-                        " fps=",measuredFps,
-                        " frame_p50_ms=",percentileMs(perfWindow.frameUs,50u),
-                        " frame_p95_ms=",percentileMs(perfWindow.frameUs,95u),
-                        " frame_p99_ms=",percentileMs(perfWindow.frameUs,99u),
-                        " cpu_tick_p95_ms=",percentileMs(perfWindow.tickUs,95u),
-                        " cpu_anim_p95_ms=",percentileMs(perfWindow.animationUs,95u),
-                        " cpu_pose_refresh_p95_ms=",percentileMs(perfWindow.poseRefreshUs,95u),
-                        " cpu_render_encode_p95_ms=",percentileMs(perfWindow.renderEncodeUs,95u),
-                        " cpu_submit_p95_ms=",percentileMs(perfWindow.submitUs,95u),
-                        " cpu_present_p95_ms=",percentileMs(perfWindow.presentUs,95u),
-                        " frame_started=",perfWindow.framesStarted,
-                        " frame_submitted=",perfWindow.framesSubmitted,
-                        " fence_miss=",perfWindow.fenceMisses,
                         " frames_in_flight=",Resources::MaxFramesInFlight,
-                        " ssao_buffers=",renderer.ssaoBuffersAllocated() ? 1 : 0,
-                        " npc=",npcCount,
-                        " npc_full_pose=",npcAnimation.fullPose,
-                        " npc_events_only=",npcAnimation.eventsOnly,
-                        " mem_footprint_mb=",memoryMiB(mem.footprintBytes,mem.footprintValid),
-                        " mem_available_mb=",memoryMiB(mem.availableBytes,mem.availableValid),
-                        " mem_ceiling_mb=",memoryMiB(ceiling,ceilingValid),
-                        " thermal=",MemoryInfo::thermalStateName(mem.thermal),
                         " entitlement_requested=",mem.increasedMemoryLimitRequested ? 1 : 0,
                         " entitlement_present=",entitlementPresent);
+    Log::i(cfg.c_str());
+    }
+
+  string_frm<256> line("PERF v=1 scene=",perfWindow.scene,
+                       " window_ms=",size_t(elapsedUs/1000u),
+                       " fps=",measuredFps,
+                       " frame_p50_ms=",percentileMs(perfWindow.frameUs,50u),
+                       " frame_p95_ms=",percentileMs(perfWindow.frameUs,95u),
+                       " frame_p99_ms=",percentileMs(perfWindow.frameUs,99u));
   Log::i(line.c_str());
+
+  string_frm<256> cpu("PERF-CPU v=1 scene=",perfWindow.scene,
+                      " tick_p95_ms=",percentileMs(perfWindow.tickUs,95u),
+                      " anim_p95_ms=",percentileMs(perfWindow.animationUs,95u),
+                      " pose_p95_ms=",percentileMs(perfWindow.poseRefreshUs,95u),
+                      " encode_p95_ms=",percentileMs(perfWindow.renderEncodeUs,95u),
+                      " submit_p95_ms=",percentileMs(perfWindow.submitUs,95u),
+                      " present_p95_ms=",percentileMs(perfWindow.presentUs,95u));
+  Log::i(cpu.c_str());
+
+  string_frm<256> sys("PERF-SYS v=1 scene=",perfWindow.scene,
+                      " frame_started=",perfWindow.framesStarted,
+                      " frame_submitted=",perfWindow.framesSubmitted,
+                      " fence_miss=",perfWindow.fenceMisses,
+                      " ssao_buffers=",renderer.ssaoBuffersAllocated() ? 1 : 0,
+                      " npc=",npcCount,
+                      " npc_full_pose=",npcAnimation.fullPose,
+                      " npc_events_only=",npcAnimation.eventsOnly,
+                      " mem_footprint_mb=",memoryMiB(mem.footprintBytes,mem.footprintValid),
+                      " mem_available_mb=",memoryMiB(mem.availableBytes,mem.availableValid),
+                      " mem_ceiling_mb=",memoryMiB(ceiling,ceilingValid),
+                      " thermal=",MemoryInfo::thermalStateName(mem.thermal));
+  Log::i(sys.c_str());
   resetPerfWindow(nowUs);
   }
 #endif

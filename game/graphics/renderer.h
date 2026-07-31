@@ -45,6 +45,21 @@ class Renderer final {
       Epipolar,
       PathTrace,
       };
+    // [INTERNAL] androidPassSkip: measurement-only bitmask (0 = nothing
+    // skipped). Each bit removes one stage from the frame so its cost can be
+    // read in milliseconds; skipped stages leave stale or uninitialised images
+    // on screen, which is expected. Never ship a non-zero value.
+    enum PassSkip : uint32_t {
+      PS_HiZ           = 1u<<0,  // drawHiZ + buildHiZ (also disables occlusion culling)
+      PS_Ssao          = 1u<<1,
+      PS_Fog           = 1u<<2,  // prepareEpipolar + prepareFog + drawFog
+      PS_Lights        = 1u<<3,
+      PS_Aa            = 1u<<4,  // CMAA2 -> plain tonemapping
+      PS_ShadowResolve = 1u<<5,
+      PS_Translucent   = 1u<<6,  // water, translucent, reflections
+      };
+    static uint32_t passSkipMask();
+
     Tempest::Size internalResolution() const;
     float         internalResolutionScale() const;
 

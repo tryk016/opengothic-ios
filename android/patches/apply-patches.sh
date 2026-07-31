@@ -744,4 +744,40 @@ else
   fi
 fi
 
+
+# --------------------------------------------------------------------------
+# (h) Log line buffer 256 -> 2048 bytes.
+#
+# Tempest::Log formats into a fixed 256-byte Context::buffer and silently
+# drops everything past it -- there is no truncation marker, the line simply
+# ends. The PERF telemetry line is ~600 chars, so every field after
+# frame_p95_ms (the whole cpu_* breakdown, memory, npc counts) had never once
+# reached logcat or log.txt; measurements were being read off a line that
+# looked complete and was not. mainwindow.cpp now also splits PERF into
+# several short lines, but the buffer is the actual defect and any future
+# long line would hit it again.
+#
+# flush() and the callback path size everything off sizeof(ctx.buffer), so
+# growing the array is self-consistent. Cost is 2KB of stack on a call that
+# already takes a recursive_mutex.
+# --------------------------------------------------------------------------
+
+LOGH="$ROOT/lib/Tempest/Engine/utility/log.h"
+if [ ! -f "$LOGH" ]; then
+  echo "ERROR: not found: $LOGH" >&2
+  exit 1
+fi
+
+if grep -q 'char buffer\[2048\]' "$LOGH"; then
+  echo "skip: log.h buffer 2048 (already patched)"
+else
+  perl -0777 -pi -e 's/(    struct Context \{\r?\n      Mode mode;\r?\n      char buffer\[)256(\];)/${1}2048${2}/' "$LOGH"
+  if [ "$(grep -c 'char buffer\[2048\]' "$LOGH")" = "1" ]; then
+    echo "patched: log.h Context::buffer 256 -> 2048"
+  else
+    echo "ERROR: failed to patch log.h buffer size" >&2
+    exit 1
+  fi
+fi
+
 echo "apply-patches.sh: done"
