@@ -814,46 +814,4 @@ else
   fi
 fi
 
-# --------------------------------------------------------------------------
-# (j) Defer the swapchain acquire out of present().
-#
-# Measured: the frame is exactly additive - tick 7.7 + anim 4.7 + pose 2.2 +
-# encode 5.5 + submit 0.4 + present 51.2 = 65.1 ms - so with
-# MaxFramesInFlight=2 there is no CPU/GPU overlap at all. VSwapchain::present()
-# ends by calling acquireNextImage() for the *next* frame, which blocks on
-# aquireFence, on presentFence and then on vkAcquireNextImageKHR. The game loop
-# therefore sits inside present() instead of running the next frame's logic.
-# fence_miss=0 in PERF-SYS confirms it: by the time the loop reaches its own
-# non-blocking sync.wait(0) gate the GPU is always already done.
-#
-# The acquire moves to the first use of the image index
-# (currentBackBufferIndex(), called at encode time), so tick/animation/pose run
-# before we block. The initial acquire still happens at swapchain creation, so
-# imgIndex is valid from the first frame, and needAcquire starts false.
-#
-# SwapchainSuboptimal can now be thrown from currentBackBufferIndex() rather
-# than present(); both sit inside the same try in MainWindow::render(), which
-# already resets the swapchain on that exception.
-# --------------------------------------------------------------------------
-
-VSWH="$ROOT/lib/Tempest/Engine/gapi/vulkan/vswapchain.h"
-VSWC="$ROOT/lib/Tempest/Engine/gapi/vulkan/vswapchain.cpp"
-for f in "$VSWH" "$VSWC"; do
-  if [ ! -f "$f" ]; then echo "ERROR: not found: $f" >&2; exit 1; fi
-done
-
-if grep -q 'needAcquire' "$VSWH"; then
-  echo "skip: vswapchain deferred acquire (already patched)"
-else
-  perl -0777 -pi -e 's/(    uint32_t                 imgIndex = 0;\r?\n)/${1}    \/\/ present\(\) used to acquire the next image itself, which blocks on two\n    \/\/ fences plus acquisition and left the game loop with no CPU\/GPU overlap.\n    \/\/ The acquire is now deferred to the first use of the image index.\n    bool                     needAcquire = false;\n/' "$VSWH"
-  perl -0777 -pi -e 's/(uint32_t VSwapchain::currentBackBufferIndex\(\) \{\r?\n)(  return imgIndex;)/${1}  if\(needAcquire\) \{\n    needAcquire = false;\n    acquireNextImage\(\);\n    \}\n${2}/' "$VSWC"
-  perl -0777 -pi -e 's/(  Detail::vkAssert\(code\);\r?\n\r?\n)  acquireNextImage\(\);(\r?\n  \})/${1}  \/\/ Deferred: the caller blocks in currentBackBufferIndex\(\) instead, after it\n  \/\/ has run a frame of game logic. See needAcquire.\n  needAcquire = true;${2}/' "$VSWC"
-  if [ "$(grep -c 'needAcquire' "$VSWH")" = "1" ] && [ "$(grep -c 'needAcquire = false;' "$VSWC")" = "1" ] && [ "$(grep -c 'needAcquire = true;' "$VSWC")" = "1" ] && [ "$(grep -c 'acquireNextImage();' "$VSWC")" = "1" ]; then
-    echo "patched: vswapchain.cpp deferred acquire (present -> currentBackBufferIndex)"
-  else
-    echo "ERROR: failed to patch vswapchain deferred acquire" >&2
-    exit 1
-  fi
-fi
-
 echo "apply-patches.sh: done"
