@@ -38,6 +38,7 @@ Narzędzia dodane w tej sesji (wszystkie domyślnie no-op, tylko do pomiarów):
 | `passSkip=2` (tylko SSAO) | 65.5 ms | 50.1 ms | ~0 |
 | `passSkip=16` (tylko CMAA2) | 65.0 ms | — | ~0 |
 | `passSkip=64` (tylko translucent/woda/odbicia) | 61.9 ms | — | −3.2 |
+| `passSkip=8` (tylko lights) | 60.9 ms | — | −4.2 |
 | `primCap=1` + `passSkip=127` | **33.4 ms** | 3.6–7.9 ms | −31.7 |
 
 \* zmierzone na poprzednim buildzie, którego baseline wynosił 64.4 ms (~1% niżej); porównywalne.
@@ -62,9 +63,11 @@ siedmiu etapach GPU ma zapas, a ogranicza nas własny cap.
 
 - **Geometria: ~22 ms.** Usunięcie 98.4% trójkątów zabiera 22 ms.
 - **Siedem etapów post/oświetlenia: ~14 ms** łącznie. Rozkład wewnątrz jest
-  płaski i **nie ma tu jednego grubego winowajcy**: translucent/woda/odbicia
-  3.2 ms, fog 1.7 ms, SSAO ~0, CMAA2 ~0. Pozostałe ~9 ms rozkłada się na
-  lights, HiZ i shadow resolve — do domknięcia w Etapie 1 planu.
+  płaski i **nie ma tu jednego grubego winowajcy**: lights 4.2 ms,
+  translucent/woda/odbicia 3.2 ms, fog 1.7 ms, SSAO ~0, CMAA2 ~0. Pozostałe
+  ~4.9 ms to HiZ i shadow resolve — do domknięcia w Etapie 1 planu.
+  Wniosek praktyczny: tych 14 ms **nie da się odzyskać jednym cięciem**, każdy
+  kawałek trzeba brać osobno i każdy kosztuje jakąś funkcję wizualną.
 - **Reszta: ~15 ms** — G-buffer, ambient, niebo, prezentacja/kompozytor.
 
 Cel 30 FPS to 33 ms. Trzeba zdjąć **~32 ms pracy GPU**. Geometria (22) plus
