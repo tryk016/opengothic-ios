@@ -97,20 +97,51 @@ i czterech przebiegach.
 Nie usuwamy HiZ — po poprawce pomiaru okazał się **wart 6.3 ms na plus**.
 Nie próbujemy rysunku indeksowanego z cullingiem per-meshlet — sprzęt nie daje.
 
-## Etap 3 — etapy post i oświetlenia (14 ms) oraz niebo
+## Etap 3 — bramki widoczności (zatwierdzone przez użytkownika)
 
-Kolejność ustala Etap 1. Wiadomo już, że fog to 1.7 ms, a SSAO i CMAA2 ~0 —
-czyli **nie ma tu jednego grubego winowajcy** i trzeba iść za liczbami z 1.2,
-a nie za intuicją.
+Zakres uzgodniony: **wolno ciąć zasięg widzenia, odbicia wody gdy wody nie
+widać, oraz LUT-y nieba/mgły gdy nie widać chmur ani mgły.**
 
-- [ ] **3.1** Jeśli 1.1 potwierdzi, że niebo to gruby blok: liczyć `skyViewCldLut`
-  i `fogLut3D` rzadziej niż co klatkę (zmieniają się z porą dnia, nie z kamerą)
-  albo w niższej rozdzielczości na mobile. To praca niezależna od rozdzielczości
-  ekranu, więc jest czysto zyskowna.
-- [ ] **3.2** Odpuścić kaskadę cieni tylko jeśli inne rzeczy zawiodą — to
-  zmierzone **3 ms** i widoczna strata jakości. Nisko na liście.
+**Zasięg widzenia odpada od razu** — zmierzony 2026-07-20: 60 km → 20 km dało
+**~0 ms**. Nie ma tam czego ciąć, mimo że zgoda jest. Nie wydajemy na to wysiłku.
 
----
+### 3.1 Woda i odbicia (część z 3.2 ms)
+
+Dwa konkretne marnotrawstwa, oba bezwarunkowe co klatkę:
+- `Renderer::drawReflections` to **pass pełnoekranowy bez żadnej bramki** —
+  wykonuje się nawet gdy na ekranie nie ma ani jednego piksela wody.
+- `Renderer::drawGWater` ustawia framebuffer **czyszcząc `gbufDiffuse`
+  i `gbufNormal` do (0,0,0,0)**. Na kafelkowcu to zrzut kafelków plus czyszczenie
+  i zapis dwóch celów G-bufora — płacone także wtedy, gdy woda nic nie narysuje.
+
+Mechanizm bez opóźnienia o klatkę (odczyt zwrotny dałby brakujące odbicia przez
+całą klatkę przy wychodzeniu nad wodę — przy 15 FPS to 65 ms widocznego błędu):
+- [ ] **3.1.1** Pass widoczności zapisuje do małego bufora flagę „widać wodę".
+- [ ] **3.1.2** `drawReflections` przechodzi z `cmd.draw(nullptr,0,3)` na
+  `drawIndirect` z `vertexCount` zapisywanym przez GPU (0 albo 3). `drawIndirect`
+  z `drawCount=1` działa na Mali — to jedyna rzecz, której `multiDrawIndirect=0`
+  nie blokuje.
+- [ ] **3.1.3** Czyszczenie w `drawGWater` zostaje, ale cały pass warunkujemy
+  tą samą flagą; tu opóźnienie o klatkę jest akceptowalne, bo brak passu wody
+  oznacza po prostu brak wody do narysowania.
+- [ ] **3.1.4** Pomiar osobno dla 3.1.2 i 3.1.3.
+
+### 3.2 LUT-y nieba i mgły (2.2 + 1.7 ms)
+
+`skyViewLut` (128×64) i `skyViewCldLut` (512×256 RGBA32F) liczą się co klatkę
+niezależnie od rozdzielczości i od tego, czy niebo jest w kadrze. `fogLut3D` to
+160×90×64 fraksele.
+
+- [ ] **3.2.1** Sygnał „widać niebo": najtańszy to najgrubszy mip piramidy hiZ —
+  jeśli maksymalna głębia na całym ekranie nie sięga płaszczyzny dalekiej, nieba
+  nie widać. Piramida i tak jest budowana (HiZ zostaje, patrz 2C).
+- [ ] **3.2.2** Uwaga na zależności: `prepareFog` próbkuje `transLut`
+  i `multiScatLut`, a `drawReflections` próbkuje `viewCldLut`. Bramkujemy tylko
+  **przeliczanie per-klatkę**, nigdy jednorazowe LUT-y — inaczej mgła dostanie
+  niezainicjalizowane dane.
+- [ ] **3.2.3** Pomiar we wnętrzu (komnata Xardasa) **i** na zewnątrz
+  (Khorinis) — na zewnątrz zysk musi być zerowy, i to jest test poprawności
+  bramki, nie tylko wydajności.
 
 ## Etap 4 — CPU: tick NPC (~14 ms, staje się istotny po Etapie 2)
 
