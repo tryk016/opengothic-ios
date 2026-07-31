@@ -226,3 +226,52 @@ zawęża to jeszcze do frustum kamery.
 Waga: to **nie jest** dzisiejszy limiter — CPU ma 600% zapasu, a klatka stoi na
 `present`. Ale przy celu 33 ms obecne ~14 ms CPU to 42% budżetu, więc stanie się
 istotne dokładnie w momencie, w którym naprawimy GPU.
+
+## 7. Woda: koszt zlokalizowany, bramka statyczna nie wystarcza
+
+Rozdzielenie `PS_Translucent` pokazało, gdzie naprawdę siedzą te 3.2 ms:
+
+| | Δ vs baseline |
+|---|---|
+| `drawGWater` | **−2.5 ms** |
+| `drawReflections` | −0.5 ms |
+
+To nie shader odbić jest drogi. `drawGWater` ma **własny render pass** i czyści
+`gbufDiffuse` oraz `gbufNormal` do zera, żeby `drawReflections` odróżnił piksele
+wody. Na kafelkowcu to zrzut kafelków plus czyszczenie i zapis dwóch celów
+G-bufora — co klatkę, niezależnie od tego, czy woda cokolwiek narysuje.
+
+Sprawdzone przed bramkowaniem: **`drawReflections` jest jedynym konsumentem tych
+celów po `drawGWater`** (mgła i podwodne ich nie czytają), więc pominięcie
+czyszczenia jest bezpieczne tylko wtedy, gdy pomija się też odbicia — inaczej
+shader odbić zobaczy nieprzezroczysty G-bufor i uzna cały ekran za wodę.
+
+**Wynik bramki statycznej: 0 ms.** `[water] world has water draw commands: 1` —
+Khorinis ma zaalokowaną wodę, więc warunek „świat nie ma wody" nigdy nie zachodzi
+i `frame_p50` pozostaje 65.2 ms. Było to przewidziane przed pomiarem; zmiana jest
+poprawna i konserwatywna (nie może wyprodukować klatki ze znikającą wodą), ale
+**sama z siebie nic nie daje**. Zysk wymaga testu frustum per klaster wody —
+wtedy warunek zachodzi we wnętrzach, gdzie wody nie widać.
+
+## 8. Bilans sesji: co przeżyło pomiar, a co nie
+
+| Kandydat | Wielkość | Los |
+|---|---|---|
+| Rysunek indeksowany per meshlet | 22 ms | ❌ `multiDrawIndirect=0` na Mali |
+| Nakładanie CPU/GPU | ~14 ms | ❌ zmierzone, nie istnieje (§5a) |
+| Usunięcie HiZ | 8.7 ms | ❌ artefakt; HiZ **zarabia** 6.3 ms (§4a) |
+| Zasięg widzenia | — | ❌ zmierzone ~0 ms (07-20) |
+| „Cienie 18 ms" | — | ❌ realnie 3 ms na kaskadę |
+| Bramka wody (statyczna) | 3.0 ms | ⚠️ poprawna, ale 0 ms w Khorinis |
+| Przepakowanie wierzchołka | część z 22 ms | ⏳ **nietknięte, jedyna pozostała duża pozycja** |
+| Bramka wody (frustum) | do 3.0 ms | ⏳ tylko wnętrza |
+| LUT-y nieba rzadziej | do 2.2 ms | ⏳ |
+| Tick 1053 NPC | część z 14 ms CPU | ⏳ nie jest dziś limiterem |
+
+Trzy duże dźwignie okazały się puste. Każda została zamknięta **pomiarem**, żadna
+nie weszła do builda na wiarę, a bramka przy `multiDrawIndirect` zatrzymała sześć
+gotowych i przetestowanych patchy, zanim je wdrożyłem.
+
+Realistyczny sufit tego, co zostało: rząd **8–12 ms z 65**, czyli ~55 ms (~18 FPS).
+**Stabilne 30 FPS wymaga cięcia treści** — przy czym zasięg widzenia, jedyna
+oczywista dźwignia treściowa, jest zmierzony jako bezwartościowy.
