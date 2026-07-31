@@ -46,58 +46,50 @@ Jeśli nie — szukamy dalej, zanim ruszymy Etap 2.
 
 ---
 
-## Etap 2 — rysunek indeksowany (największa pojedyncza pozycja: 22 ms)
+## Etap 2 — **PRZEBUDOWANY**: nakładanie CPU/GPU, potem tańsza geometria
 
-To jest ta „przebudowa", na którą jest zgoda. Zakres jest jednak węższy niż
-„połowa renderera": ścieżka mesh-shaderowa (desktop) zostaje nietknięta,
-zmienia się wyłącznie wariant bez mesh shaderów — ten, którego używa Mali.
-Zmiana jest też sensowna upstreamowo, bo dotyczy każdego GPU bez mesh shaderów.
+Pierwotny Etap 2 (jedna komenda indeksowana na meshlet) jest **martwy**:
+`[caps] multiDrawIndirect=0 ... maxDrawIndirectCount=1` na Mali-G57. Sześć
+patchy było gotowych i zweryfikowanych; bramka 2.2 je zatrzymała. Kolejność
+poniżej idzie za zmierzonym zyskiem, nie za elegancją.
 
-Docelowy kształt: jedna komenda `VkDrawIndexedIndirectCommand` na widoczny
-meshlet, `gl_DrawID` indeksuje skompaktowany payload, `gl_VertexIndex` adresuje
-wierzchołek wprost. Z shadera znikają `processMeshlet` i `processPrimitive`.
+### 2A. Nakładanie CPU/GPU (~14 ms, zero kosztu jakości) — **najwyższy priorytet**
 
-- [ ] **2.1 Tempest: API `drawIndexedIndirect`.** Patch (i) w `apply-patches.sh`:
-  `abstractgraphicsapi.h` (wirtualna **z domyślnym ciałem rzucającym wyjątek**,
-  żeby Metal i DX12 zostały nietknięte — to jest gwarancja, że iOS nie ucierpi),
-  `vcommandbuffer.h/.cpp` (`vkCmdBindIndexBuffer` + `vkCmdDrawIndexedIndirect`),
-  `encoder.h/.cpp`. Każdy wzorzec perlowy sprawdzony na kopii pliku lokalnie.
-- [ ] **2.2 Tempest: włączyć feature'y.** `multiDrawIndirect` i
-  `shaderDrawParameters` (dla `gl_DrawID`) nie są dziś w ogóle żądane w
-  `vdevice.cpp` — dwa miejsca konstrukcji `deviceFeatures` (linie ~186 i ~428).
-  Zalogować, czy sterownik je udostępnia.
-  **Bramka:** log na Tab A9 potwierdza oba. Jeśli nie — Etap 2 pada, wracamy tu.
-- [ ] **2.3 Wymusić tryb slot na Androidzie** (`doBindless=false`). W trybie
-  bindless IBO jest tablicą deskryptorów, a `vkCmdBindIndexBuffer` przyjmuje
-  jeden bufor. Liczba draw calli rośnie z 23 do kilkuset — na kafelkowcu tanio.
-  **Bramka:** sam ten krok nie może kosztować więcej niż ~2 ms. Zmierzyć osobno,
-  przed jakąkolwiek zmianą shadera.
-- [ ] **2.4 `visibility_pass.comp`** zapisuje obok wpisu payloadu komendę
-  `{indexCount=192, instanceCount=1, firstIndex=meshletId*192, vertexOffset=0,
-  firstInstance=0}`. Indeksy w `PackedMesh` są już globalne w obrębie bucketu,
-  więc `firstIndex` liczy się wprost z `meshletId`. `cluster_init.comp` zeruje
-  ogon.
-- [ ] **2.5 `main.vert`:** payload z `gl_DrawID` zamiast `gl_InstanceIndex`,
-  `pullVertex(bucketId, gl_VertexIndex)`, usunięcie `processMeshlet`
-  i `processPrimitive`. Shader staje się **krótszy** — to nie jest dokładanie
-  złożoności.
-- [ ] **2.6 `DrawCommands`:** `drawCommon` i `drawHiZ` bindują `ibo` bucketu
-  i wołają `drawIndexedIndirect(..., maxDrawCount=cx.maxPayload)`.
-  **Bramka i sedno całego etapu:** zmierzyć. Oczekiwanie: 22 ms → 8–12 ms,
-  czyli **−10 do −14 ms**. Jeśli wyjdzie mniej niż −6 ms, model jest zły
-  i trzeba wrócić do raportu zamiast dokładać kolejne kroki.
-- [ ] **2.7** Jeśli sterownik ma `drawIndirectCount` (Vulkan 1.2 core) — użyć go,
-  żeby nie przemiatać wyzerowanych slotów. Osobny pomiar.
-- [ ] **2.8** Przyciąć padding: `indexCount = primCount*3` zamiast stałych 192.
-  Wymaga wystawienia `primCount` per meshlet passowi widoczności. Osobny pomiar —
-  przy rysunku indeksowanym zdegenerowane trójkąty są tanie, więc ten krok może
-  się nie opłacić i wtedy go **nie robimy**.
+Klatka to dokładnie `CPU 14 + present 51 = 65`. `VSwapchain::present()` kończy
+się zachłannym `acquireNextImage()`, który blokuje na dwóch fence'ach i akwizycji,
+więc pętla gry stoi zamiast liczyć następną klatkę.
 
-**Ryzyko:** to zmienia wszystkie shadery materiałowe, a A23 (Adreno 619) już dziś
-wywala się w kompilatorze sterownika. Może pomóc, może zaszkodzić — Adreno i tak
-jest osobnym, nierozwiązanym wątkiem i **nie blokuje** tego etapu.
+- [ ] **2A.1** Przenieść `acquireNextImage()` z końca `present()` na początek
+  następnej klatki (tuż przed enkodowaniem), patchem w `apply-patches.sh`.
+- [ ] **2A.2** Zweryfikować poprawność: `fence_miss` przestanie być zerem —
+  to oczekiwane i pożądane. Sprawdzić brak artefaktów i brak warstw walidacyjnych
+  skarżących się na czas życia semaforów.
+- [ ] **2A.3** Pomiar. Oczekiwanie: 65 → ~51 ms. **Bramka:** jeśli zysk < 5 ms,
+  model jest zły — wycofać patch, nie kombinować dalej.
 
----
+Ryzyko: to dotyka synchronizacji swapchaina, czyli najłatwiejszego miejsca na
+zawieszenie lub artefakty. Robimy to jako osobny commit, łatwy do wycofania.
+
+### 2B. Tańszy wierzchołek (część z 22 ms, bez zmian w Tempeście)
+
+Rysunek indeksowany odpada, ale koszt **per wywołanie** vertex shadera zostaje
+do wzięcia. Dziś `pullVertex` to 9 osobnych skalarnych odczytów `float` z SSBO,
+plus payload, nagłówek meshletu i indeks — przy 192 wywołaniach na meshlet
+i czterech przebiegach.
+
+- [ ] **2B.1** Przepakować `Vertex` z 9 floatów (36 B) na 16–24 B: pozycja
+  `vec3`, normalna spakowana (oct16 lub 10:10:10), uv jako half2, kolor rgba8.
+  Odczyty jako `uvec4` zamiast skalarów: **9 odczytów → 2**.
+- [ ] **2B.2** Osobny, kompaktowy strumień **tylko pozycji** dla przebiegów
+  głębokościowych. To **trzy z czterech** przebiegów (HiZ, Shadow0, Shadow1).
+  Uwaga: dla `T_OBJ` pozycja zależy od normalnej przez `obj.fatness` — zapakować
+  normalną w czwarty komponent zamiast czytać pełny wierzchołek.
+- [ ] **2B.3** Pomiar po każdym kroku osobno.
+
+### 2C. Czego **nie** robimy
+
+Nie usuwamy HiZ — po poprawce pomiaru okazał się **wart 6.3 ms na plus**.
+Nie próbujemy rysunku indeksowanego z cullingiem per-meshlet — sprzęt nie daje.
 
 ## Etap 3 — etapy post i oświetlenia (14 ms) oraz niebo
 

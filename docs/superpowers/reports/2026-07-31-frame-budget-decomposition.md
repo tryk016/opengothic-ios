@@ -39,6 +39,9 @@ Narzędzia dodane w tej sesji (wszystkie domyślnie no-op, tylko do pomiarów):
 | `passSkip=16` (tylko CMAA2) | 65.0 ms | — | ~0 |
 | `passSkip=64` (tylko translucent/woda/odbicia) | 61.9 ms | — | −3.2 |
 | `passSkip=8` (tylko lights) | 60.9 ms | — | −4.2 |
+| `passSkip=128` (per-klatkowe LUT-y nieba) | 63.1 ms | — | −2.2 |
+| `passSkip=256` (drawSky) | 65.5 ms | — | ~0 |
+| `passSkip=1` (HiZ, **po poprawce**) | 71.6 ms | — | **+6.3 (gorzej!)** |
 | `primCap=1` + `passSkip=127` | **33.4 ms** | 3.6–7.9 ms | −31.7 |
 
 \* zmierzone na poprzednim buildzie, którego baseline wynosił 64.4 ms (~1% niżej); porównywalne.
@@ -132,6 +135,37 @@ Dobra wiadomość: **prawdziwy bufor indeksów już istnieje**
 (`StaticMesh::ibo`, globalne 32-bitowe indeksy, budowany dla każdego mesha,
 dziś używany wyłącznie do BLAS-ów ray query).
 
+## 4a. HiZ: culling okluzyjny **zarabia na siebie** — nie ruszać
+
+Pierwszy odczyt `passSkip=1` dał −8.7 ms i wyglądał na największą pojedynczą
+dźwignię. Był **artefaktem**: pominięcie prepassu zostawiało piramidę hiZ ze
+śmieciami, a główny pass widoczności dalej po niej cullingował, więc część tych
+8.7 ms to było zwyczajne **gubienie widocznej geometrii**.
+
+Po poprawce (brak prepassu ⇒ główny pass przełącza się na wariant tylko-frustum)
+ten sam eksperyment daje **71.6 ms, czyli 6.3 ms *gorzej* od baseline**.
+Wniosek się odwraca: **HiZ oszczędza ~6 ms netto** mimo że sam jest czwartym
+przebiegiem geometrii. Zdjęcie go byłoby regresem.
+
+To także realny bug, nie tylko rusztowanie pomiarowe — ścieżka pathtrace miała
+dokładnie ten sam problem (nigdy nie buduje piramidy, a testowała po niej).
+
+## 4b. `multiDrawIndirect=0` — Mali zamyka drogę do komend per-meshlet
+
+```
+[caps] multiDrawIndirect=0 drawIndirectFirstInstance=1 maxDrawIndirectCount=1
+```
+
+Mali-G57 **nie wspiera** `multiDrawIndirect`, a `maxDrawIndirectCount=1`.
+Jedna komenda `VkDrawIndexedIndirectCommand` na widoczny meshlet — rdzeń
+pierwotnego Etapu 2 — jest **niewykonalna na tym sprzęcie**. Sześć patchy
+perlowych było gotowych i sprawdzonych; bramka je zatrzymała przed wdrożeniem.
+
+Co z tego zostaje: `firstIndex` i `vertexOffset` są per-komenda, więc bez
+`drawCount>1` nie da się dać każdemu meshletowi własnego zakresu indeksów przy
+zachowaniu kompaktowania na GPU. Rysunek indeksowany z cullingiem per-meshlet
+odpada; zostają tańsze warianty opisane w planie.
+
 ## 5. Korekty wcześniejszych wniosków
 
 - **„Cienie ≈ −18 ms" było błędne.** Zdjęcie całej kaskady daje **3.0 ms**,
@@ -142,6 +176,38 @@ dziś używany wyłącznie do BLAS-ów ray query).
   o dominacji geometrii było zbyt mocne.
 - **Przebudowa na forward nadal nie ma sensu** — celuje w koszt fragmentowy
   i przepustowość, które zmierzone są bliskie zeru.
+
+## 5a. Największe znalezisko: CPU i GPU w ogóle się nie nakładają
+
+Klatka rozkłada się dokładnie addytywnie:
+
+```
+tick 7.7 + anim 4.7 + pose 2.2 + encode 5.5 + submit 0.4 + present 51.2 ≈ 65.1
+```
+
+Przy `MaxFramesInFlight=2` praca CPU następnej klatki powinna iść równolegle
+z pracą GPU bieżącej, a klatka wynosiłaby `max(CPU, GPU) ≈ 51 ms`, nie ich
+sumę. Nakładania nie ma **żadnego**.
+
+Przyczyna jest w `VSwapchain::present()` — kończy się wywołaniem
+`acquireNextImage()`, które blokuje synchronicznie:
+
+```cpp
+vkWaitForFences(dev, 1, &aquireFence[frameId],  VK_TRUE, UINT64_MAX);
+vkWaitForFences(dev, 1, &presentFence[frameId], VK_TRUE, UINT64_MAX);
+vkAcquireNextImageKHR(..., UINT64_MAX, ...);
+```
+
+Akwizycja obrazu dla **następnej** klatki dzieje się zachłannie na końcu
+prezentacji bieżącej, więc pętla gry stoi w `present()` zamiast liczyć logikę.
+Potwierdza to `fence_miss=0` w `PERF-SYS`: zanim pętla dojdzie do nieblokującej
+bramki `sync.wait(0)`, GPU jest już zawsze gotowe — bo czekaliśmy na nie
+wcześniej, w `present()`.
+
+**Potencjał: ~14 ms (22% klatki), niezależnie od czegokolwiek innego.**
+To zmiana w Tempeście (`vswapchain.cpp`), z ryzykiem po stronie czasu życia
+semaforów i fence'ów, więc wymaga ostrożności — ale jest to największa
+pojedyncza pozycja poza geometrią i nie kosztuje ani jednego piksela jakości.
 
 ## 6. NPC: AI i ruch liczone dla całej wyspy
 
