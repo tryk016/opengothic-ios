@@ -780,4 +780,38 @@ else
   fi
 fi
 
+# --------------------------------------------------------------------------
+# (i) multiDrawIndirect + capability log.
+#
+# Gate for the indexed-draw work: the plan is one VkDrawIndexedIndirectCommand
+# per visible meshlet, which needs drawCount>1 and therefore the
+# multiDrawIndirect feature. Tempest requests neither it nor
+# drawIndirectFirstInstance today, so they must be enabled before any of that
+# can be tried -- and some mobile drivers report multiDrawIndirect=false with
+# maxDrawIndirectCount=1, which would kill the approach outright. Both feature
+# blocks in vdevice.cpp are patched (device creation and the caps query); the
+# log answers the gate on real hardware before the rest is written.
+#
+# Enabling a supported feature we do not yet use changes no behaviour.
+# --------------------------------------------------------------------------
+
+VDC2="$ROOT/lib/Tempest/Engine/gapi/vulkan/vdevice.cpp"
+if [ ! -f "$VDC2" ]; then
+  echo "ERROR: not found: $VDC2" >&2
+  exit 1
+fi
+
+if grep -q 'one indexed indirect command per meshlet' "$VDC2"; then
+  echo "skip: vdevice.cpp multiDrawIndirect (already patched)"
+else
+  perl -0777 -pi -e 's/(  deviceFeatures\.vertexPipelineStoresAndAtomics = supportedFeatures\.vertexPipelineStoresAndAtomics;\r?\n  deviceFeatures\.fragmentStoresAndAtomics       = supportedFeatures\.fragmentStoresAndAtomics;\r?\n)/${1}\n  \/\/ one indexed indirect command per meshlet needs drawCount>1\n  deviceFeatures.multiDrawIndirect         = supportedFeatures.multiDrawIndirect;\n  deviceFeatures.drawIndirectFirstInstance = supportedFeatures.drawIndirectFirstInstance;\n/g' "$VDC2"
+  perl -0777 -pi -e 's/(  \/\/ non-bindless limit\r?\n)/  Log::i("[caps] multiDrawIndirect=",int(supportedFeatures.multiDrawIndirect),\n         " drawIndirectFirstInstance=",int(supportedFeatures.drawIndirectFirstInstance),\n         " maxDrawIndirectCount=",devP.limits.maxDrawIndirectCount);\n\n${1}/' "$VDC2"
+  if [ "$(grep -c 'deviceFeatures.multiDrawIndirect' "$VDC2")" = "2" ] && [ "$(grep -c '\[caps\] multiDrawIndirect' "$VDC2")" = "1" ]; then
+    echo "patched: vdevice.cpp multiDrawIndirect + drawIndirectFirstInstance + caps log"
+  else
+    echo "ERROR: failed to patch vdevice.cpp multiDrawIndirect (feat=$(grep -c 'deviceFeatures.multiDrawIndirect' "$VDC2") log=$(grep -c '\[caps\] multiDrawIndirect' "$VDC2"))" >&2
+    exit 1
+  fi
+fi
+
 echo "apply-patches.sh: done"
