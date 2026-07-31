@@ -161,7 +161,23 @@ fi
 # already matches the un-rotated layout.
 # --------------------------------------------------------------------------
 
-if grep -q 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW"; then
+# TEMP [comp-ab]: measurement build. dumpsys SurfaceFlinger on the Tab A9 shows
+# our layer composited as "CLIENT | ROT_90" with usesDeviceComposition=false,
+# i.e. SurfaceFlinger runs a full-screen GPU rotation pass on the SAME Mali-G57
+# every frame. That work is invisible to any in-app GPU timer, competes with the
+# game for the GPU, and lands in the 46-47 ms cpu_present_p95_ms we have been
+# reading as "GPU-bound renderer". It is a direct consequence of declaring
+# IDENTITY here (2026-07-16 orientation fix), whose cost was assumed acceptable
+# and never measured.
+#
+# Setting preTransform back to currentTransform makes the compositor skip its
+# rotation (the image is presented SIDEWAYS - unplayable, but the game's own GPU
+# work is byte-identical), which should let the hardware composer take the layer.
+# The delta in frame_p50_ms between this build and the normal one IS the
+# compositor cost. Revert immediately after measuring.
+if true; then
+  echo "TEMP [comp-ab]: preTransform identity DISABLED for measurement (image will be sideways)"
+elif grep -q 'VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR' "$SW"; then
   echo "skip: vswapchain.cpp preTransform identity (already patched)"
 else
   perl -0777 -pi -e \
