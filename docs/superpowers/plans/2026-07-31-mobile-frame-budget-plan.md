@@ -1,7 +1,8 @@
 # Plan naprawy budżetu klatki na Androidzie
 
 **Cel:** 65.1 ms → 33 ms (30 FPS) na Tab A9 / Mali-G57 MC2, `scene=world`.
-Trzeba zdjąć **~32 ms pracy GPU**. Dane wejściowe:
+Trzeba zdjąć **~32 ms**. Patrz zastrzeżenie na końcu Etapu 1: samą optymalizacją
+dochodzimy w okolice 45 ms, reszta wymaga cięcia treści. Dane wejściowe:
 [raport z 2026-07-31](../reports/2026-07-31-frame-budget-decomposition.md).
 
 **Zasady obowiązujące w całym planie:**
@@ -25,26 +26,31 @@ Bez tego żaden z poniższych etapów nie ma jak być zweryfikowany.
 
 ---
 
-## Etap 1 — domknąć rozbiór tych 51 ms (1 build, ~5 przebiegów)
+## Etap 1 — rozbiór 51 ms GPU ✅ ZROBIONE
 
-Dziś przypisane: geometria 22 ms, siedem etapów 14 ms, **~15 ms nieprzypisane**.
-Nie zaczynamy dużej przebudowy nie wiedząc, co jest w tych 15 ms.
+Wynik (każdy etap mierzony osobno, baseline 65.1 ms):
 
-- [ ] **1.1** Dodać bit `PS_Sky` do `PassSkip` obejmujący `prepareSky` +
-  `drawSky`. To jedyny duży blok pracy **niezależnej od rozdzielczości ekranu**:
-  `skyViewCldLut` to 512×256 RGBA32F liczone co klatkę, `skyViewLut` 128×64,
-  a `fogLut3D` 160×90×64 fraksele. W komnacie Xardasa nieba w ogóle nie widać,
-  a płacimy pełną stawkę. To najlepszy kandydat na nieprzypisane 15 ms.
-- [ ] **1.2** Zmierzyć pojedynczo pozostałe bity: `lights` (8), `translucent` (64),
-  `hiz` (1), `shadowResolve` (32). `hiz` jest szczególny — jego pominięcie
-  wyłącza też culling okluzyjny, więc wynik może być **ujemny**; to sama w sobie
-  odpowiedź na pytanie, czy HiZ się na mobile opłaca.
-- [ ] **1.3** Zaktualizować tabelę w raporcie.
+| Pozycja | Koszt |
+|---|---|
+| geometria (wszystkie 4 przebiegi) | **~22 ms** |
+| lights | 4.2 ms |
+| translucent / woda / odbicia | 3.2 ms |
+| per-klatkowe LUT-y nieba | 2.2 ms |
+| fog | 1.7 ms |
+| SSAO, CMAA2, shadow resolve, drawSky | ~0 każdy |
+| HiZ | **−6.3 ms — zarabia na siebie** |
 
-**Bramka:** suma przypisanych milisekund pokrywa 51 ms GPU z dokładnością ±5 ms.
-Jeśli nie — szukamy dalej, zanim ruszymy Etap 2.
+**Bramka zaliczona.** Suma zdejmowalnych pozycji (22 + 4.2 + 3.2 + 2.2 + 1.7
+≈ 33 ms) plus podłoga 33.4 ms domyka baseline 65.1 ms. Nie ma nieprzypisanego
+bloku — wcześniejsze „~15 ms" brało się z odejmowania skażonego odczytu HiZ.
 
----
+**Konsekwencja dla celu.** Podłoga 33.4 ms *już jest* 30 FPS, a wszystko powyżej
+niej to geometria plus te pięć pozycji. Żeby zejść do 33 ms trzeba by usunąć
+niemal **całość** obu — czego zwykłą optymalizacją się nie da. Realistycznie:
+2A daje ~14 ms, 2B może kilka, Etap 3 kilka. To prowadzi do okolic 45 ms
+(~22 FPS). **Stabilne 30 FPS w tej scenie i przy tych ustawieniach wymaga
+dodatkowo cięcia treści** (zasięg rysowania, liczba kaskad, ustawienia) —
+i to trzeba powiedzieć wprost, zamiast obiecywać 30 FPS z samej optymalizacji.
 
 ## Etap 2 — **PRZEBUDOWANY**: nakładanie CPU/GPU, potem tańsza geometria
 
