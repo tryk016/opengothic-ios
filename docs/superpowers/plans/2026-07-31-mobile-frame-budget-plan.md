@@ -163,3 +163,70 @@ celu 33 ms obecne ~14 ms CPU to 42% budżetu, więc ten etap jest warunkiem
   3 ms na kaskadę.
 - **Merge'owania czegokolwiek do `tryk016/Tempest` branch `renderer-ios`** —
   ten fork jest wyłącznie pod iOS.
+
+---
+
+## Propozycje na dalej (2026-07-31, po zamknięciu rozbioru)
+
+Uszeregowane wg zmierzonej lub wiarygodnie oszacowanej wartości, z uczciwym
+ryzykiem. Trzy pierwsze nie kosztują jakości obrazu.
+
+### P1. Pre-rotacja → kompozycja DEVICE zamiast CLIENT  (~3–6 ms, niewidoczne dziś)
+
+`dumpsys SurfaceFlinger` na urządzeniu w świecie:
+
+```
+clientCompositionFrames = 188781 / totalFrames = 190828      (98.9%)
+Layer: CLIENT | ROT_90 | displayFrame 0 0 800 1340 | sourceCrop 1340.0 800.0
+averageRenderEngineTiming = 58.560 ms   (histogram dwumodalny: ~3–6 ms i ~82–102 ms)
+```
+
+Bufor jest 1340×800 (landscape), a `displayFrame` 800×1340 (portrait), więc HWC
+nie potrafi tego złożyć nakładką i **SurfaceFlinger robi osobny przebieg
+kompozycji na GPU dla 98.9% klatek** — na tym samym Mali-G57, w pełnej
+rozdzielczości ekranu, **niewidocznie dla wszystkich naszych liczników**. Górny
+tryb histogramu (~90 ms) to kolejkowanie za naszą pracą; dolny (~3–6 ms, ~67 tys.
+próbek) to realny koszt samej kompozycji.
+
+To także wyjaśnia, dlaczego zmiana wewnętrznej rozdzielczości nic nie dała:
+kompozycja jest zawsze w pełnej rozdzielczości panelu.
+
+Naprawa to podręcznikowa **pre-rotacja Vulkana na Androidzie**: swapchain
+z `preTransform = currentTransform` (ROTATE_90) i zamienionym extentem, a obrót
+wchodzi do macierzy projekcji. Wymaga **wycofania patcha (c3)**, który celowo
+wymusza `IDENTITY` i oddaje obrót kompozytorowi.
+
+- Ryzyko: orientacja UI i współrzędne dotyku. Patch (c3) opisuje, że dziś
+  wszystko siedzi w spójnej przestrzeni landscape — pre-rotacja tę spójność łamie
+  i trzeba ją odbudować w projekcji, viewportcie i mapowaniu dotyku.
+- Bramka: `clientCompositionFrames` musi spaść. Jeśli zostanie na ~99%,
+  wycofujemy — to jedyny wiarygodny sygnał, bo zysku nie widać w naszych licznikach.
+
+### P2. Tańszy wierzchołek + strumień tylko-pozycji  (część z 22 ms)
+
+Jedyna duża pozycja bez bariery sprzętowej. Szczegóły w Etapie 2B.
+Duża zmiana (format `PackedMesh` + wszystkie shadery materiałowe), ale bez
+niewiadomych. Rozsądny podział: najpierw sam strumień pozycji dla trzech
+przebiegów głębokościowych (mniejsze ryzyko, 3 z 4 przebiegów), potem repacking.
+
+### P3. Bramka wody per klaster  (do 3.0 ms, tylko wnętrza)
+
+Bramka statyczna jest już w kodzie i daje 0 ms, bo Khorinis ma zaalokowaną wodę.
+Dołożyć test frustum po klastrach wody (CPU ma 600% zapasu) — wtedy warunek
+zachodzi we wnętrzach. Konserwatywny, bez opóźnienia o klatkę.
+
+### P4. `drawLights` — 4.2 ms, nietknięte
+
+Drugi co do wielkości pojedynczy etap, w ogóle jeszcze nie obejrzany. Zanim
+cokolwiek proponować, trzeba zobaczyć, co robi (liczba świateł, objętości,
+rozdzielczość).
+
+### P5. Cięcia treści (ostatecznie konieczne)
+
+Zasięg widzenia **odpada** (zmierzone ~0 ms). Realne: jedna kaskada cieni (3 ms,
+widoczna strata) i mniej widocznych obiektów.
+
+### P6. Tick 1053 NPC (CPU)
+
+Nie jest dziś limiterem, ale ~14 ms CPU to 42% budżetu 33 ms. Robić po tym, jak
+GPU zejdzie poniżej ~35 ms — wcześniej nic nie zmieni.
