@@ -275,3 +275,51 @@ gotowych i przetestowanych patchy, zanim je wdrożyłem.
 Realistyczny sufit tego, co zostało: rząd **8–12 ms z 65**, czyli ~55 ms (~18 FPS).
 **Stabilne 30 FPS wymaga cięcia treści** — przy czym zasięg widzenia, jedyna
 oczywista dźwignia treściowa, jest zmierzony jako bezwartościowy.
+
+## 9. Pre-rotacja: bramka przeszła — kompozycja DEVICE jest osiągalna
+
+Sonda (commit `8687a670`, wycofana zaraz po odczycie): zamieniony extent
+swapchaina plus `preTransform=currentTransform`, **bez** obracania renderowania.
+Obraz wyszedł bokiem — i o to chodziło, bo pytanie brzmiało wyłącznie „czy
+warstwa może wyjść z kompozycji CLIENT".
+
+```
+[prerotate] currentTransform=2 extent=800x1340
+
+przed:  clientCompositionFrames = 188781 / 190828   (98.9%)
+        Layer:  CLIENT | ROT_90 | displayFrame 800x1340 | sourceCrop 1340x800
+
+po:     clientCompositionFrames =     31 /   3494   ( 0.9%)
+        Layer:  DEVICE |      0 | displayFrame 800x1340 | sourceCrop  800x1340
+```
+
+**Warstwa przeszła na DEVICE z transformacją 0** — HWC skanuje nasz bufor wprost,
+a pełnoekranowy przebieg kompozycji SurfaceFlingera na Mali znika.
+
+**Czego to jeszcze nie mówi:** wielkości zysku. Odczyty `frame_p50` z tej sondy
+(64.8 i 75.2 ms) są **nieporównywalne** z baseline — swapchain jest portretowy,
+więc proporcje kadru i ilość geometrii w polu widzenia są inne. Szacunek 3–6 ms
+nadal pochodzi z dolnego trybu histogramu `renderEngineTiming`, nie z pomiaru
+naszej klatki. Zmierzy się dopiero na poprawnej implementacji.
+
+### Jak to wdrożyć naprawdę
+
+Dziś projekcja, viewport, układ UI i dotyk siedzą **spójnie w przestrzeni
+landscape** (tak stwierdza patch `(c3)`), a swapchain musi być portretowy.
+Dwie drogi:
+
+- **B (rekomendowana): obrót tylko na końcu.** Scena i UI renderują się jak
+  dziś w landscape, a obraca dopiero ostatni przebieg zapisujący do obrazu
+  swapchaina. Ponieważ tonemapping/CMAA2 to i tak pełnoekranowy trójkąt
+  czytający `sceneLinear`, obrót to **transformacja UV w tym jednym shaderze —
+  bez dodatkowego przebiegu i bez dodatkowej pamięci**. Zostaje do rozwiązania
+  UI, które rysuje się wprost do obrazu swapchaina (`uiLayer.draw`,
+  `inventory.draw`, `numOverlay.draw`) i wymaga albo własnej macierzy obrotu,
+  albo pośredniego celu landscape (wtedy jeden dodatkowy przebieg, ~1–2 ms,
+  zjadający część zysku).
+- **A: pełna pre-rotacja silnika.** Obrót w macierzy projekcji plus przemapowanie
+  UI i dotyku. Bez dodatkowego przebiegu, ale dotyka wielu miejsc i łamie
+  spójność, na której dziś stoi obsługa wejścia.
+
+Rekomendacja: **B**, i to w wariancie „UV w tonemappingu" dla sceny; dopiero
+jeśli UI okaże się kłopotliwe, dołożyć dla niego pośredni cel.
