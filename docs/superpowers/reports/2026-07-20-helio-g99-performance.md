@@ -261,3 +261,84 @@ Eksperymenty ablacyjne, każdy jako osobny build raportujący istniejące
 
 Wynik należy odczytywać w milisekundach i odnosić do progów 50 ms i 33,3 ms,
 nie do samego licznika FPS.
+
+## Uzupełnienie 2026-07-31 (2) — rozdział kosztu: fragmenty czy geometria
+
+Wszystkie pomiary poniżej pochodzą z linii `PERF v=1` przy `scene=world`, scena
+pokoju Xardasa na starcie nowej gry, ta sama sesja urządzenia, wartości
+`frame_p50_ms` z ustabilizowanych okien 10-sekundowych.
+
+### Rozdzielczość głównego widoku nie ma znaczenia
+
+| Konfiguracja | frame_p50 | FPS |
+|---|---:|---:|
+| `vidResIndex=2` (ćwierć pikseli, bez AA, plus pass upscale) | 64,85 ms | 15,4 |
+| `vidResIndex=0` (pełna rozdzielczość, plus CMAA2) | 63,65 ms | 15,7 |
+
+Czterokrotne zmniejszenie liczby pikseli nie daje zysku; pełna rozdzielczość
+jest nawet nieznacznie szybsza mimo dodatkowego antyaliasingu
+(`aaEnabled = aaPreset>0 && vidResIndex==0`, renderer.cpp:314).
+
+**Renderer nie jest ograniczony pracą fragmentową w tej scenie.**
+
+Wcześniejszy zapis „obniżenie rozdzielczości nie poprawiło tej sceny” był
+prawdziwy, ale zbyt łagodny. Poprawnie: half resolution **pogarsza** czas
+klatki, ponieważ pass upscale kosztuje więcej, niż wynosi oszczędność na
+fragmentach.
+
+### Rozdzielczość map cieni: tania w punkcie pracy, droga powyżej
+
+| `shadowResolution` | frame_p50 | Źródło |
+|---|---:|---|
+| 256 | 63,15 ms | pomiar 2026-07-20 |
+| 512 (obecna) | 64,85 ms | pomiar 2026-07-31 |
+| 1024 | 70,10 ms | pomiar 2026-07-31 |
+
+Przejście 256 -> 512 kosztuje około 1,1 ms, natomiast 512 -> 1024 już około
+5,2 ms. Fill map cieni zaczyna być istotny dopiero powyżej obecnego ustawienia.
+
+### Wniosek: koszt leży w ponownym przesyłaniu geometrii
+
+Zestawienie dźwigni zmierzonych do tej pory:
+
+| Dźwignia | Zmiana czasu klatki |
+|---|---|
+| Rozdzielczość głównego widoku, ćwierć pikseli | około 0 |
+| Draw distance 60 km -> 20 km | około 0 (64,32 vs 64,25 ms) |
+| Rozdzielczość cieni 512 -> 256 | około -1,1 ms |
+| Całkowite wyłączenie map cieni | około -18 ms (16 -> 22,7 FPS) |
+
+Jedyną dźwignią o dużym efekcie jest samo istnienie map cieni, a nie ich
+rozdzielczość. Przy `ShadowLayers = 2` (resources.h:53) scena jest renderowana
+dodatkowo dwa razy przez `WorldView::drawShadow`. Skoro zmiana liczby pikseli w
+tych passach kosztuje około 1 ms, a ich usunięcie około 18 ms, to dominującą
+częścią jest **przesyłanie i przetwarzanie geometrii, nie rasteryzacja**.
+
+**Zastrzeżenie do liczby 18 ms:** pochodzi z eksperymentu z 2026-07-20
+mierzonego licznikiem FPS, przy uszkodzonym oświetleniu, a kod tego trybu
+został wycofany (`0e1f0a6b`). Należy ją traktować jako rząd wielkości, a nie
+pomiar równorzędny z pozostałymi. Wymaga powtórzenia w milisekundach na
+poprawnym wariancie.
+
+### Konsekwencja dla wyboru wariantu architektonicznego
+
+Wariant B (przepisanie na mobile forward) odzyskuje przede wszystkim
+przepustowość G-bufora i koszt osobnego passa oświetlenia, czyli pracę
+fragmentową i pasmo. Pomiary wskazują, że **to nie jest obecne wąskie gardło**.
+Forward nadal renderowałby kaskady cieni tą samą geometrią.
+
+Tańsze kierunki, zgodne z powyższymi danymi:
+
+1. ograniczenie kaskad cieni do jednej;
+2. uproszczona geometria dla passów cieni, na przykład agresywniejszy cull lub
+   niższy poziom szczegółowości;
+3. aktualizacja map cieni rzadziej niż co klatkę dla części statycznej;
+4. redukcja liczby wywołań rysowania i lepsze grupowanie.
+
+Każdy z nich wymaga osobnego pomiaru w milisekundach, w scenie świata.
+
+### Otwarte pytanie: domyślna rozdzielczość
+
+`vidResIndex=0` wyszło ostrzejsze i nieznacznie szybsze od obecnego domyślnego
+`vidResIndex=2`. Zmiana domyślnej wartości wymaga jednak wcześniejszego pomiaru
+w scenie otwartej, ponieważ wszystkie powyższe liczby pochodzą z wnętrza.
