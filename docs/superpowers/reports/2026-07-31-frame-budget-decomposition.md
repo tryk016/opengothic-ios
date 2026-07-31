@@ -57,7 +57,28 @@ Dwa niezależne dowody:
 
 W ostatnim wierszu tabeli `present` spada do ~4 ms i klatka ląduje na 33.4 ms
 przy 29.6 FPS — czyli **na limicie 30 FPS**. Przy zdjętej geometrii i zdjętych
-siedmiu etapach GPU ma zapas, a ogranicza nas własny cap.
+siedmiu etapach GPU ma zapas.
+
+### Skąd bierze się te 30 FPS
+
+Cap **jest nasz i siedzi w `Gothic.ini`**: `[ENGINE] zMaxFpsMode=1`, zasiewany
+przez profil Androida (`gothic.cpp:146/167/230`). Na Androidzie
+`fpsLimits[] = {0,30,60}` (`mainwindow.cpp:517`), a egzekucja to
+`sleep_until(androidFrameStart + period)` w pętli klatki. Drugiego limitu nie ma.
+
+**Ale zdjęcie go nic nie zmienia.** Przy `zMaxFpsMode=0` (potwierdzone w
+`PERF-CFG`: `fps_limit=0`) podłoga to nadal **33.2–33.6 ms przy 29.6–29.9 FPS**;
+zmienia się tylko to, gdzie stoimy: `present_p95` rośnie z ~4 ms do **19–20 ms**,
+bo czekanie przenosi się ze `sleep_until` do prezentacji. 33.3 ms to dokładnie
+**dwa okresy vsync na panelu 60 Hz**.
+
+Wnioski:
+- Pomiar podłogi **nie był zafałszowany** — 33.4 (z capem) vs 33.2 (bez) to ta
+  sama liczba. Wniosek „trzeba zdjąć ~32 ms GPU" stoi.
+- Przy celu 30 FPS cap jest **nieszkodliwy**; miałby znaczenie dopiero, gdybyśmy
+  celowali w 60.
+- Tym, co przy podłodze blokuje 60 FPS, jest **CPU (~14 ms)**, nie GPU —
+  co czyni Etap 4 (tick NPC) warunkiem jakiegokolwiek przyszłego celu 60 FPS.
 
 ## 3. Gdzie idzie te 51 ms GPU
 
