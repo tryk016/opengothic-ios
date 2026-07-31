@@ -59,6 +59,8 @@ class Renderer final {
       PS_Translucent   = 1u<<6,  // water, translucent, reflections
       PS_SkyLut        = 1u<<7,  // per-frame skyViewLut + skyViewCldLut recompute
       PS_SkyDraw       = 1u<<8,  // drawSky
+      PS_Reflections   = 1u<<9,  // drawReflections alone (full-screen, currently ungated)
+      PS_Water         = 1u<<10, // drawGWater alone (its own render pass + gbuf clears)
       };
     static uint32_t passSkipMask();
 
