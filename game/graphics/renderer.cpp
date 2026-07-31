@@ -952,7 +952,7 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
 
   stashSceneAux(cmd);
 
-  if(!(skip & PS_Translucent))
+  if(!(skip & (PS_Translucent|PS_Water)))
     drawGWater(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}}, {zbuffer, Tempest::Preserve, Tempest::Preserve});
@@ -973,7 +973,7 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   drawRayQueryDbg(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}});
-  if(!(skip & PS_Translucent))
+  if(!(skip & (PS_Translucent|PS_Reflections)))
     drawReflections(cmd, *wview);
   if(camera->isInWater()) {
     cmd.setDebugMarker("Underwater");
