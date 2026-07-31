@@ -153,3 +153,111 @@ bezpieczny mobilny wariant HiZ/depth oraz pełny wariant direct-light bez map
 cieni, ale każdy wymaga testu poprawności oświetlenia, głębi, GI, fog i
 lifecycle. Stałe 30 FPS nie mogą być kryterium zaliczone na podstawie samego
 menu albo licznika bez pomiaru p95 w świecie.
+
+---
+
+## Uzupełnienie 2026-07-31 — pomiary kompozytora i kwantyzacja vsync
+
+Wszystkie liczby poniżej pochodzą z `dumpsys SurfaceFlinger` na Tab A9 podczas
+gry (scena pokoju Xardasa) oraz z linii `PERF v=1` tej samej sesji.
+
+### Kompozycja jest w 100% po stronie GPU
+
+```
+totalFrames = 329   clientCompositionFrames = 329   clientCompositionReusedFrames = 0
+usesDeviceComposition = false   usesClientComposition = true
+warstwa gry: CLIENT | ROT_90 | displayFrame 800x1340 | sourceCrop 1340x800
+```
+
+SurfaceFlinger komponuje **każdą** klatkę gry passem GPU na tym samym
+Mali-G57, zamiast oddać warstwę sprzętowemu kompozytorowi. Ta praca nie
+znajduje się w buforze komend aplikacji, więc żaden wewnętrzny timer GPU jej
+nie zmierzy, a jej koszt trafia do `cpu_present_p95_ms`.
+
+Bezpośrednia przyczyna niezdatności do overlayu jest geometryczna: bufor gry ma
+1340x800, a display frame 800x1340.
+
+### Hipoteza „obrót kompozytora kosztuje” — ODRZUCONA
+
+Eksperyment: build bez patcha `preTransform=IDENTITY` (commit `27e4ff91`,
+cofnięty w `534da025`). Kompozytor przestaje obracać, obraz prezentuje się
+bokiem, ale praca GPU gry jest bajt w bajt ta sama.
+
+| Wariant | frame_p50 | FPS | kompozycja |
+|---|---:|---:|---|
+| Baseline (`preTransform=IDENTITY`, kompozytor obraca) | 61,36 ms | 16,27 | CLIENT 329/329 |
+| Bez obrotu (`preTransform=currentTransform`) | 64,38 ms | 15,50 | CLIENT 287/287 |
+
+Zdjęcie obrotu **nie poprawiło** czasu klatki — wynik jest nieznacznie gorszy.
+Kompozycja pozostała w 100% CLIENT, bo niezgodność geometrii bufora i display
+frame trwa niezależnie od deklarowanej transformacji.
+
+Wniosek: sam obrót nie jest istotnym kosztem. **Nie zostało natomiast
+zmierzone**, ile kosztuje kompozycja CLIENT jako taka, ponieważ w żadnym
+wariancie nie udało się uzyskać kompozycji DEVICE. Wymagałaby ona prawdziwej
+pre-rotacji (render do bufora zgodnego z panelem), a wobec powyższego wyniku
+nie ma podstaw, by oczekiwać po niej dużego zysku.
+
+### Czas klatki jest skwantowany do vsync — to unieważnia wcześniejsze werdykty
+
+Panel: 800x1340, **60 Hz**, vsync 16,67 ms. Histogram present-to-present
+warstwy gry (800 klatek, `droppedFrames = 0`, `averageFPS = 15,997`):
+
+```
+66 ms = 630 klatek   (4 x vsync)
+48 ms = 143 klatek   (3 x vsync)
+50 ms = 22,  16 ms = 5,  32 ms = 1
+```
+
+Klatki lądują wyłącznie na wielokrotnościach vsync. Oznacza to, że **oszczędność
+kilku milisekund jest w FPS niewidoczna**, dopóki nie przekroczy progu koszyka.
+
+To lepiej tłumaczy wcześniejsze wyniki niż dotychczasowa interpretacja.
+Zapisano tam, że half resolution, niższa rozdzielczość map cieni i krótszy far
+plane „nie poprawiły” sceny. Poprawnie brzmi to: **nie przekroczyły progu
+vsync**. Nie wynika z tego, że nie zmniejszyły kosztu. Wyłączenie map cieni
+zadziałało (16 -> 22,7 FPS), ponieważ jako jedyne próg przekroczyło.
+
+**Konsekwencja metodyczna: mierzyć czas, nie FPS.** Progi dla tego panelu:
+< 50 ms daje 20 FPS, < 33,3 ms daje 30 FPS.
+
+Aplikacja nie zgłasza też preferencji odświeżania
+(`requestedFrameRate: {0.00 Hz}`) — nie zbadano, czy `Surface.setFrameRate`
+cokolwiek tu zmienia.
+
+### Dlaczego nie powstały timestampy GPU per pass
+
+Projekt (timestamp na istniejących `setDebugMarker`) został sprawdzony pod
+kątem wykonalności i jest wykonalny: pula zapytań mieści się w cyklu życia
+`VCommandBuffer`, reset legalnie ląduje w `begin()`, a fence slotu pozwala
+czytać wyniki bez stalla. Oba urządzenia wspierają timestampy (Mali 76,92 ns na
+takt, 64 bity; Adreno 52,08 ns, 48 bitów).
+
+Adwersaryjna krytyka wykazała jednak, że **liczby byłyby mylące**:
+
+- passy, o które chodzi (`DirectSunLight`, `AmbientLight`, `Point lights`,
+  `Sky`), są znacznikowane **wewnątrz jednego render passa**; na GPU
+  kafelkowym praca jest wykonywana kafel po kaflu i „moment pomiędzy nimi” nie
+  istnieje;
+- znaczniki stoją niekonsekwentnie po obu stronach `setFramebuffer`, więc koszt
+  load/store kafla trafia raz do passa własnego, raz do poprzedniego;
+- czas w milisekundach nie rozdziela pracy geometrycznej od fragmentowej, a to
+  jest dokładnie ten podział, od którego zależy wybór między korektą obecnego
+  renderera a przepisaniem na forward.
+
+Wiarygodną liczbą z tego mechanizmu byłby wyłącznie `gpu_span_ms` (pierwszy do
+ostatniego znacznika), czyli łączny czas zajętości GPU do zestawienia z okresem
+klatki. Sam ranking passów wymagałby wcześniej normalizacji położenia
+znaczników względem `setFramebuffer`.
+
+### Rekomendowany następny krok
+
+Eksperymenty ablacyjne, każdy jako osobny build raportujący istniejące
+`frame_p50_ms`, bez nowego kodu pomiarowego:
+
+1. render świata do scyzoryka 64x64 — zabija pracę fragmentową, zostawia
+   geometrię, binning i culling; rozdziela dwie główne hipotezy kosztu;
+2. kolejne ablacje pojedynczych passów, zawsze z kontrolą poprawności obrazu.
+
+Wynik należy odczytywać w milisekundach i odnosić do progów 50 ms i 33,3 ms,
+nie do samego licznika FPS.
