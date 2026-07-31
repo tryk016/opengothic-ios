@@ -744,43 +744,4 @@ else
   fi
 fi
 
-# --------------------------------------------------------------------------
-# (h) Skip the driver's shader optimizer on Android.
-#
-# Adreno 6xx (measured: Adreno 619, Samsung blob 512.548.0, Vulkan 1.3.128)
-# SIGSEGVs inside libllvm-glnext.so -- the driver's LLVM-based shader
-# optimizer -- from vkCreateGraphicsPipelines, deterministically, on the first
-# textured material pipeline of a world. Eleven source-level hypotheses were
-# falsified (image arrays of every shape, combined vs separate sampler, driver
-# shader-cache wipe, spirv-opt rewrite, scalar slot descriptors, minimal
-# fragment modules, depth-only pipelines); neutralising one pipeline just moves
-# the crash to the next material pipeline, so it is the pipeline CLASS, not one
-# shader. Since the fault is inside the optimizer, ask the driver not to run it.
-#
-# Trade-off: unoptimized pipelines can be slower. Mali is the performance
-# target and is GPU-bound, so this must be measured there before it stays --
-# if it costs Mali frame time it should become Adreno-only (vendorId 0x5143).
-#
-# See docs/superpowers/reports/2026-07-17-adreno-compiler-crash-investigation.md
-# (step 3 of its "next useful stage" list).
-# --------------------------------------------------------------------------
-
-VP="$ROOT/lib/Tempest/Engine/gapi/vulkan/vpipeline.cpp"
-if [ ! -f "$VP" ]; then
-  echo "ERROR: not found: $VP" >&2
-  exit 1
-fi
-
-if grep -q 'DISABLE_OPTIMIZATION' "$VP"; then
-  echo "skip: vpipeline.cpp disable-optimization (already patched)"
-else
-  perl -0777 -pi -e 's/(  pipelineInfo\.basePipelineHandle  = VK_NULL_HANDLE; \/\/ TODO: dummy default pso\r?\n)/${1}#if defined(__ANDROID__)\n  \/\/ Adreno 6xx (Samsung blob 512.548.0) SIGSEGVs inside libllvm-glnext -- the\n  \/\/ driver\x27s LLVM shader optimizer -- during vkCreateGraphicsPipelines for the\n  \/\/ first textured material pipeline. Asking the driver to skip its optimizer\n  \/\/ passes is the cheapest possible way around a compiler-side bug.\n  pipelineInfo.flags               = VK_PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT;\n#endif\n/' "$VP"
-  if [ "$(grep -c 'DISABLE_OPTIMIZATION' "$VP")" = "1" ]; then
-    echo "patched: vpipeline.cpp disable-optimization (Android graphics pipelines)"
-  else
-    echo "ERROR: failed to patch vpipeline.cpp disable-optimization (expected 1 hit, got $(grep -c 'DISABLE_OPTIMIZATION' "$VP"))" >&2
-    exit 1
-  fi
-fi
-
 echo "apply-patches.sh: done"
