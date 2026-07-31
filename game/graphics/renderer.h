@@ -63,6 +63,7 @@ class Renderer final {
       PS_Water         = 1u<<10, // drawGWater alone (its own render pass + gbuf clears)
       };
     static uint32_t passSkipMask();
+    int             hasWaterLogged = -1;
 
     Tempest::Size internalResolution() const;
     float         internalResolutionScale() const;

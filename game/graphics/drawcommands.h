@@ -63,6 +63,8 @@ class DrawCommands {
 
     void     drawVsm(Tempest::Encoder<Tempest::CommandBuffer>& cmd);
 
+    bool     hasWater() const;
+
   private:
     enum TaskLinkpackage : uint8_t {
       T_Scene      = 0,

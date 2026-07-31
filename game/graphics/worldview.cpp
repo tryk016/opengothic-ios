@@ -147,6 +147,10 @@ void WorldView::drawGBuffer(Tempest::Encoder<CommandBuffer>& cmd, uint8_t fId) {
   pfxGroup.drawGBuffer(cmd, fId);
   }
 
+bool WorldView::hasWater() const {
+  return visuals.hasWater();
+  }
+
 void WorldView::drawWater(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {
   visuals.drawWater(cmd);
   }

@@ -571,6 +571,10 @@ void VisualObjects::drawTranslucent(Tempest::Encoder<Tempest::CommandBuffer>& cm
   drawCmd.drawCommon(cmd, SceneGlobals::V_Main, Material::Transparent);
   }
 
+bool VisualObjects::hasWater() const {
+  return drawCmd.hasWater();
+  }
+
 void VisualObjects::drawWater(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {
   // return;
   drawCmd.drawCommon(cmd, SceneGlobals::V_Main, Material::Water);

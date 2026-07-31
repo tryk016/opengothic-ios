@@ -909,6 +909,11 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
 
   const uint32_t skip = passSkipMask();
   const bool     hiZ  = !(skip & PS_HiZ);
+  const bool     hasWater = wview->hasWater();
+  if(hasWaterLogged!=int(hasWater)) {
+    hasWaterLogged = int(hasWater);
+    Log::i("[water] world has water draw commands: ",hasWater ? 1 : 0);
+    }
 
   wview->visibilityPass(cmd, 0, hiZ);
   prepareSky(cmd,*wview);
@@ -952,7 +957,13 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
 
   stashSceneAux(cmd);
 
-  if(!(skip & (PS_Translucent|PS_Water)))
+  // drawGWater owns its own render pass and clears gbufDiffuse/gbufNormal to
+  // zero so drawReflections can tell water pixels apart. On a tiler that is a
+  // flush plus clear and store of two G-buffer targets - measured 2.5 ms -
+  // paid every frame even where the world has no water at all. Skipping the
+  // clear is only safe if nothing afterwards reads those targets, and
+  // drawReflections is their sole remaining consumer, so the two go together.
+  if(hasWater && !(skip & (PS_Translucent|PS_Water)))
     drawGWater(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}}, {zbuffer, Tempest::Preserve, Tempest::Preserve});
@@ -973,7 +984,7 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   drawRayQueryDbg(cmd, *wview);
 
   cmd.setFramebuffer({{sceneLinear, Tempest::Preserve, Tempest::Preserve}});
-  if(!(skip & (PS_Translucent|PS_Reflections)))
+  if(hasWater && !(skip & (PS_Translucent|PS_Reflections)))
     drawReflections(cmd, *wview);
   if(camera->isInWater()) {
     cmd.setDebugMarker("Underwater");

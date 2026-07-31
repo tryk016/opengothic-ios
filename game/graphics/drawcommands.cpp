@@ -80,6 +80,17 @@ uint32_t DrawCommands::primCap() {
   return cap;
   }
 
+bool DrawCommands::hasWater() const {
+  // 23 draw commands in a loaded world, so this is free. Conservative by
+  // construction: it only reports "no water" when the world has not allocated a
+  // single water meshlet slot, never based on what happens to be in frustum.
+  for(auto& i:cmd) {
+    if(i.alpha==Material::Water && i.maxPayload>0)
+      return true;
+    }
+  return false;
+  }
+
 bool DrawCommands::isViewEnabled(SceneGlobals::VisCamera viewport) const {
   if(viewport==SceneGlobals::V_Vsm && !(vsmSupported && scene.vsmEnabled))
     return false;
