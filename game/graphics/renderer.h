@@ -57,6 +57,8 @@ class Renderer final {
       PS_Aa            = 1u<<4,  // CMAA2 -> plain tonemapping
       PS_ShadowResolve = 1u<<5,
       PS_Translucent   = 1u<<6,  // water, translucent, reflections
+      PS_SkyLut        = 1u<<7,  // per-frame skyViewLut + skyViewCldLut recompute
+      PS_SkyDraw       = 1u<<8,  // drawSky
       };
     static uint32_t passSkipMask();
 

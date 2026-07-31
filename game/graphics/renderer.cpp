@@ -746,6 +746,13 @@ void Renderer::prepareSky(Tempest::Encoder<Tempest::CommandBuffer>& cmd, WorldVi
     cmd.draw(nullptr, 0, 3);
     }
 
+  // Everything below is recomputed every single frame regardless of what is on
+  // screen: viewLut is 128x64 and viewCldLut 512x256 RGBA32F, both independent
+  // of the render resolution. Indoors the sky is not even visible and we still
+  // pay in full -- PS_SkyLut exists to price that.
+  if(passSkipMask() & PS_SkyLut)
+    return;
+
   auto sz = Vec2(float(sky.viewLut.w()), float(sky.viewLut.h()));
   cmd.setFramebuffer({{sky.viewLut, Tempest::Discard, Tempest::Preserve}});
   cmd.setBinding(0, scene.uboGlobal[SceneGlobals::V_Main]);
@@ -939,7 +946,8 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   drawAmbient(cmd,*wview);
   if(!(skip & PS_Lights))
     drawLights(cmd,*wview);
-  drawSky(cmd,*wview);
+  if(!(skip & PS_SkyDraw))
+    drawSky(cmd,*wview);
 
   stashSceneAux(cmd);
 
