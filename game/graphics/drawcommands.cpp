@@ -64,12 +64,31 @@ DrawCommands::DrawCommands(VisualObjects& owner, DrawBuckets& buckets, DrawClust
 DrawCommands::~DrawCommands() {
   }
 
+uint32_t DrawCommands::primCap() {
+  // Measurement knob, read once per process: see cluster_init.comp. 64 is the
+  // real meshlet size and the only value that renders correctly; anything lower
+  // exists solely to scale geometry work for an A/B and is read at startup so a
+  // sweep is "edit Gothic.ini, restart" rather than a rebuild per data point.
+  static const uint32_t cap = [](){
+    const int v = Gothic::settingsGetI("INTERNAL","androidPrimCap");
+    if(v<1 || v>int(PackedMesh::MaxPrim))
+      return uint32_t(PackedMesh::MaxPrim);
+    if(v!=int(PackedMesh::MaxPrim))
+      Tempest::Log::i("androidPrimCap=",v," - geometry is deliberately truncated, measurement build only");
+    return uint32_t(v);
+    }();
+  return cap;
+  }
+
 bool DrawCommands::isViewEnabled(SceneGlobals::VisCamera viewport) const {
   if(viewport==SceneGlobals::V_Vsm && !(vsmSupported && scene.vsmEnabled))
     return false;
-  if(viewport==SceneGlobals::V_Shadow0 && scene.shadowMap[0]->size()==Size(1,1))
+  // shadowMap[i] is null whenever Renderer left that cascade unallocated (vsm,
+  // rtsm, or the androidShadowSkip measurement knob). SceneGlobals already
+  // treats null as "no shadowmap"; this used to dereference it.
+  if(viewport==SceneGlobals::V_Shadow0 && (scene.shadowMap[0]==nullptr || scene.shadowMap[0]->size()==Size(1,1)))
     return false;
-  if(viewport==SceneGlobals::V_Shadow1 && scene.shadowMap[1]->size()==Size(1,1))
+  if(viewport==SceneGlobals::V_Shadow1 && (scene.shadowMap[1]==nullptr || scene.shadowMap[1]->size()==Size(1,1)))
     return false;
   return true;
   }
@@ -215,6 +234,11 @@ void DrawCommands::commit(Encoder<CommandBuffer>& enc) {
   totalPayload = (totalPayload + 0xFF) & ~size_t(0xFF);
   const size_t visClustersSz = totalPayload*sizeof(uint32_t)*4;
 
+  // Geometry budget, logged on change only (commit() is dirty-gated). Each
+  // meshlet slot that survives culling costs primCap*3 vertex invocations in
+  // every enabled view, so these two numbers bound the vertex work per frame.
+  Log::i("geometry: drawCmd=",cmd.size()," meshletSlots=",totalPayload," clusters=",clusters.size());
+
   auto& v      = views[SceneGlobals::V_Main];
   bool  cmdChg = needtoReallocate(v.indirectCmd, sizeof(IndirectCmd)*cmd.size());
   bool  visChg = needtoReallocate(v.visClusters, visClustersSz);
@@ -273,14 +297,16 @@ void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
 
   cmd.setFramebuffer({});
   if(pass==0) {
+    struct ClusterInitPush { uint32_t isMeshShader; uint32_t primCap; } push = {};
+    push.isMeshShader = (Gothic::options().doMeshShading ? 1 : 0);
+    push.primCap      = primCap();
     for(auto& v:views) {
       if(this->cmd.empty())
         continue;
       if(!isViewEnabled(v.viewport))
         continue;
-      const uint32_t isMeshShader = (Gothic::options().doMeshShading ? 1 : 0);
       cmd.setBinding(T_Indirect, v.indirectCmd);
-      cmd.setPushData(&isMeshShader, sizeof(isMeshShader));
+      cmd.setPushData(push);
       cmd.setPipeline(Shaders::inst().clusterInit);
       cmd.dispatchThreads(this->cmd.size());
       }

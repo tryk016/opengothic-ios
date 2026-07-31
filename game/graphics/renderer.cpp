@@ -621,8 +621,20 @@ void Renderer::resetShadowmap() {
   for(int i=0; i<Resources::ShadowLayers; ++i)
     Resources::recycle(std::move(shadowMap[i]));
 
+  // [INTERNAL] androidShadowSkip: measurement knob, counts near cascades to
+  // leave unallocated (0 = default). An unallocated cascade is the engine's own
+  // "no shadowmap" state, so visibility, draw and resolve all skip it together
+  // -- that is what makes the saving a clean read of one cascade's geometry
+  // cost. Cascade 1 is never skipped here: drawSky and the fog occlusion pass
+  // bind shadowMap[1] unconditionally.
+  int shadowSkip = Gothic::settingsGetI("INTERNAL","androidShadowSkip");
+  if(shadowSkip<0 || shadowSkip>=Resources::ShadowLayers)
+    shadowSkip = 0;
+
   const bool forceSm1 = (settings.giMethod==GiMethod::Probes || settings.pathTraceEnabled || sky.quality==PathTrace);
   for(int i=0; i<Resources::ShadowLayers; ++i) {
+    if(i<shadowSkip)
+      continue;
     if(!(i==1 && forceSm1)) {
       if(settings.vsmEnabled && !(settings.rtsmEnabled && i==1))
         continue; //TODO: support vsm in gi code
@@ -843,8 +855,12 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   static bool updFr = true;
   if(updFr){
     if(wview->mainLight().dir().y>Camera::minShadowY) {
-      frustrum[SceneGlobals::V_Shadow0].make(shadowMatrix[0],shadowMap[0].w(),shadowMap[0].h());
-      frustrum[SceneGlobals::V_Shadow1].make(shadowMatrix[1],shadowMap[1].w(),shadowMap[1].h());
+      for(size_t i=0; i<Resources::ShadowLayers; ++i) {
+        auto& f = frustrum[SceneGlobals::V_Shadow0+i];
+        if(shadowMap[i].isEmpty())
+          f.clear(); else
+          f.make(shadowMatrix[i],shadowMap[i].w(),shadowMap[i].h());
+        }
       } else {
       frustrum[SceneGlobals::V_Shadow0].clear();
       frustrum[SceneGlobals::V_Shadow1].clear();

@@ -113,6 +113,7 @@ class DrawCommands {
       };
 
     bool                     isViewEnabled(SceneGlobals::VisCamera v) const;
+    static uint32_t          primCap();
 
     void                     setBindings(Tempest::Encoder<Tempest::CommandBuffer>& cmd, const DrawCmd& cx, SceneGlobals::VisCamera viewId);
 

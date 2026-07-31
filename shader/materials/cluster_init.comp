@@ -8,6 +8,12 @@ layout(local_size_x = 32) in;
 
 layout(push_constant, std430) uniform UboPush {
   uint isMeshShader;
+  // [INTERNAL] androidPrimCap, clamped to 1..64 on the host. Measurement knob:
+  // the non-mesh-shader path spends exactly primCap*3 vertex invocations per
+  // meshlet, so lowering it scales geometry work linearly while leaving draw
+  // count, visibility compute and bindings untouched. Values below 64 drop
+  // triangles and corrupt the image on purpose -- never ship anything but 64.
+  uint primCap;
   };
 
 layout(binding = 4, std430) buffer IndirectBuf  { IndirectCmd cmd[];         };
@@ -17,7 +23,7 @@ void main() {
   if(i>=cmd.length())
     return;
 
-  cmd[i].vertexCount   = 64*3;
+  cmd[i].vertexCount   = primCap*3;
   cmd[i].instanceCount = 0;
   // cmd[i].firstVertex   = isMeshShader;
   // cmd[i].firstInstance = isMeshShader;
