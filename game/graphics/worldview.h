@@ -58,7 +58,7 @@ class WorldView {
     bool updateRtScene();
 
     void updateFrustrum (const Frustrum fr[]);
-    void visibilityPass (Tempest::Encoder<Tempest::CommandBuffer>& cmd, int pass);
+    void visibilityPass (Tempest::Encoder<Tempest::CommandBuffer>& cmd, int pass, bool hiZ);
     void visibilityVsm  (Tempest::Encoder<Tempest::CommandBuffer>& cmd);
 
     void drawHiZ        (Tempest::Encoder<Tempest::CommandBuffer>& cmd);

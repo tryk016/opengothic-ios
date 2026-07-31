@@ -120,9 +120,9 @@ void WorldView::updateFrustrum(const Frustrum fr[]) {
     sGlobal.frustrum[i] = fr[i];
   }
 
-void WorldView::visibilityPass(Tempest::Encoder<Tempest::CommandBuffer>& cmd, int pass) {
+void WorldView::visibilityPass(Tempest::Encoder<Tempest::CommandBuffer>& cmd, int pass, bool hiZ) {
   cmd.setDebugMarker("Visibility");
-  visuals.visibilityPass(cmd, pass);
+  visuals.visibilityPass(cmd, pass, hiZ);
   }
 
 void WorldView::visibilityVsm(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {

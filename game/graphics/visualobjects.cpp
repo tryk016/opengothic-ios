@@ -554,8 +554,8 @@ void VisualObjects::preFrameUpdateMorph() {
     }
   }
 
-void VisualObjects::visibilityPass(Tempest::Encoder<Tempest::CommandBuffer> &cmd, int pass) {
-  drawCmd.visibilityPass(cmd, pass);
+void VisualObjects::visibilityPass(Tempest::Encoder<Tempest::CommandBuffer> &cmd, int pass, bool hiZ) {
+  drawCmd.visibilityPass(cmd, pass, hiZ);
   }
 
 void VisualObjects::visibilityVsm(Tempest::Encoder<Tempest::CommandBuffer>& cmd) {

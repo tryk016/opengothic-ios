@@ -290,7 +290,7 @@ void DrawCommands::commit(Encoder<CommandBuffer>& enc) {
     }
   }
 
-void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
+void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass, bool hiZ) {
   static bool freeze = false;
   if(freeze)
     return;
@@ -320,6 +320,12 @@ void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
       continue;
     if(viewport==SceneGlobals::V_Vsm)
       continue;
+    // Without the depth prepass the hiZ pyramid holds stale or undefined data,
+    // so the occlusion test would cull by garbage and silently drop visible
+    // geometry. Culling off has to mean the frustum-only shader, not the hiZ
+    // shader against a hiZ nobody wrote.
+    if(viewport==SceneGlobals::V_HiZ && !hiZ)
+      continue;
     if(!isViewEnabled(viewport))
       continue;
 
@@ -329,7 +335,7 @@ void DrawCommands::visibilityPass(Encoder<CommandBuffer>& cmd, int pass) {
     push.znear        = scene.znear;
 
     auto* pso = &Shaders::inst().visibilityPassSh;
-    if(viewport==SceneGlobals::V_Main)
+    if(viewport==SceneGlobals::V_Main && hiZ)
       pso = &Shaders::inst().visibilityPassHiZ;
     else if(viewport==SceneGlobals::V_HiZ)
       pso = &Shaders::inst().visibilityPassHiZCr;

@@ -908,16 +908,17 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
     }
 
   const uint32_t skip = passSkipMask();
+  const bool     hiZ  = !(skip & PS_HiZ);
 
-  wview->visibilityPass(cmd, 0);
+  wview->visibilityPass(cmd, 0, hiZ);
   prepareSky(cmd,*wview);
 
-  if(!(skip & PS_HiZ)) {
+  if(hiZ) {
     drawHiZ (cmd, *wview);
     buildHiZ(cmd);
     }
 
-  wview->visibilityPass(cmd, 1);
+  wview->visibilityPass(cmd, 1, hiZ);
   drawGBuffer(cmd,fId,*wview);
 
   drawShadowMap(cmd,fId,*wview);
@@ -2673,8 +2674,10 @@ void Renderer::drawPathtrace(Tempest::Encoder<Tempest::CommandBuffer>& cmd, Worl
     pt.frame = Resources::device().attachment(Tempest::RGBA16F, sceneLinear.size());
     }
 
-  wview.visibilityPass(cmd, 0);
-  wview.visibilityPass(cmd, 1);
+  // Pathtrace never runs drawHiZ/buildHiZ, so it has no hiZ pyramid to test
+  // against; frustum-only is the conservative choice here.
+  wview.visibilityPass(cmd, 0, false);
+  wview.visibilityPass(cmd, 1, false);
 
   cmd.setFramebuffer({});
   prepareSky(cmd, wview);
