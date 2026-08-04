@@ -190,6 +190,10 @@ void WorldObjects::tick(uint64_t dt, uint64_t dtPlayer) {
       }
     }
 
+  collisionZn.erase(std::remove_if(collisionZn.begin(), collisionZn.end(), [](CollisionZone* b){
+    return b==nullptr;
+    }), collisionZn.end());
+
   for(CollisionZone* z:collisionZn)
     z->tick(dt);
 
@@ -376,9 +380,12 @@ void WorldObjects::removeNpc(Npc& npc) {
 
 void WorldObjects::tickNear(uint64_t /*dt*/) {
   for(Npc* i:npcNear) {
-    for(CollisionZone* z:collisionZn)
-      if(z->checkPos(*i))
+    // note collisionZn might be changed by callbacks - need to be careful
+    for(size_t r=0; r<collisionZn.size(); ++r) {
+      CollisionZone* z = collisionZn[r];
+      if(z!=nullptr && z->checkPos(*i))
         z->onIntersect(*i);
+      }
     }
   }
 
@@ -642,8 +649,7 @@ void WorldObjects::enableCollizionZone(CollisionZone& z) {
 void WorldObjects::disableCollizionZone(CollisionZone& z) {
   for(auto& i:collisionZn)
     if(i==&z) {
-      i = collisionZn.back();
-      collisionZn.pop_back();
+      i = nullptr;
       return;
       }
   }
@@ -931,6 +937,8 @@ void WorldObjects::drawVobBoxNpcNear(DbgPainter& p) const {
     }
 
   for(auto& i:collisionZn) {
+    if(i==nullptr)
+      continue;
     auto pos = i->position();
     if((pos-camera->originLwc()).quadLength() > nearDist)
       continue;
