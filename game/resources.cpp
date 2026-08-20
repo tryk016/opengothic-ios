@@ -167,7 +167,6 @@ void Resources::loadVdfs(const std::vector<std::u16string>& modvdfs, bool modFil
 
   for(auto& i:archives) {
     try {
-      auto in = zenkit::Read::from(i.name);
 #ifdef __IOS__
       // Speech*.vdf hold dialogue voice-over and are the largest volumes.
       // On <4 GB devices (iPhone 7/8) mounting them can OOM, so skip and keep
