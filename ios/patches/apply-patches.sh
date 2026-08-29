@@ -7,6 +7,32 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+TEMPEST_CMAKE="$ROOT/lib/Tempest/Engine/CMakeLists.txt"
+
+# Xcode 27 no longer accepts deployment targets below iOS 15. Tempest sets the
+# Apple deployment target to 12.0 in two directory scopes, which also changes
+# the target used by OpenAL's try_compile checks. Those checks then fail before
+# compiling and incorrectly report that standard headers such as pthread.h are
+# missing. Keep Tempest's existing macOS default, but preserve the deployment
+# target selected by the parent OpenGothic project for iOS.
+if [ ! -f "$TEMPEST_CMAKE" ]; then
+  echo "ERROR: not found: $TEMPEST_CMAKE" >&2
+  exit 1
+fi
+if [ "$(grep -c 'keep-parent-ios-deployment-target' "$TEMPEST_CMAKE" || true)" -eq 2 ]; then
+  echo "skip: Tempest iOS deployment target (already patched)"
+else
+  perl -0777 -pi -e \
+    's|^(\s*)set\(CMAKE_OSX_DEPLOYMENT_TARGET 12\.0\)$|${1}if(NOT IOS)\n${1}  set(CMAKE_OSX_DEPLOYMENT_TARGET 12.0)\n${1}endif() # keep-parent-ios-deployment-target|mg' \
+    "$TEMPEST_CMAKE"
+  if [ "$(grep -c 'keep-parent-ios-deployment-target' "$TEMPEST_CMAKE" || true)" -eq 2 ]; then
+    echo "patched: Tempest preserves parent iOS deployment target"
+  else
+    echo "ERROR: failed to patch Tempest iOS deployment target" >&2
+    exit 1
+  fi
+fi
+
 VC="$ROOT/lib/Tempest/Engine/system/api/iosapi.mm"
 
 # Fix: ViewController -init must call [super init]. Without it the view
