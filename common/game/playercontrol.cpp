@@ -1,5 +1,6 @@
 #include "playercontrol.h"
 
+#include <algorithm>
 #include <cmath>
 
 #include "world/objects/npc.h"
@@ -9,6 +10,15 @@
 #include "ui/dialogmenu.h"
 #include "ui/inventorymenu.h"
 #include "gothic.h"
+
+namespace {
+bool isPadCombatAction(KeyCodec::Action a) {
+  using A = KeyCodec::Action;
+  return a==A::PadAttack      || a==A::PadAim       ||
+         a==A::PadAttackLeft  || a==A::PadAttackRight ||
+         a==A::PadSpecial     || a==A::Parade;
+  }
+}
 
 PlayerControl::PlayerControl(DialogMenu& dlg, InventoryMenu &inv)
   :dlg(dlg),inv(inv) {
@@ -109,6 +119,12 @@ void PlayerControl::onKeyPressed(KeyCodec::Action a, Tempest::KeyEvent::KeyType 
       ctrl[Action::K_ENTER] = true;
     }
 
+  if(isPadCombatAction(a)) {
+    ctrl[a] = true;
+    rebuildPadCombatAction(ws);
+    return;
+    }
+
   // this odd behaviour is from original game, seem more like a bug
   // const bool actTunneling = (pl!=nullptr && pl->isAttackAnim());
   const bool actTunneling = false;
@@ -145,10 +161,6 @@ void PlayerControl::onKeyPressed(KeyCodec::Action a, Tempest::KeyEvent::KeyType 
             fk = ActForward;
           }
         }
-      }
-    if(ws==WeaponState::Fist || ws==WeaponState::W1H || ws==WeaponState::W2H) {
-      if(a==Action::Parade)
-        fk = ActBack;
       }
     if(ws!=WeaponState::NoWeapon && !pl->hasState(BS_RUN)) {
       if(a==Action::ActionLeft)
@@ -203,9 +215,17 @@ void PlayerControl::onKeyReleased(KeyCodec::Action a, KeyCodec::Mapping mapping)
   ctrl[a] = false;
 
   handleMovementAction(KeyCodec::ActionMapping{a, mapping}, false);
+  if(a==KeyCodec::ActionGeneric && !ctrl[Action::PadSpecial])
+    ctrl[Action::Forward] = movement.forwardBackward.value()>0.f;
 
   auto w  = Gothic::inst().world();
   auto pl = w ? w->player() : nullptr;
+  auto ws = pl==nullptr ? WeaponState::NoWeapon : pl->weaponState();
+
+  if(isPadCombatAction(a)) {
+    rebuildPadCombatAction(ws);
+    return;
+    }
 
   if(a==KeyCodec::Map && pl!=nullptr) {
     w->script().playerHotKeyScreenMap(*pl);
@@ -217,13 +237,50 @@ void PlayerControl::onKeyReleased(KeyCodec::Action a, KeyCodec::Mapping mapping)
     w->script().playerHotLamePotion(*pl);
     }
 
-  auto ws = pl==nullptr ? WeaponState::NoWeapon : pl->weaponState();
   if(ws==WeaponState::Bow || ws==WeaponState::CBow || ws==WeaponState::Mage) {
     if(a==KeyCodec::ActionGeneric || (!g2Ctrl && ws==WeaponState::Mage && a==KeyCodec::Forward))
       std::memset(actrl,0,sizeof(actrl));
     } else {
     std::memset(actrl,0,sizeof(actrl));
     }
+  if(hasPadCombatAction())
+    rebuildPadCombatAction(ws);
+  }
+
+void PlayerControl::rebuildPadCombatAction(WeaponState ws) {
+  std::memset(actrl,0,sizeof(actrl));
+
+  // ActMove writes ctrl[Forward] while it is consumed. Once PadSpecial is no
+  // longer held, restore only the keyboard compatibility bit. Native pad axes
+  // are an independent per-frame source and must never leak into ctrl[].
+  if(!ctrl[Action::PadSpecial])
+    ctrl[Action::Forward] = movement.forwardBackward.value()>0.f;
+
+  const bool melee = ws==WeaponState::Fist ||
+                     ws==WeaponState::W1H  || ws==WeaponState::W2H;
+  const bool ranged = ws==WeaponState::Bow || ws==WeaponState::CBow;
+
+  // A stable priority makes overlapping controls deterministic. Releasing a
+  // higher-priority action rebuilds the lower-priority one that is still held
+  // (most importantly RT attack -> LT bow aim).
+  if(ctrl[Action::PadAttack] && ws!=WeaponState::NoWeapon)
+    actrl[ActForward] = true;
+  else if(ctrl[Action::PadSpecial] && melee)
+    actrl[ActMove] = true;
+  else if(ctrl[Action::PadAttackLeft] && melee)
+    actrl[ActLeft] = true;
+  else if(ctrl[Action::PadAttackRight] && melee)
+    actrl[ActRight] = true;
+  else if(ctrl[Action::Parade] && melee)
+    actrl[ActBack] = true;
+  else if(ctrl[Action::PadAim] && ranged)
+    actrl[ActGeneric] = true;
+  }
+
+bool PlayerControl::hasPadCombatAction() const {
+  return ctrl[Action::PadAttack]      || ctrl[Action::PadAim]       ||
+         ctrl[Action::PadAttackLeft]  || ctrl[Action::PadAttackRight] ||
+         ctrl[Action::PadSpecial]     || ctrl[Action::Parade];
   }
 
 auto PlayerControl::handleMovementAction(KeyCodec::ActionMapping actionMapping, bool pressed) -> void {
@@ -252,6 +309,41 @@ void PlayerControl::onRotateMouse(float dAngleX, float dAngleY) {
   rotMouseY += dAngleY;
   }
 
+void PlayerControl::setPadAxes(const PadAxes& axes) {
+  auto axis = [](float value) {
+    return std::isfinite(value) ? std::clamp(value,-1.f,1.f) : 0.f;
+    };
+  padAxes.move          = axis(axes.move);
+  padAxes.turn          = axis(axes.turn);
+  padAxes.lookYawRate   = axis(axes.lookYawRate);
+  padAxes.lookPitchRate = axis(axes.lookPitchRate);
+  }
+
+void PlayerControl::setGamepadWalk(bool enabled) {
+  if(gamepadWalkHeld==enabled)
+    return;
+
+  auto w  = Gothic::inst().world();
+  auto pl = w ? w->player() : nullptr;
+  if(enabled) {
+    gamepadWalkHeld  = true;
+    gamepadWalkNpc   = pl;
+    gamepadWalkOwned = pl!=nullptr &&
+                       (pl->walkMode()&WalkBit::WM_Walk)!=WalkBit::WM_Walk;
+    if(gamepadWalkOwned)
+      pl->setWalkMode(pl->walkMode()|WalkBit::WM_Walk);
+    return;
+    }
+
+  // Never dereference the remembered pointer: the old world may already have
+  // been unloaded. Only undo our bit when that same NPC is still current.
+  if(gamepadWalkOwned && pl!=nullptr && pl==gamepadWalkNpc)
+    pl->setWalkMode(pl->walkMode()&~WalkBit::WM_Walk);
+  gamepadWalkHeld  = false;
+  gamepadWalkOwned = false;
+  gamepadWalkNpc   = nullptr;
+  }
+
 void PlayerControl::drawVobRay(DbgPainter& p) const {
   auto w = Gothic::inst().world();
   if(w==nullptr || w->player()==nullptr)
@@ -270,8 +362,23 @@ void PlayerControl::drawVobRay(DbgPainter& p) const {
   }
 
 void PlayerControl::tickFocus() {
-  currentFocus = findFocus(&currentFocus);
-  setTarget(currentFocus.npc);
+  if(targetLock) {
+    // Keep the pinned npc as focus, ignoring aim-based switching, until it
+    // dies / leaves the world or the player toggles the lock off.
+    auto w      = Gothic::inst().world();
+    Npc* locked = (w!=nullptr) ? w->validateFocus(currentFocus).npc : nullptr;
+    if(locked!=nullptr && !locked->isDead()) {
+      currentFocus = Focus(*locked);
+      setTarget(currentFocus.npc);
+      } else {
+      targetLock   = false;
+      currentFocus = findFocus(&currentFocus);
+      setTarget(currentFocus.npc);
+      }
+    } else {
+    currentFocus = findFocus(&currentFocus);
+    setTarget(currentFocus.npc);
+    }
 
   if(!ctrl[Action::ActionGeneric])
     return;
@@ -302,6 +409,26 @@ void PlayerControl::actionFocus(Npc& other) {
 
 void PlayerControl::emptyFocus() {
   setTarget(nullptr);
+  }
+
+void PlayerControl::toggleTargetLock() {
+  if(targetLock) {
+    targetLock = false;
+    return;
+    }
+  // Lock only if we currently have a valid npc focus to pin.
+  if(currentFocus.npc!=nullptr)
+    targetLock = true;
+  }
+
+void PlayerControl::focusLeft() {
+  if(targetLock)
+    moveFocus(ActLeft);
+  }
+
+void PlayerControl::focusRight() {
+  if(targetLock)
+    moveFocus(ActRight);
   }
 
 Focus PlayerControl::focus() const {
@@ -437,10 +564,13 @@ bool PlayerControl::canInteract() const {
   }
 
 void PlayerControl::clearInput() {
+  setGamepadWalk(false);
   movement.reset();
   std::memset(ctrl, 0,sizeof(ctrl));
   std::memset(actrl,0,sizeof(actrl));
   std::memset(wctrl,0,sizeof(wctrl));
+  padAxes = {};
+  ++inputGen;
   }
 
 void PlayerControl::marvinF8(uint64_t dt) {
@@ -516,6 +646,22 @@ Focus PlayerControl::findFocus(const Focus* prev) const {
   return w->findFocus(Focus());
   }
 
+void PlayerControl::applyPadLook(uint64_t dt) {
+  if(padAxes.lookYawRate==0.f && padAxes.lookPitchRate==0.f)
+    return;
+
+  auto camera = Gothic::inst().camera();
+  if(camera==nullptr || camera->isCutscene() || Gothic::inst().isPause())
+    return;
+
+  const float frameMs = float(std::min<uint64_t>(dt,50));
+  const float yaw     = padAxes.lookYawRate*frameMs;
+  const float pitch   = padAxes.lookPitchRate*frameMs;
+  camera->onRotateMouse(Tempest::PointF(-pitch,yaw));
+  if(!camera->isFree())
+    onRotateMouse(yaw,pitch);
+  }
+
 bool PlayerControl::tickCameraMove(uint64_t dt) {
   auto w = Gothic::inst().world();
   if(w==nullptr)
@@ -526,7 +672,8 @@ bool PlayerControl::tickCameraMove(uint64_t dt) {
   if(camera==nullptr || (pl!=nullptr && !camera->isFree()))
     return false;
 
-  rotMouse = 0;
+  rotMouse  = 0;
+  rotMouseY = 0;
   if(ctrl[KeyCodec::Left] || (ctrl[KeyCodec::RotateL] && ctrl[KeyCodec::Jump])) {
     camera->moveLeft(dt);
     return true;
@@ -536,17 +683,18 @@ bool PlayerControl::tickCameraMove(uint64_t dt) {
     return true;
     }
 
-  auto turningVal = movement.turnRightLeft.value();
+  const float turningVal = turnInput();
   if(turningVal > 0.f)
-    camera->rotateRight(dt);
+    camera->rotateRight(uint64_t(float(dt)*turningVal));
   else if(turningVal < 0.f)
-    camera->rotateLeft(dt);
+    camera->rotateLeft(uint64_t(float(dt)*-turningVal));
 
-  auto forwardVal = movement.forwardBackward.value();
-  if(forwardVal > 0.f)
-    camera->moveForward(dt);
-  else if(forwardVal < 0.f)
-    camera->moveBack(dt);
+  const float forwardVal = forwardBackwardInput();
+  const uint64_t moveDt = uint64_t(float(dt)*std::abs(forwardVal));
+  if(forwardVal > 0.f && moveDt>0)
+    camera->moveForward(moveDt);
+  else if(forwardVal < 0.f && moveDt>0)
+    camera->moveBack(moveDt);
   return true;
   }
 
@@ -562,6 +710,8 @@ bool PlayerControl::tickMove(uint64_t dt) {
   if(w->isCutsceneLock())
     clearInput();
 
+  applyPadLook(dt);
+
   if(tickCameraMove(dt))
     return true;
 
@@ -573,10 +723,17 @@ bool PlayerControl::tickMove(uint64_t dt) {
   if(camera!=nullptr)
     camera->setLookBack(ctrl[Action::LookBack]);
 
-  if(pl==nullptr)
+  if(pl==nullptr) {
+    rotMouse  = 0;
+    rotMouseY = 0;
     return true;
+    }
 
   implMove(dt);
+  // Mouse/pad deltas belong to exactly one simulation tick. Some animation,
+  // interaction and AI paths return from implMove before consuming them.
+  rotMouse  = 0;
+  rotMouseY = 0;
 
   float runAngle = pl->runAngle();
   if(runAngle!=0.f || std::fabs(runAngleDest)>0.01f) {
@@ -595,7 +752,6 @@ bool PlayerControl::tickMove(uint64_t dt) {
       }
     }
 
-  rotMouseY = 0;
   return true;
   }
 
@@ -679,13 +835,14 @@ void PlayerControl::implMove(uint64_t dt) {
 
   int rotation = 0;
   if(allowRot) {
-    if(this->wantsToTurnLeft()) {
-      rot += rspeed;
+    const float turn = turnInput();
+    if(turn<0.f) {
+      rot += rspeed*-turn;
       rotation = -1;
       rotMouse=0;
       }
-    if(this->wantsToTurnRight()) {
-      rot -= rspeed;
+    if(turn>0.f) {
+      rot -= rspeed*turn;
       rotation = 1;
       rotMouse=0;
       }
@@ -941,7 +1098,8 @@ void PlayerControl::implMove(uint64_t dt) {
       pl.setAnim(ani);
     }
 
-  setAnimRotate(pl, rot, ani==Npc::Anim::Idle ? rotation : 0, movement.turnRightLeft.any(), dt);
+  const bool forceTurn = movement.turnRightLeft.any() || padAxes.turn!=0.f;
+  setAnimRotate(pl, rot, ani==Npc::Anim::Idle ? rotation : 0, forceTurn, dt);
   if(actrl[ActGeneric] || ani==Npc::Anim::MoveL || ani==Npc::Anim::MoveR || pl.isFinishingMove()) {
     processAutoRotate(pl,rot,dt);
     }

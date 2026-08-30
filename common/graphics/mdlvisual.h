@@ -14,6 +14,11 @@ class Item;
 
 class MdlVisual final {
   public:
+    enum class PoseUpdate : uint8_t {
+      Full,
+      EventsOnly,
+      };
+
     MdlVisual();
     MdlVisual(const MdlVisual&)=delete;
     MdlVisual(MdlVisual&&) = default;
@@ -74,7 +79,8 @@ class MdlVisual final {
     bool                           isUsingTorch() const;
 
     const Pose&                    pose() const { return *skInst; }
-    bool                           updateAnimation(Npc* npc, Interactive* mobsi, World& world, uint64_t dt, bool force);
+    bool                           updateAnimation(Npc* npc, Interactive* mobsi, World& world, uint64_t dt, bool force,
+                                                   PoseUpdate poseUpdate = PoseUpdate::Full);
     void                           processLayers  (World& world);
     bool                           processEvents(World& world, uint64_t &barrier, Animation::EvCount &ev);
     auto                           mapBone(const size_t boneId) const -> Tempest::Vec3;

@@ -3,6 +3,8 @@
 #include <Tempest/Application>
 #include <Tempest/Log>
 
+#include <algorithm>
+
 #include "world/objects/npc.h"
 #include "world/objects/interactive.h"
 #include "world/world.h"
@@ -16,6 +18,17 @@
 #include "utils/string_frm.h"
 
 using namespace Tempest;
+
+namespace {
+constexpr uint32_t drawDistanceFarPlane(int sightValue) {
+  return uint32_t(std::clamp(sightValue,0,14)+1)*20000u;
+  }
+
+static_assert(drawDistanceFarPlane(0)==20000u);
+static_assert(drawDistanceFarPlane(3)==80000u);
+static_assert(drawDistanceFarPlane(4)==100000u);
+static_assert(drawDistanceFarPlane(14)==300000u);
+}
 
 static float angleMod(float a) {
   a = std::fmod(a,360.f);
@@ -148,8 +161,19 @@ float Camera::zNear() const {
   }
 
 float Camera::zFar() const {
-  static float far = 100000.0f;
-  return far;
+  return float(configuredFarPlane());
+  }
+
+uint32_t Camera::configuredFarPlane() {
+#if defined(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
+  // MENUITEM_GRA_SIGHT_CHOICE stores an index: 0=20%, 1=40%, ...,
+  // 4=100%, ... 14=300%. Treat 100% as the historical 100000-unit plane.
+  return drawDistanceFarPlane(Gothic::settingsGetI("PERFORMANCE","sightValue"));
+#elif defined(OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000)
+  return 60000u;
+#else
+  return 100000u;
+#endif
   }
 
 void Camera::rotateLeft(uint64_t dt) {

@@ -21,6 +21,7 @@
 
 #include "utils/fileutil.h"
 #include "utils/inifile.h"
+#include "utils/exceptiondump.h"
 
 #include "commandline.h"
 #include "mainwindow.h"
@@ -109,10 +110,54 @@ Gothic::Gothic() {
   wrldDef = CommandLine::inst().wrldDef;
 
   baseIniFile.reset(new IniFile(nestedPath({u"system",u"Gothic.ini"},Dir::FT_File)));
-  iniFile    .reset(new IniFile(u"Gothic.ini"));
-  if(!iniFile->has("INTERNAL", "vidResIndex")) {
-    iniFile->set("INTERNAL", "vidResIndex", 0); // full-res
+#if defined(__IOS__)
+  const bool hasUserIni = FileUtil::exists(std::u16string(u"Gothic.ini"));
+#endif
+  iniFile.reset(new IniFile(u"Gothic.ini"));
+#if defined(__IOS__)
+  constexpr int iosProfileVersion = 3;
+  bool          iosProfileChanged = false;
+  if(!hasUserIni) {
+    // Keep the copied PC system/Gothic.ini untouched. This small writable
+    // overlay gives a fresh iOS install its device profile immediately.
+    iniFile->set("GAME",     "useQuickSaveKeys",  1);
+    iniFile->set("INTERNAL", "vidResIndex",       2);
+    iniFile->set("ENGINE",   "zCloudShadowScale", 0);
+    iniFile->set("ENGINE",   "shadowResolution", 1024);
+    iniFile->set("ENGINE",   "zMaxFps",           30);
+    iniFile->set("GAMEPAD",  "deadZone",          0.25f);
+    iniFile->set("GAMEPAD",  "analogDeadZone",    0.10f);
+    iniFile->set("GAMEPAD",  "analogEngageZone",  0.18f);
+    iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
+    iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
+    iniFile->set("GAMEPAD",  "triggerThreshold",  0.50f);
+    iniFile->set("GAMEPAD",  "lookSensitivity",   0.20f);
+    iniFile->set("GAMEPAD",  "invertY",           0);
+    iosProfileChanged = true;
     }
+  else if(iniFile->getI("INTERNAL","iosProfileVersion",0)<iosProfileVersion) {
+    // Upgrade only values that can be identified as the previous generated
+    // profile.
+    if(iniFile->getI("ENGINE","shadowResolution",-1)==512)
+      iniFile->set("ENGINE", "shadowResolution", 1024);
+    iosProfileChanged = true;
+    }
+  // Old iOS builds encoded Off/30/60 as an implementation-only mode. Migrate
+  // once, and never overwrite a real zMaxFps value from a user or mod.
+  if(!iniFile->has("ENGINE","zMaxFps")) {
+    constexpr int oldFpsModes[] = {0,30,60};
+    const int oldMode = std::clamp(iniFile->getI("ENGINE","zMaxFpsMode",1),0,2);
+    iniFile->set("ENGINE", "zMaxFps", oldFpsModes[oldMode]);
+    iosProfileChanged = true;
+    }
+  if(iosProfileChanged) {
+    iniFile->set("INTERNAL", "iosProfileVersion", iosProfileVersion);
+    iniFile->flush();
+    }
+#else
+  if(!iniFile->has("INTERNAL", "vidResIndex"))
+    iniFile->set("INTERNAL", "vidResIndex", 0); // full-res
+#endif
   {
   defaults.reset(new IniFile());
   defaults->set("GAME", "enableMouse",         1);
@@ -133,6 +178,10 @@ Gothic::Gothic() {
   defaults->set("GAME", "voice",    -1);
   defaults->set("GAME", "scaleVideos", 1);
 
+  defaults->set("GAMEPAD", "analogDeadZone", 0.10f);
+  defaults->set("GAMEPAD", "analogEngageZone", 0.18f);
+  defaults->set("GAMEPAD", "crossAxisGuard", 0.12f);
+
   defaults->set("SKY_OUTDOOR", "zSunName",   "unsun5.tga");
   defaults->set("SKY_OUTDOOR", "zSunSize",   200);
   defaults->set("SKY_OUTDOOR", "zSunAlpha",  230);
@@ -144,6 +193,11 @@ Gothic::Gothic() {
   defaults->set("ENGINE",       "zEnvMappingEnabled", 1); // reflections
   defaults->set("ENGINE",       "zCloudShadowScale", gpu.type==Tempest::DeviceType::Discrete); // ssao
   defaults->set("INTERNAL",     "vidResIndex", 0); // full-res
+#if defined(__IOS__)
+  // Default to the device-friendly 30 FPS, while DeviceSettings permits 0/60.
+  defaults->set("ENGINE",       "zMaxFps",           30);
+  defaults->set("ENGINE",       "shadowResolution", 1024);
+#endif
 
   defaults->set("VIDEO", "zVidBrightness", 0.5f);
   defaults->set("VIDEO", "zVidContrast",   0.5f);
@@ -575,6 +629,13 @@ void Gothic::implStartLoadSave(std::string_view banner,
         Tempest::Log::e("loading error: ", e.what());
         loadingFlag.compare_exchange_strong(curState,err);
         }
+      catch(...){
+        // The lambda is noexcept: any non-std exception (e.g. an Objective-C
+        // NSException on iOS) escaping here would std::terminate the whole app
+        // with no log at all. Catch, identify and fail the load/save instead.
+        Tempest::Log::e("loading error: ", ExceptionDump::describe(std::current_exception()));
+        loadingFlag.compare_exchange_strong(curState,err);
+        }
       if(curState==LoadState::Saving) {
         if(game!=nullptr)
           pendingGame = std::move(game);
@@ -945,6 +1006,11 @@ void Gothic::setupSettings() {
       continue;
     inventoryOrder.push_back(v);
     }
+
+  // User-toggleable on-screen FPS counter via Gothic.ini [GAME] showFpsCounter
+  // (benchmark mode still forces it on). Drawn by MainWindow when doFrate().
+  setFRate((settingsGetI("GAME","showFpsCounter")!=0) ||
+           CommandLine::inst().isBenchmarkMode()!=Benchmark::None);
   }
 
 std::unique_ptr<DocumentMenu::Show>& Gothic::getDocument(int id) {

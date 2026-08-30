@@ -230,6 +230,7 @@ add_shader(sky_exposure.comp         lighting/sky_exposure.comp)
 
 add_shader(tonemapping.frag          lighting/tonemapping.frag)
 add_shader(tonemapping_up.frag       lighting/tonemapping.frag -DUPSCALE)
+add_shader(metalfx_motion.frag       lighting/metalfx_motion.frag)
 
 add_shader(water_reflection.mesh     water/water_reflection.mesh)
 add_shader(water_reflection.frag     water/water_reflection.frag)
@@ -438,3 +439,58 @@ set_target_properties(
     ${PROJECT_NAME} PROPERTIES
     PUBLIC_HEADER ${HEADER}
     )
+
+# The iOS start screen only needs a tiny, capability-independent subset of the
+# game's shaders. Compile two capability-independent functions into a metallib at
+# build time so a fresh install does not have to feed their MSL source to Metal.
+# MtShader still keeps the normal SPIR-V -> MSL path as a compatibility fallback.
+# Bink deliberately stays on the runtime path: its unsized SSBO arrays depend on
+# Tempest's non-default MSL buffer-size binding and cannot use the CLI profile.
+if(IOS AND OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS)
+  find_program(OPENGOTHIC_SPIRV_CROSS_EXECUTABLE
+    NAMES spirv-cross
+    PATHS "/opt/homebrew/bin")
+  find_program(OPENGOTHIC_XCRUN_EXECUTABLE NAMES xcrun)
+
+  if(OPENGOTHIC_SPIRV_CROSS_EXECUTABLE AND OPENGOTHIC_XCRUN_EXECUTABLE)
+    set(IOS_STARTUP_DIR      "${PROJECT_BINARY_DIR}/ios-startup")
+    set(IOS_STARTUP_METALLIB "${IOS_STARTUP_DIR}/OpenGothicStartup.metallib")
+    set(IOS_STARTUP_TRIANGLE "${PROJECT_BINARY_DIR}/sprv/triangle.vert.sprv")
+    set(IOS_STARTUP_DOWNSCALE "${PROJECT_BINARY_DIR}/sprv/downscale.frag.sprv")
+    if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+      set(IOS_STARTUP_METAL_SDK "iphonesimulator")
+      set(IOS_STARTUP_METAL_TARGET "air64-apple-ios${CMAKE_OSX_DEPLOYMENT_TARGET}-simulator")
+    else()
+      set(IOS_STARTUP_METAL_SDK "iphoneos")
+      set(IOS_STARTUP_METAL_TARGET "air64-apple-ios${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    endif()
+
+    add_custom_command(
+      TARGET ${PROJECT_NAME} POST_BUILD
+      BYPRODUCTS
+        "${IOS_STARTUP_METALLIB}"
+        "${IOS_STARTUP_DIR}/triangle.metal"
+        "${IOS_STARTUP_DIR}/downscale.metal"
+        "${IOS_STARTUP_DIR}/triangle.air"
+        "${IOS_STARTUP_DIR}/downscale.air"
+      COMMAND "${CMAKE_COMMAND}"
+        "-DSTARTUP_DIR=${IOS_STARTUP_DIR}"
+        "-DSTARTUP_METALLIB=${IOS_STARTUP_METALLIB}"
+        "-DTRIANGLE_SPV=${IOS_STARTUP_TRIANGLE}"
+        "-DDOWNSCALE_SPV=${IOS_STARTUP_DOWNSCALE}"
+        "-DSPIRV_CROSS=${OPENGOTHIC_SPIRV_CROSS_EXECUTABLE}"
+        "-DXCRUN=${OPENGOTHIC_XCRUN_EXECUTABLE}"
+        "-DDEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}"
+        "-DMETAL_SDK=${IOS_STARTUP_METAL_SDK}"
+        "-DMETAL_TARGET=${IOS_STARTUP_METAL_TARGET}"
+        -P "${CMAKE_SOURCE_DIR}/shader/build_ios_startup_metallib.cmake"
+      COMMENT "Building the limited iOS startup Metal library"
+      VERBATIM)
+
+    set(OPENGOTHIC_IOS_STARTUP_METALLIB "${IOS_STARTUP_METALLIB}" PARENT_SCOPE)
+  else()
+    message(WARNING
+      "spirv-cross or xcrun was not found; the iOS startup metallib is disabled and runtime shader compilation remains active")
+    set(OPENGOTHIC_IOS_STARTUP_METALLIB "" PARENT_SCOPE)
+  endif()
+endif()

@@ -10,7 +10,7 @@
 #include "game/constants.h"
 
 class VersionInfo;
-class GothicNotFoundException : std::logic_error {
+class GothicNotFoundException : public std::logic_error {
   using logic_error::logic_error;
   };
 

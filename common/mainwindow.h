@@ -20,6 +20,8 @@
 #include <Tempest/Swapchain>
 
 #include <vector>
+#include <optional>
+#include <string>
 #include <thread>
 
 #include "world/world.h"
@@ -34,8 +36,13 @@
 #include "ui/menuroot.h"
 #include "ui/consolewidget.h"
 #include "ui/touchinput.h"
+#include "ui/gamepadinput.h"
+#if defined(__IOS__)
+#include "ui/devicesettings.h"
+#endif
 
 #include "utils/keycodec.h"
+#include "utils/safearea.h"
 #include "resources.h"
 
 class MenuRoot;
@@ -48,6 +55,35 @@ class MainWindow : public Tempest::Window {
     ~MainWindow() override;
 
     float uiScale() const;
+
+    // UI hooks shared by GamepadInput / TouchInput.
+    PadCtx padContext() const;                 // which context the pad routes to
+    void   dispatchKey(Tempest::KeyEvent& e);  // route a complete synthetic key tap
+    void   uiAction(KeyCodec::Action a);       // window-level Escape/Inventory/Log/Status
+
+#if defined(__MOBILE_PLATFORM__)
+    // Touch-overlay -> gamepad ring and inventory navigation bridges.
+    bool padRingOpen() const;
+    void padOpenWeaponsRing();
+    void padOpenItemRing();
+    void padRingAim(float nx, float ny);
+    void padRingCommit();
+    void padRingCancel();
+    void padPaintRing(Tempest::PaintEvent& e);
+    void padOpenMap();
+    bool padCharacterPageActive() const;
+    bool padCharacterNavigationActive() const;
+    void padCycleCharacterPage(int direction);
+    void padInventoryCategory(int direction);
+    std::optional<size_t> padInventorySelectedItem();
+    bool padVideoActive() const;               // an intro/cutscene bink is playing
+    void padSkipVideo();                        // skip it (mirrors desktop Esc)
+#endif
+#if defined(__IOS__)
+    // The only entry point for the native device-settings layer.
+    void openDeviceSettings();
+    bool deviceSettingsOpen() const;
+#endif
 
   private:
     void paintEvent     (Tempest::PaintEvent& event) override;
@@ -69,6 +105,9 @@ class MainWindow : public Tempest::Window {
     void paintFocus     (Tempest::Painter& p, Tempest::Rect rect);
 
     void drawBar(Tempest::Painter& p, const Tempest::Texture2d *bar, int x, int y, float v, Tempest::AlignFlag flg);
+#if defined(__MOBILE_PLATFORM__)
+    void drawPadHints(Tempest::Painter& p, float scale);
+#endif
     void drawMsg(Tempest::Painter& p);
     void drawProgress(Tempest::Painter& p, int x, int y, int w, int h, float v);
     void drawLoading (Tempest::Painter& p,int x,int y,int w,int h);
@@ -78,12 +117,17 @@ class MainWindow : public Tempest::Window {
     void startGame(std::string_view slot);
     void loadGame (std::string_view slot);
     void saveGame (std::string_view slot, std::string_view name);
+#if defined(__IOS__)
+    void processPendingSave();
+    void startPendingSave(Tempest::Pixmap&& preview);
+#endif
 
     void onVideo(std::string_view fname);
     void onStartLoading();
     void onWorldLoaded();
     void onSessionExit();
     void onBenchmarkFinished();
+    void finishStartup();
     void setGameImpl(std::unique_ptr<GameSession>&& w);
     void clearInput();
     void setFullscreen(bool fs);
@@ -100,6 +144,16 @@ class MainWindow : public Tempest::Window {
     void     updateAnimation(uint64_t dt);
     void     tickCamera(uint64_t dt);
     void     isDialogClosed(bool& ret);
+
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    void        logMemorySnapshot(const char* event);
+    void        processMemoryEvents();
+    const char* perfScene() const;
+    void        resetPerfWindow(uint64_t nowUs);
+    void        beginPerfFrame(uint64_t nowUs);
+    void        submitPerfFrame(uint64_t nowUs);
+    void        flushPerfWindow(uint64_t nowUs, bool force);
+#endif
 
     template<Tempest::KeyEvent::KeyType k>
     void     onMarvinKey();
@@ -139,6 +193,24 @@ class MainWindow : public Tempest::Window {
 
     const Tempest::Texture2d* saveback=nullptr;
 
+#if defined(__IOS__)
+    struct PendingSave final {
+      enum class Stage : uint8_t {
+        None,
+        CaptureRequested,
+        AwaitingGpu,
+        };
+
+      Stage               stage = Stage::None;
+      std::string         slot;
+      std::string         name;
+      Tempest::Attachment preview;
+      uint8_t             frameId = 0;
+
+      bool active() const { return stage!=Stage::None; }
+      } pendingSave;
+#endif
+
     bool                      mouseP[Tempest::MouseEvent::ButtonBack]={};
 
     KeyCodec                  keycodec;
@@ -150,15 +222,39 @@ class MainWindow : public Tempest::Window {
     DocumentMenu              document;
     ChapterScreen             chapter;
     ConsoleWidget             console;
+    PlayerControl             player;
 #if defined(__MOBILE_PLATFORM__)
     TouchInput                mobileUi;
+    GamepadInput              gamepad;
+    PadCtx                    lastPadCtx   = PadCtx::Loading;
+    uint64_t                  padHintUntil = 0;   // controls-help auto-hide time
+    int                       lastPlayerHp = -1;  // for damage haptics
+#endif
+#if defined(__IOS__)
+    DeviceSettings            deviceSettings;
 #endif
     RuntimeMode               runtimeMode = R_Normal;
+    Tempest::Timer            startupTimer;
+    SafeArea::Insets          safeArea;           // display cutouts, px; zero off-iOS
 
     Tempest::Widget*          uiKeyUp=nullptr;
     Tempest::Point            dMouse;
-    PlayerControl             player;
     uint64_t                  lastTick=0;
+
+#if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
+    struct PerfWindow final {
+      std::vector<uint32_t> frameUs;
+      std::vector<uint32_t> tickUs;
+      std::vector<uint32_t> animationUs;
+      std::vector<uint32_t> poseRefreshUs;
+      uint64_t              startedUs       = 0;
+      uint64_t              lastSubmittedUs = 0;
+      size_t                framesStarted   = 0;
+      size_t                framesSubmitted = 0;
+      size_t                fenceMisses     = 0;
+      const char*           scene           = "startup";
+      } perfWindow;
+#endif
 
     Tempest::Shortcut         funcKey[11];
     Tempest::Shortcut         displayPos;
@@ -177,5 +273,9 @@ class MainWindow : public Tempest::Window {
       };
     Fps           fps;
     BenchmarkData benchmark;
+    uint32_t      maxFpsTarget = 0;
     uint64_t      maxFpsInv = 0;
+#if defined(__IOS__)
+    uint32_t      iosFrameRateTarget = uint32_t(-1);
+#endif
   };

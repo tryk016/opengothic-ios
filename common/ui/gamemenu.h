@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include <Tempest/Widget>
 #include <Tempest/Texture2d>
 #include <Tempest/Timer>
@@ -28,6 +30,8 @@ class GameMenu : public Tempest::Widget {
     void setPlayer(const Npc& pl);
 
     void onKeyboard(KeyCodec::Action k);
+    bool onModalKeyboard(KeyCodec::Action k);
+    bool hasModalDialog() const;
     void onTick();
     void processMusicTheme();
 
@@ -75,10 +79,14 @@ class GameMenu : public Tempest::Widget {
 
     Item                                  hItems[zenkit::IMenu::item_count];
     Item*                                 ctrlInput = nullptr;
+    Item*                                 questListItem = nullptr;
+    Item*                                 questContentItem = nullptr;
+    uint32_t                              questListReturnItem = 0;
+    uint32_t                              questContentReturnItem = 0;
+    bool                                  questContentWasVisible = false;
     uint32_t                              curItem=0;
     bool                                  exitFlag=false;
     bool                                  closeFlag=false;
-
     KeyCodec::Action                      kClose = KeyCodec::Escape;
 
     void                                  drawItem(Tempest::Painter& p, Item& it);
@@ -89,6 +97,12 @@ class GameMenu : public Tempest::Widget {
     Item*                                 selectedItem();
     Item*                                 selectedNextItem(Item* cur);
     Item*                                 selectedContentItem(Item* it);
+    const QuestLog::Quest*                selectedQuest(const Item& list) const;
+    void                                  openQuestList(Item& list, uint32_t returnItem);
+    void                                  closeQuestList();
+    void                                  moveQuestList(int direction);
+    void                                  openQuestContent();
+    void                                  closeQuestContent();
     void                                  setSelection(int cur, int seek=1);
     void                                  initItems();
     void                                  getText(const Item &it, std::vector<char>& out);
@@ -118,7 +132,6 @@ class GameMenu : public Tempest::Widget {
     void                                  updateSavThumb(Item& sel);
     void                                  updateVideo();
     void                                  setDefaultKeys(std::string_view preset);
-
     static QuestStat                      toStatus(std::string_view str);
     static bool                           isCompatible(const QuestLog::Quest& q, QuestStat st);
     static int32_t                        numQuests(const QuestLog* q, QuestStat st);

@@ -1,187 +1,190 @@
-## OpenGothic
-Open source re-implementation of Gothic 2: Night of the Raven.
+# OpenGothic for iOS
 
-Motivation: The original Gothic 1 and Gothic 2 are still great games, but it's not easy to make them work on modern systems.
-The goal of this project is to make a feature-complete Gothic game client, compatible with the original game data and mods.
+An **unofficial iOS port** of [OpenGothic](https://github.com/Try/OpenGothic) — the open-source
+re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbing to build, sideload,
+and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-screen virtual gamepad.
 
-----
-[![Latest build](https://img.shields.io/github/release-pre/Try/opengothic?style=for-the-badge)](https://github.com/Try/opengothic/releases/latest)
-[![](https://dcbadge.vercel.app/api/server/G9XvcFQnn6)](https://discord.gg/G9XvcFQnn6)
+> ### ⚠️ Work in progress
+> This fork is under **active development**. The core loop — gameplay, the on-screen virtual gamepad,
+> save/load with slot previews, haptics and the stable iOS performance profile — has been **tested and
+> confirmed on a device**. The hard 30 fps cap is lifted (ProMotion), with optional Off/30/60 FPS
+> pacing. The physical-controller movement response and jump landing are also device-confirmed. It is
+> still rough in places and being tuned, so expect bugs.
 
-![Screenshoot](scr0.png)
+> ### Credit
+> **The entire engine is the work of [Try](https://github.com/Try) and the OpenGothic contributors.**
+> OpenGothic and its rendering engine [Tempest](https://github.com/Try/Tempest) are what make this
+> possible — this fork only finishes and wires up the iOS path. Please support the upstream project:
+> ⭐ [Try/OpenGothic](https://github.com/Try/OpenGothic) · 💬 [Discord](https://discord.gg/G9XvcFQnn6).
+> Not affiliated with or endorsed by the original authors; distributed under the same [license](LICENSE).
+>
+> Controller glyphs are **[Xelu's Free Controller & Keyboard Prompts](https://thoseawesomeguys.com/prompts)**
+> by Nicolae "Xelu" Berbece (CC0).
 
-#### Work in progress
-[![Build status](https://img.shields.io/github/actions/workflow/status/Try/OpenGothic/build.yml?branch=master)](https://github.com/Try/OpenGothic/actions?query=build.yml?query=branch%3Amaster)
-
-
-Development is focused on Gothic 2 and new features are not tested for compatibility with Gothic 1. While Gothic 1 is not officially supported, pull requests that fix Gothic 1 — and general — bugs are welcome.
-
-The original game has been completely replicated; you can complete both the main quest and the addon. Check out the [bugtracker](https://github.com/Try/OpenGothic/issues) for a list of known issues.
-
-OpenGothic is designed to utilize features of modern graphics hardware and APIs, like mesh shaders or ray tracing. While mesh shaders are not mandatory, don't expect OpenGothic to run well on low-end or outdated graphics cards.
-
-#### Prerequisites
-
-Gothic 2: Night of the Raven is required as OpenGothic does not provide any built-in game assets or scripts.
-
-Supported systems are:
-* Windows (DX12, Vulkan)
-* Linux (Vulkan)
-* MacOS (Metal)
-
-## How to play
-### Windows
-1. If not already done, install Gothic 2. OpenGothic comes with automatic path detection if your Gothic files are in a common path.
-    * "C:\Program Files (x86)\JoWooD\Gothic II"
-    * "C:\Gothic II"
-    * "C:\Program Files (x86)\Steam\steamapps\common\Gothic II"
-2. Download OpenGothic and extract it into a folder of your choice. Available options are:
-    * A [Pre-Release](https://github.com/Try/opengothic/releases/latest) (recommended)
-    * Alternatively a recent test build from [CI](https://github.com/Try/OpenGothic/actions?query=build.yml?query=branch%3Amaster)
-3. Run `Gothic2Notr.exe`.
-
-   If nothing happens, check `log.txt` and look for the line `invalid gothic path`. In this case OpenGothic fails to find your Gothic installation and you have to explicitly specify its location via `-g` parameter. Either you create a shortcut to `Gothic2Notr.exe` and change the target line in Properties to e.g.
-
-   `Gothic2Notr.exe -g "C:\Program Files (x86)\Steam\steamapps\common\Gothic II"`
-
-   or you can edit `Gothic2Notr.bat` and run this file instead.
-
-### Linux
-1. If not already done, install Gothic 2 via Wine/Proton or copy the game files from a Windows installation.
-2. Install OpenGothic using one of these options:
-   * **Debian/Ubuntu**: Download the `.deb` package from [Releases](https://github.com/Try/opengothic/releases/latest) and install with `sudo dpkg -i opengothic_*.deb`
-   * **Arch**: Install from [AUR](https://aur.archlinux.org/packages/opengothic)
-   * **Other distros**: Download the portable build from [CI](https://github.com/Try/OpenGothic/actions?query=build.yml?query=branch%3Amaster) or build manually
-
-3. Run `Gothic2Notr -g "~/PlayOnLinux's virtual drives/Gothic2_gog/drive_c/Gothic II"` (example path, use the path to your Gothic 2 installation instead)
-
-   For the portable build, you can edit `Gothic2Notr.sh` and change the line `exec "$DIR/Gothic2Notr" "$@"` to
-
-   `exec "$DIR/Gothic2Notr" "$@" -g "~/PlayOnLinux's virtual drives/Gothic2_gog/drive_c/Gothic II"`
-
-   to not have to enter the path manually every time. Then run `Gothic2Notr.sh` without arguments to start.
-
-### MacOS
-1. If not already done, install Gothic 2. Instructions on how to obtain the game files can be found [here](https://macsourceports.com/faq#getgamedata). OpenGothic comes with automatic path detection if your Gothic files are in `"~/Library/Application Support/OpenGothic"`.
-2. Download a build from [Mac Source Ports](https://macsourceports.com/game/gothic2) and follow the installation instructions given there.
-   Alternatively, recent test builds are available from [CI](https://github.com/Try/OpenGothic/actions?query=build.yml?query=branch%3Amaster) and can be extracted into a folder of your choice. You can compile a fresh build as well.
-3. Run `Gothic2Notr.sh`
-
-   If OpenGothic fails to find your Gothic 2 files, you have to explicitly specify its location via `-g` parameter.
-   Change the line `exec "$DIR/Gothic2Notr" "$@"` to reflect your Gothic 2 path e.g.
-
-   `exec "$DIR/Gothic2Notr" "$@" -g "~/PlayOnLinux's virtual drives/Gothic2_gog/drive_c/Gothic II"`
+![OpenGothic running on iPhone with the on-screen virtual controller](scr0.png)
 
 ---
-### Modifications
-Mods can be installed as usual. Provide the `modfile.ini` to OpenGothic via the `-game:` parameter to play. Example:
 
-`Gothic2Notr.exe -game:Karibik.ini`
+### Prerequisites
 
-#### What's working?
-Content mods (retexture/reworld/animations) that only rely on regular scripting and do not use memory hacking.
+*Gothic II: Night of the Raven* is required — OpenGothic ships **no** game assets or scripts. You must
+legally own the game and supply its data yourself.
 
-#### What's not?
-- Ikarus/LeGo
+Target: iPhone/iPad on **iOS 15+**, arm64. Best on modern GPUs (A-series / M-series). Locked to landscape.
 
-There are ongoing efforts to support parts of it to make at least some popular mods, like `Chronicles of Myrtana`, playable. Progress can be tracked in the corresponding [issue](https://github.com/Try/OpenGothic/issues/231). An explanantion how Ikarus works is given [here](https://github.com/Try/OpenGothic/discussions/396#discussioncomment-4823499).
-- Union (32 bit and Windows only, [not possible](https://github.com/Try/OpenGothic/issues/195))
-- DX11 Renderer - same as Union, but don't worry - OpenGothic has nice graphics out of the box
-- AST sdk
-- Ninja
+### Install — download & play (no Mac, no build)
 
-## Build Instructions
-### Linux
-Install dependencies:
-* Ubuntu 20.04/22.04 and their derived distros
-```bash
-source <(cat /etc/os-release | grep UBUNTU_CODENAME)
-# latest Vulkan SDK provided externally as Ubuntu packages are usually older
-wget -qO - http://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo apt-key add -
-sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-${UBUNTU_CODENAME}.list http://packages.lunarg.com/vulkan/lunarg-vulkan-${UBUNTU_CODENAME}.list
-sudo apt update
-sudo apt install vulkan-sdk
+No fork, no compiling — two prebuilt **unsigned `.ipa`** variants are maintained. Detailed guide:
+**[ios/README-ios.md](ios/README-ios.md)**.
 
-# distro-provided packages
-sudo apt install git cmake g++ glslang-tools libvulkan-dev libasound2-dev libx11-dev libxcursor-dev
-```
+1. **Install MetalFX Temporal (recommended).** In SideStore: **Sources → +**, paste
+   `https://github.com/tryk016/opengothic-ios/releases/download/metalfx-temporal/apps.json`, then
+   install OpenGothic MetalFX Temporal. It uses Apple's temporal upscaler for the best reconstruction
+   quality available in this port and automatically falls back to MetalFX Spatial and then Lanczos if
+   required.
+2. **Use the Lanczos compatibility build only if Temporal causes a crash or graphics problem.** Add
+   `https://github.com/tryk016/opengothic-ios/releases/download/latest/apps.json`, or download the IPA
+   from the [Lanczos compatibility release](https://github.com/tryk016/opengothic-ios/releases/latest).
+3. **Add your game data.** Copy the `Data/`, `_work/`, and `system/` folders from your own Gothic II
+   install into the app's **Documents** folder (Files app on iOS). This is needed only for the first
+   install; normal SideStore updates preserve Documents, saves and settings. Launch and play.
 
-* Arch
-```bash
-sudo pacman -S git cmake gcc glslang vulkan-devel alsa-lib libx11 libxcursor vulkan-icd-loader libglvnd
-```
+Both variants use the same bundle identifier. Updates and installs over the existing app preserve its
+Documents container, but **do not uninstall the app when switching variants**: uninstalling removes
+the copied game data and saves unless they are backed up. See the detailed guide if SideStore does not
+offer the lower-version Lanczos build as an automatic update.
 
-* Fedora
-```bash
-sudo dnf install git cmake gcc-c++ glslang vulkan-loader-devel alsa-lib-devel libX11-devel libXcursor-devel vulkan-validation-layers-devel libglvnd-devel
-```
+<sub>Maintainers: trigger the [`MetalFX Temporal`](.github/workflows/ios-metalfx-temporal.yml)
+or [`Lanczos compatibility`](.github/workflows/ios.yml) workflow, or use
+[`ios/build-ios.sh`](ios/build-ios.sh) + Xcode on a Mac — see the guide.</sub>
 
-* NixOS
-```bash
-# use the dev flake
-cd linux/flake   
-nix develop
-```
+### Controls
 
-#### Compilation
-```bash
-# 1st time build:
-git clone --recurse-submodules https://github.com/Try/OpenGothic.git
-cd OpenGothic
-cmake -B build -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
-make -C build -j $(nproc)
+Two input modes; the on-screen overlay hides automatically when a controller is connected.
 
-# following builds:
-git pull --recurse-submodules
-make -C build -j $(nproc)
-```
-Executables can be located at `OpenGothic/build/opengothic`.
+**Bluetooth controller (contextual Gothic scheme — Xbox / PlayStation buttons):**
 
-### MacOS
-```bash
-brew install glslang
-git clone --recurse-submodules https://github.com/Try/OpenGothic.git
-cd OpenGothic
-cmake -H. -Bbuild -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
-cmake --build ./build --target Gothic2Notr
-```
-Executables can be located at `OpenGothic/build/opengothic`.
+[![OpenGothic controller mapping for Xbox and PlayStation pads](assets/controller/OpenGothic_Controller_Layout.svg)](assets/controller/OpenGothic_Controller_Layout.svg)
 
-## Video
-[![Video](https://img.youtube.com/vi/TpayMkyZ58Y/0.jpg)](https://www.youtube.com/watch?v=TpayMkyZ58Y)
+<details>
+<summary>Text alternative: complete button mapping</summary>
 
-## Available Graphic options
+| Function | Xbox | PlayStation |
+|---|---|---|
+| Interact / use / confirm | A | ✕ |
+| Melee special / Back | B | ○ |
+| Jump / climb | X | □ |
+| Draw / sheathe weapon | Y | △ |
+| Move / turn | Left stick | Left stick |
+| Camera | Right stick | Right stick |
+| Draw bow / aim; melee block | LT | L2 |
+| Draw melee; attack / shoot / cast | RT | R2 |
+| Walk; melee left attack; previous Journal/Statistics page | LB | L1 |
+| Look back; melee right attack; next Journal/Statistics page | RB | R1 |
+| Sneak | L3 | L3 |
+| Target lock | R3 | R3 |
+| Edit Items ring (inventory) | R3 | R3 |
+| Items ring | D-pad ↑ | D-pad ↑ |
+| Weapons / Magic ring | D-pad ↓ | D-pad ↓ |
+| Quest log / previous combat target | D-pad ← | D-pad ← |
+| Map / next combat target | D-pad → | D-pad → |
+| Inventory | View | Share / Create |
+| Game menu | Menu | Options |
+| Unstuck teleport | hold L3 + R3 ~2 s | hold L3 + R3 ~2 s |
 
-The game menu in Gothic 2 is done by scripting. While the original graphics settings do not apply to current-gen graphics, the engine redefines meaning for some tweakables:
+</details>
 
-* `Settings` -> `Extended configuration`
-  *  `Cloud Shadows` mapped to SSAO.
-  *  `Radial Fog` mapped to "Volumetric fog"
-  *  `Reflections` reused, for screen space reflections
-* `Settings` -> `Video settings`
-  *  Internal rendering resolution, for 3D, can be altered here. UI and text is always rendered at full resolution.
-* Application command line:
-  *  Ray tracing: setting affects only capable hardware, off by default for igpu's, add `-rt 1` to enable
+- **Two separate quick-rings:** D-pad ↑ opens the Items ring (4 inner + 9 outer slots);
+  D-pad ↓ opens the Weapons / Magic ring (equipped melee and ranged weapons inside, 8 spell-book
+  slots outside). These are two panels, not one combined wheel; D-pad ↑/↓ also switches between them
+  while open. Aim by the right-stick angle and distance, press A or RT to use the selected slot, or B
+  to cancel. Tiles show real 3D item icons.
+- **Automatic or assigned Items ring:** until its first edit, the Items ring fills its 9 outer slots first,
+  then its 4 inner slots, using potions, food and torches from the live inventory. To customize it, highlight
+  any non-gold item in the normal player inventory, press R3, point at a sector with the right stick, then
+  press RT to assign it or LT to clear that sector; B closes the editor without another change. The manual layout is stored per save. A consumed
+  or missing item leaves its binding empty and reappears there when acquired again. A lit torch is included
+  synthetically so it can still be stowed. The Weapons / Magic ring remains automatic and uses equipped gear
+  plus all active spell-book slots 3–10.
+- **Contextual combat:** LT blocks in melee and aims a bow; RT attacks, shoots or casts. LB/RB become
+  left/right melee attacks and otherwise provide walk/look-back. Outside target lock, D-pad ← opens
+  the quest journal and D-pad → opens the map; while target lock is active they select the previous/next target.
+- **Journal and Statistics:** D-pad ← opens the Journal. On its category screen, D-pad selects a
+  category, A enters it and B closes the page. In a quest list, D-pad ↑/↓ selects a quest, A opens its
+  text and B returns one level. LB/RB switches directly between the Journal and Statistics pages.
+- **Inventory:** LB/RB jumps to the previous/next sorted item category; R3 opens Items-ring assignment
+  for the highlighted player item; the sticks and D-pad retain normal grid navigation.
+- **System buttons:** View opens the inventory and Menu opens the game menu. Quick save/load remains
+  available to the engine through its keyboard commands, but is not
+  assigned to the controller.
+- **Left-stick response:** the vertical axis keeps Gothic's animation-driven movement with
+  press/release hysteresis; the horizontal axis turns proportionally to the deflection. A sloped axial
+  guard rejects accidental movement while the
+  stick is held mostly sideways (and accidental turning while held mostly forward/back). Returning to
+  neutral, opening a ring/UI, disconnecting or resuming the app releases controller-owned actions before
+  input can re-arm.
+- Config lives in `Documents/Gothic.ini` under `[GAMEPAD]` — `analogDeadZone`,
+  `analogEngageZone`, `deadZone`, `releaseZone`, `crossAxisGuard`,
+  `lookSensitivity`, `invertY`, `triggerThreshold` and `noStuckProtect`.
 
-Rendering distance is not customizable.
+**On-screen virtual gamepad (no controller):** a full pad is drawn during play — move pad + camera area,
+A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. It mirrors the physical
+pad's contextual mapping and two D-pad quick-rings. Menus and dialogues get on-screen D-pad +
+OK/Back/Skip; the Journal and Statistics pages additionally show LB/RB page controls. While a ring is
+open, only corner controls remain: D-pad ↑/↓ switches the two panels and
+B cancels; drag anywhere else and release to use the selected sector.
 
-## Command line arguments
-| Argument(s)            | Description                                                      |
-| ---------------------- | -------                                                          |
-| `-g`                   | specify path containing Gothic game data                         |
-| `-game:<modfile.ini>`  | specify game modification manifest (GothicStarter compatibility) |
-| `-nomenu`              | skip main menu                                                   |
-| `-devmode`             | enable marvin-mode at start of the game                          |
-| `-w <worldname.zen>`   | startup world; newworld.zen is default                           |
-| `-save q`              | load the quick save on start                                     |
-| `-save <number>`       | load a specified save-game slot on start                         |
-| `-v -validation`       | enable validation layers for graphics api                        |
-| `-dx12`                | force DirectX 12 renderer instead of Vulkan (Windows only)       |
-| `-g1`                  | assume a Gothic 1 installation                                   |
-| `-g2c`                 | assume a Gothic 2 classic installation                           |
-| `-g2`                  | assume a Gothic 2 night of the raven installation                |
-| `-rt <boolean>`        | explicitly enable or disable ray-query                           |
-| `-gi <boolean>`        | explicitly enable or disable ray-traced global illumination      |
-| `-ms <boolean>`        | explicitly enable or disable meshlets                            |
-| `-aa <number>`         | enable anti-aliasing (number = 1-2, 2 = most expensive AA)       |
-| `-window`              | windowed debugging mode (not to be used for playing)             |
+### iOS configuration
+
+The copied `Documents/system/Gothic.ini` is never overwritten. On the first
+successful launch after valid game data is installed, OpenGothic creates a
+separate `Documents/Gothic.ini` override if it is absent, with the complete iOS
+profile: half-resolution 3D rendering, SSAO off, 1024 px shadow maps, a 30 FPS
+default, quick-save support and all stable `[GAMEPAD]` defaults (including
+`crossAxisGuard=0.12`). Existing explicit FPS choices remain unchanged; the
+legacy generated 512 px shadow setting is upgraded once to 1024 px.
+
+The generated profile, upgrade note, override priority, optional FPS cap and
+diagnostic settings are documented in the
+[iOS configuration reference](ios/README-ios.md#ios-configuration).
+
+Options → Video → **Drawing distance** is live on iOS: 100% corresponds to an
+approximately 1 km world far plane, while 80%/60%/40% correspond to roughly
+800/600/400 m. Options → Game → **FPS limit** provides Off, 30 and 60 FPS;
+30 FPS is the iOS default.
+
+### Known limitations
+
+- **Still a work in progress** — the core game loop is device-tested, but expect rough edges and
+  ongoing tuning.
+- Mesh shaders are disabled on iOS for GPU compatibility.
+- On-screen virtual-pad button layout is a first pass and still needs on-device tuning.
+
+### What this fork adds on top of upstream
+
+- **Build/distribution:** cloud build of an unsigned `.ipa` (`.github/workflows/ios.yml`), plus the
+  `ios/` build script and sideload/data guide. Tempest changes are tracked as normal commits in its
+  submodule fork rather than applied as line-number-sensitive patches during every build.
+- **Controller:** event-driven GameController snapshots (`game/utils/gamepad.*`), a release-safe,
+  context-aware dispatcher with left-stick hysteresis and proportional turning that also drives
+  menus/dialogues (`game/ui/gamepadinput.*`), native target lock-on, two concentric-row radial panels
+  with 3D item icons (`game/ui/quickring.*`), contextual zGamePad-inspired combat controls, haptics
+  (`game/utils/haptics.*`), stuck-protection, and a `[GAMEPAD]` config.
+- **On-screen input:** a full virtual gamepad + menu/dialogue/inventory controls with controller glyphs
+  (`game/ui/touchinput.*`, `game/ui/padglyph.*`, `assets/controller/`), a complete controller-layout
+  screen and a lock-on reticle.
+- **iOS lifecycle/robustness:** graceful "data not found" message instead of a crash
+  (`game/utils/systemmsg.*`), audio-session setup (`game/utils/audiosession.*`), landscape lock, keep
+  the screen awake, Game Mode keys, fence-safe save-slot previews with immediate save feedback, and
+  dialogue voice-over on ≥4 GB devices.
+- **Performance & display:** ProMotion with native Off/30/60 display-link pacing, triple buffering,
+  direct Metal drawable rendering, on-demand SSAO buffers, reduced offscreen/distant NPC pose work,
+  live menu-controlled drawing distance, safe-area-aware HUD, configurable shadow resolution, and
+  the upscale-based render-scale guide. The recommended build adds Apple MetalFX Temporal upscaling
+  with automatic MetalFX Spatial and Lanczos fallbacks; a separate Lanczos-only compatibility build
+  remains available.
+---
+
+*For the engine itself — Windows/Linux/macOS builds, features, mods, command-line arguments, graphics
+options, and the contribution guide — see the upstream project:*
+**[Try/OpenGothic](https://github.com/Try/OpenGothic)**.

@@ -1,7 +1,5 @@
 #include "movealgo.h"
 
-#include <Tempest/Log>
-
 #include "world/objects/npc.h"
 #include "world/objects/interactive.h"
 #include "world/world.h"
@@ -251,7 +249,8 @@ bool MoveAlgo::implTick(uint64_t dt, MvFlags moveFlg) {
     return false;
 
   // jump animation (lift off)
-  if(bs==BS_JUMP && npc.isFlyAnim() && state!=InAir && state!=Jump && state!=JumpUp) {
+  if(bs==BS_JUMP && !npc.isJumpLandingAnim() &&
+     state!=InAir && state!=Jump && state!=JumpUp) {
     setState(Jump);
     return true;
     }
@@ -267,7 +266,19 @@ bool MoveAlgo::implTick(uint64_t dt, MvFlags moveFlg) {
       fallCount += float(dt);
       }
     else if(!dead) {
-      setState(InAir);
+      // The jump anim often ends slightly above the local ground (uneven terrain,
+      // collision), and the Jump->InAir handoff starts the fall from ~zero velocity:
+      // the npc would visibly hang in the air (30cm takes ~0.25s to fall). Attach to
+      // the ground right away when it is within regular step distance. Slide-band
+      // slopes and deep water keep the InAir path (rough landing / splash).
+      const float dYg  = pos.y-ground;
+      const bool  deep = std::isfinite(water) && ground+chest<water;
+      const bool  canSnap = gValid && !deep && 0.f<dYg && dYg<=stepHeight() &&
+                            !testSlide(pos,normal,info);
+      const bool  moved = canSnap && npc.tryMove(Tempest::Vec3(0,-dYg,0));
+      const float residual = moved ? npc.position().y-ground : dYg;
+      const bool  snap = moved && std::abs(residual)<=eps;
+      setState(snap ? Run : InAir);
       }
     return true;
     }

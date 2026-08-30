@@ -4,6 +4,11 @@
 #include <Tempest/Device>
 #include <Tempest/Log>
 
+#if defined(__IOS__)
+#include <chrono>
+#include <Tempest/IOSRuntime>
+#endif
+
 #include "gothic.h"
 #include "resources.h"
 
@@ -24,7 +29,7 @@ Shaders::Shaders() {
     time = Application::tickCount() - time;
     if(time>1000)
       Log::i("Shader compilation took: ",time/1000," seconds");
-    });
+    }).share();
   }
 
 Shaders::~Shaders() {
@@ -33,7 +38,16 @@ Shaders::~Shaders() {
   }
 
 void Shaders::waitCompiler() {
+#if defined(__IOS__)
+  using namespace std::chrono_literals;
+  while(deferredCompilation.wait_for(10ms)!=std::future_status::ready)
+    Tempest::iOS::yieldToUIKit();
+#else
   deferredCompilation.wait();
+#endif
+  // shared_future::get() can be called more than once and, unlike wait(),
+  // propagates a compiler exception before an empty pipeline reaches Encoder.
+  deferredCompilation.get();
   }
 
 Shaders& Shaders::inst(bool waitCompiler) {
@@ -41,6 +55,22 @@ Shaders& Shaders::inst(bool waitCompiler) {
     instance->waitCompiler();
   return *instance;
   }
+
+const RenderPipeline& Shaders::binkPipeline() {
+  return instance->bink;
+  }
+
+const RenderPipeline& Shaders::downscalePipeline() {
+  return instance->downscale;
+  }
+
+#if defined(__IOS__)
+bool Shaders::isCompilerReady() {
+  if(instance==nullptr || !instance->deferredCompilation.valid())
+    return false;
+  return instance->deferredCompilation.wait_for(std::chrono::seconds(0))==std::future_status::ready;
+  }
+#endif
 
 void Shaders::compileKeyShaders() {
   bink      = postEffect("bink");
@@ -51,6 +81,36 @@ void Shaders::compileShaders() {
   auto& device = Resources::device();
 
   const bool meshlets = Gothic::options().doMeshShading;
+
+#if defined(__IOS__)
+  const bool compileVsm   = Gothic::options().doVirtualShadow  && isVsmSupported();
+  const bool compileRtsm  = Gothic::options().doSoftwareShadow && isRtsmSupported();
+  const bool compileGi1   = Gothic::options().doGi==GiMethod::Probes && isGi1Supported();
+  const bool compileGi2   = Gothic::options().doGi==GiMethod::IrrC   && isGi2Supported();
+  const bool compileSwrt  = Gothic::options().doSoftwareRT;
+  const bool compileCmaa2 = Gothic::options().aaPreset>uint32_t(AaPreset::OFF) &&
+                            Gothic::options().aaPreset<uint32_t(AaPreset::PRESETS_COUNT);
+#if defined(NDEBUG)
+  constexpr bool compileDebugShaders = false;
+#else
+  constexpr bool compileDebugShaders = true;
+#endif
+  Log::i("iOS shader profile: vsm=",int(compileVsm),
+         " rtsm=",int(compileRtsm),
+         " gi1=",int(compileGi1),
+         " gi2=",int(compileGi2),
+         " swrt=",int(compileSwrt),
+         " cmaa2=",int(compileCmaa2),
+         " debug=",int(compileDebugShaders));
+#else
+  const bool compileVsm          = isVsmSupported();
+  const bool compileRtsm         = isRtsmSupported();
+  const bool compileGi1          = isGi1Supported();
+  const bool compileGi2          = isGi2Supported();
+  constexpr bool compileSwrt     = true;
+  constexpr bool compileCmaa2    = true;
+  constexpr bool compileDebugShaders = true;
+#endif
 
   copyBuf   = computeShader("copy.comp.sprv");
   copyImg   = computeShader("copy_img.comp.sprv");
@@ -154,7 +214,7 @@ void Shaders::compileShaders() {
       }
     lightsRq = device.pipeline(Triangles, state, vsLight, fsLight);
     }
-  if(Shaders::isVsmSupported()) {
+  if(compileVsm) {
     sh      = GothicShader::get("light_vsm.frag.sprv");
     fsLight = device.shader(sh.data,sh.len);
     lightsVsm = device.pipeline(Triangles, state, vsLight, fsLight);
@@ -163,28 +223,45 @@ void Shaders::compileShaders() {
 
   tonemapping        = postEffect("triangle_uv", "tonemapping",    RenderState::ZTestMode::Always);
   tonemappingUpscale = postEffect("triangle_uv", "tonemapping_up", RenderState::ZTestMode::Always);
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  metalFxMotion      = postEffect("triangle", "metalfx_motion", RenderState::ZTestMode::Always);
+#endif
 
-  cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::OFF)]    = Tempest::ComputePipeline();
-  cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::MEDIUM)] = computeShader("cmaa2_edges_color2x2_quality_0.comp.sprv");
-  cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::ULTRA)]  = computeShader("cmaa2_edges_color2x2_quality_1.comp.sprv");
+  cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::OFF)] = Tempest::ComputePipeline();
+  if(compileCmaa2) {
+#if defined(__IOS__)
+    const auto preset = Gothic::options().aaPreset;
+    if(preset==uint32_t(AaPreset::MEDIUM))
+      cmaa2EdgeColor2x2Presets[preset] = computeShader("cmaa2_edges_color2x2_quality_0.comp.sprv");
+    else if(preset==uint32_t(AaPreset::ULTRA))
+      cmaa2EdgeColor2x2Presets[preset] = computeShader("cmaa2_edges_color2x2_quality_1.comp.sprv");
+#else
+    cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::MEDIUM)] = computeShader("cmaa2_edges_color2x2_quality_0.comp.sprv");
+    cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::ULTRA)]  = computeShader("cmaa2_edges_color2x2_quality_1.comp.sprv");
+#endif
 
-  cmaa2ProcessCandidates = computeShader("cmaa2_process_candidates.comp.sprv");
-  {
-    auto sh = GothicShader::get("cmaa2_deferred_color_apply_2x2.vert.sprv");
-    auto vs = device.shader(sh.data,sh.len);
-    sh = GothicShader::get("cmaa2_deferred_color_apply_2x2.frag.sprv");
-    auto fs = device.shader(sh.data,sh.len);
-    cmaa2DeferredColorApply2x2 = device.pipeline(Tempest::Points,RenderState(),vs,fs);
+    cmaa2ProcessCandidates = computeShader("cmaa2_process_candidates.comp.sprv");
+    {
+      auto sh = GothicShader::get("cmaa2_deferred_color_apply_2x2.vert.sprv");
+      auto vs = device.shader(sh.data,sh.len);
+      sh = GothicShader::get("cmaa2_deferred_color_apply_2x2.frag.sprv");
+      auto fs = device.shader(sh.data,sh.len);
+      cmaa2DeferredColorApply2x2 = device.pipeline(Tempest::Points,RenderState(),vs,fs);
+    }
   }
 
   hiZPot  = computeShader("hiz_pot.comp.sprv");
   hiZMip  = computeShader("hiz_mip.comp.sprv");
 
-  if(Gothic::options().doRayQuery) {
+  if(Gothic::options().doRayQuery && compileDebugShaders) {
     rtDbg       = postEffect("triangle_uv", "rt_dbg", RenderState::ZTestMode::NoEqual);
     }
-  hashDbg = postEffect("triangle_uv", "hash_dbg");
+  if(compileDebugShaders)
+    hashDbg = postEffect("triangle_uv", "hash_dbg");
 
+  // Path tracing is a functional Marvin mode, not a diagnostic visualization.
+  // Keep it available whenever ray queries were explicitly enabled, including
+  // an iOS Release build; the default iOS profile still leaves it out.
   if(Gothic::options().doRayQuery) {
     RenderState state;
     state.setZTestMode    (RenderState::ZTestMode::Always);
@@ -200,7 +277,7 @@ void Shaders::compileShaders() {
     rtPathtrace = device.pipeline(Triangles,state,vs,fs);
     }
 
-  if(isGi1Supported()) {
+  if(compileGi1) {
     RenderState state;
     state.setCullFaceMode(RenderState::CullMode::NoCull);
     state.setZTestMode   (RenderState::ZTestMode::Less);
@@ -238,7 +315,7 @@ void Shaders::compileShaders() {
     probeAmbient = device.pipeline(Triangles,state,vs,fs);
     }
 
-  if(isGi2Supported()) {
+  if(compileGi2) {
     RenderState state;
     state.setCullFaceMode(RenderState::CullMode::NoCull);
     state.setZTestMode   (RenderState::ZTestMode::Less);
@@ -278,12 +355,12 @@ void Shaders::compileShaders() {
     lightsTreeDbg    = postEffect("triangle_uv", "lightstree_dbg");
     }
 
-  if(Shaders::isVsmSupported()) {
+  if(compileVsm) {
     fogEpipolarOcclusion = computeShader("fog_epipolar_occlusion.comp.sprv");
     fogEpipolarVsm       = computeShader("fog_epipolar_vsm.comp.sprv");
     }
 
-  if(Shaders::isVsmSupported()) {
+  if(compileVsm) {
     vsmVisibilityPass  = computeShader("vsm_visibility_pass.comp.sprv");
     vsmClear           = computeShader("vsm_clear.comp.sprv");
     vsmClearOmni       = computeShader("vsm_clear_omni.comp.sprv");
@@ -310,7 +387,7 @@ void Shaders::compileShaders() {
     vsmRendering       = computeShader("vsm_rendering.comp.sprv");
     }
 
-  if(Shaders::isRtsmSupported()) {
+  if(compileRtsm) {
     rtsmDirectLight = postEffect("rtsm_direct_light", RenderState::ZTestMode::NoEqual);
 
     rtsmClear       = computeShader("rtsm_clear.comp.sprv");
@@ -344,9 +421,11 @@ void Shaders::compileShaders() {
     rtsmDbg          = postEffect("rtsm_dbg", RenderState::ZTestMode::Always);
     }
 
-  swRaytracing    = computeShader("sw_raytracing.comp.sprv");
-  swRaytracing8   = computeShader("sw_raytracing8.comp.sprv");
-  swRaytracing64  = computeShader("sw_raytracing64.comp.sprv");
+  if(compileSwrt) {
+    swRaytracing    = computeShader("sw_raytracing.comp.sprv");
+    swRaytracing8   = computeShader("sw_raytracing8.comp.sprv");
+    swRaytracing64  = computeShader("sw_raytracing64.comp.sprv");
+    }
 
   if(Gothic::options().swRenderingPreset>0) {
     switch(Gothic::options().swRenderingPreset) {

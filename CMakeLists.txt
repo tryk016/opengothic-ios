@@ -53,20 +53,134 @@ if(WIN32)
 elseif(IOS)
   enable_language(OBJCXX)
   set(CMAKE_OSX_DEPLOYMENT_TARGET 15.0)
+  option(OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED
+         "Mark SideStore test builds as requesting Increased Memory Limit" OFF)
+  option(OPENGOTHIC_PERF_DIAGNOSTICS
+         "Enable low-frequency performance and memory telemetry" OFF)
+  option(OPENGOTHIC_NPC_ANIMATION_CULLING
+         "Skip full skeletal pose updates for distant offscreen NPCs" OFF)
+  option(OPENGOTHIC_NPC_DIALOG_CULLING
+         "Keep distant NPC pose culling active during dialogs and cutscenes" OFF)
+  option(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT
+         "Use three OpenGothic frame-resource slots on iOS" OFF)
+  option(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO
+         "Render directly into CAMetalDrawable and allocate SSAO buffers on demand" OFF)
+  option(OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000
+         "Limit the iOS world camera far plane to 60000 Gothic units" OFF)
+  option(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE
+         "Map the Gothic draw-distance menu setting to the world camera far plane" OFF)
+  option(OPENGOTHIC_METALFX_SPATIAL
+         "Use MetalFX Spatial for reduced-resolution HDR scene upscaling on supported iOS devices" OFF)
+  option(OPENGOTHIC_METALFX_TEMPORAL
+         "Use MetalFX Temporal AA upscaling with Spatial/Lanczos fallback on supported iOS devices" OFF)
+  option(OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS
+         "Bundle a small precompiled Metal library for the first iOS menu/video shaders" ON)
+  # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
+  # CFBundleShortVersionString matches the "version" field in apps.json —
+  # otherwise SideStore/AltStore rejects the download as a version mismatch.
+  if(NOT DEFINED OPENGOTHIC_IOS_VERSION)
+    set(OPENGOTHIC_IOS_VERSION "1.0")
+  endif()
+  set(OPENGOTHIC_IOS_BUNDLE_IDENTIFIER "opengothic.gothic2" CACHE STRING
+      "Bundle identifier used for the iOS application")
+  set(OPENGOTHIC_IOS_DISPLAY_NAME "OpenGothic" CACHE STRING
+      "Display name used for the iOS application")
+  set(OPENGOTHIC_IOS_DEVELOPMENT_TEAM "" CACHE STRING
+      "Apple development team used for local iOS device builds")
   set_directory_properties("${CMAKE_SOURCE_DIR}" PROPERTIES
-    PROPERTY XCODE_STARTUP_PROJECT "${PROJECT_NAME}")
-  set_target_properties(${PROJECT_NAME} PROPERTIES
-    MACOSX_BUNDLE_INFO_PLIST "Info.plist.in"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "opengothic.gothic2"
-    MACOSX_BUNDLE_BUNDLE_VERSION 1
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "1.0"
+    PROPERTY XCODE_STARTUP_PROJECT Gothic2Notr)
+
+  # OpenGothic is a static library.  All bundle and signing metadata therefore
+  # belongs to the runnable Gothic2Notr target, not to the library.
+  set_target_properties(Gothic2Notr PROPERTIES
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/Info.plist.in"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${OPENGOTHIC_IOS_BUNDLE_IDENTIFIER}"
+    MACOSX_BUNDLE_BUNDLE_NAME "${OPENGOTHIC_IOS_DISPLAY_NAME}"
+    MACOSX_BUNDLE_BUNDLE_VERSION "${OPENGOTHIC_IOS_VERSION}"
+    MACOSX_BUNDLE_SHORT_VERSION_STRING "${OPENGOTHIC_IOS_VERSION}"
+    MACOSX_BUNDLE_LONG_VERSION_STRING "OpenGothic ${OPENGOTHIC_IOS_VERSION}"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${OPENGOTHIC_IOS_BUNDLE_IDENTIFIER}"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
+  if(OPENGOTHIC_IOS_DEVELOPMENT_TEAM)
+    set_target_properties(Gothic2Notr PROPERTIES
+      XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${OPENGOTHIC_IOS_DEVELOPMENT_TEAM}"
+      XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic")
+  endif()
+  if(OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED)
+    set_target_properties(Gothic2Notr PROPERTIES
+      XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS
+        "${CMAKE_SOURCE_DIR}/ios/OpenGothic.entitlements")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED=1)
+  endif()
+  if(OPENGOTHIC_PERF_DIAGNOSTICS)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_PERF_DIAGNOSTICS=1)
+  endif()
+  if(OPENGOTHIC_NPC_ANIMATION_CULLING)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_NPC_ANIMATION_CULLING=1)
+  endif()
+  if(OPENGOTHIC_NPC_DIALOG_CULLING)
+    if(NOT OPENGOTHIC_NPC_ANIMATION_CULLING)
+      message(FATAL_ERROR "OPENGOTHIC_NPC_DIALOG_CULLING requires OPENGOTHIC_NPC_ANIMATION_CULLING")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_NPC_DIALOG_CULLING=1)
+  endif()
+  if(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT=1)
+  endif()
+  if(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO=1)
+  endif()
+  if(OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000 AND
+     OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
+    message(FATAL_ERROR "Fixed and dynamic world far-plane experiments are mutually exclusive")
+  endif()
+  if(OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000=1)
+  endif()
+  if(OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_GPU_EXPERIMENT_DYNAMIC_DRAW_DISTANCE=1)
+  endif()
+  if(OPENGOTHIC_METALFX_SPATIAL)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_METALFX_SPATIAL=1)
+  endif()
+  if(OPENGOTHIC_METALFX_TEMPORAL)
+    if(NOT OPENGOTHIC_METALFX_SPATIAL)
+      message(FATAL_ERROR "OPENGOTHIC_METALFX_TEMPORAL requires OPENGOTHIC_METALFX_SPATIAL for its fallback path")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PRIVATE
+      OPENGOTHIC_METALFX_TEMPORAL=1)
+  endif()
+  # App icon: Xcode's actool compiles this asset catalog on the CI runner and
+  # injects the CFBundleIcons keys, so the icon shows on the home screen.
+  set(OPENGOTHIC_APPICON "${CMAKE_SOURCE_DIR}/ios/Assets.xcassets")
+  target_sources(Gothic2Notr PRIVATE "${OPENGOTHIC_APPICON}")
+  set_source_files_properties("${OPENGOTHIC_APPICON}" PROPERTIES
+    MACOSX_PACKAGE_LOCATION Resources)
 elseif(APPLE)
   enable_language(OBJCXX)
 endif()
 
 if(IOS)
   file(GLOB_RECURSE ObjCSOURCES "common/*.mm")
+  # The framework references are emitted by objects in the static OpenGothic
+  # library.  Propagate them to every final executable that consumes it.
+  target_link_libraries(${PROJECT_NAME}
+    "-framework UIKit"
+    "-framework GameController"
+    "-framework AVFoundation"
+    "-framework Security")
 elseif(APPLE)
   target_link_libraries(${PROJECT_NAME} "-framework AppKit")
   file(GLOB_RECURSE ObjCSOURCES "common/*.mm")
@@ -80,6 +194,13 @@ file(GLOB_RECURSE SPACER_SOURCES "spacer/*.h" "spacer/*.cpp")
 
 target_sources(${PROJECT_NAME} PRIVATE ${OPENGOTHIC_SOURCES} ${ObjCSOURCES})
 
+# Bundle the CC0 controller glyphs (Xelu prompts) into the iOS app.
+if(IOS)
+  file(GLOB CONTROLLER_GLYPHS "${CMAKE_SOURCE_DIR}/assets/controller/*.png")
+  set_source_files_properties(${CONTROLLER_GLYPHS} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources")
+  target_sources(Gothic2Notr PRIVATE ${CONTROLLER_GLYPHS})
+endif()
+
 # shaders
 add_subdirectory(shader)
 target_link_libraries(${PROJECT_NAME} GothicShaders)
@@ -88,6 +209,14 @@ target_link_libraries(${PROJECT_NAME} GothicShaders)
 add_subdirectory(spacer/assets)
 
 include_directories("common")
+
+if(IOS AND OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS AND
+   OPENGOTHIC_IOS_STARTUP_METALLIB)
+  set_source_files_properties("${OPENGOTHIC_IOS_STARTUP_METALLIB}" PROPERTIES
+    GENERATED TRUE
+    MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(Gothic2Notr PRIVATE "${OPENGOTHIC_IOS_STARTUP_METALLIB}")
+endif()
 
 ## submodule dependencies
 
@@ -133,6 +262,14 @@ else()
   set(TEMPEST_BUILD_SHARED OFF CACHE INTERNAL "")
 endif()
 add_subdirectory(lib/Tempest/Engine)
+if(IOS AND OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS AND
+   OPENGOTHIC_IOS_STARTUP_METALLIB)
+  target_compile_definitions(Tempest PRIVATE
+    TEMPEST_METAL_STARTUP_LIBRARY="OpenGothicStartup.metallib")
+endif()
+if(IOS AND OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
+  target_compile_definitions(Tempest PRIVATE TEMPEST_METAL_DIRECT_DRAWABLE=1)
+endif()
 include_directories(lib/Tempest/Engine/include)
 target_link_libraries(${PROJECT_NAME} Tempest)
 
@@ -179,7 +316,7 @@ target_link_libraries(${PROJECT_NAME} BulletDynamics BulletCollision LinearMath)
 # script for launching in binary directory
 if(WIN32)
     add_custom_command(
-        TARGET ${PROJECT_NAME} POST_BUILD
+        TARGET Gothic2Notr POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
         ${CMAKE_SOURCE_DIR}/scripts/Gothic2Notr.bat
         ${CMAKE_CURRENT_BINARY_DIR}/opengothic/Gothic2Notr.bat)
@@ -203,4 +340,4 @@ target_include_directories(Spacer PRIVATE "spacer")
 target_link_libraries(Spacer PRIVATE OpenGothic SpacerAssets)
 
 # installation
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+install(TARGETS Gothic2Notr DESTINATION bin)

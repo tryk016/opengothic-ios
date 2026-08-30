@@ -25,6 +25,11 @@ class Shaders {
       };
 
     static Shaders& inst(bool waitCompiler = true);
+    static const Tempest::RenderPipeline& binkPipeline();
+    static const Tempest::RenderPipeline& downscalePipeline();
+#if defined(__IOS__)
+    static bool isCompilerReady();
+#endif
     static bool isVsmSupported();
     static bool isRtsmSupported();
     static bool isLightsTreeSupported();
@@ -62,6 +67,9 @@ class Shaders {
     Tempest::RenderPipeline  waterReflection, waterReflectionSSR;
 
     Tempest::RenderPipeline  tonemapping, tonemappingUpscale;
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+    Tempest::RenderPipeline  metalFxMotion;
+#endif
 
     // AA
     Tempest::ComputePipeline cmaa2EdgeColor2x2Presets[uint32_t(AaPreset::PRESETS_COUNT)];
@@ -170,6 +178,6 @@ class Shaders {
 
     static Shaders* instance;
 
-    std::future<void>        deferredCompilation;
+    std::shared_future<void> deferredCompilation;
     mutable std::list<Entry> materials;
   };

@@ -47,6 +47,16 @@ class KeyCodec final {
       ActionRight,
       Parade,
 
+      // Internal semantic controller actions. They deliberately have no
+      // KeyPair entries and are never returned by KeyCodec::tr(): the mobile
+      // pad dispatcher supplies them directly so combat does not depend on
+      // the selected Gothic 1/Gothic 2 keyboard-control preset.
+      PadAttack,
+      PadAim,
+      PadAttackLeft,
+      PadAttackRight,
+      PadSpecial,
+
       Walk,
       Sneak,
 

@@ -163,6 +163,11 @@ CommandLine::CommandLine(int argc, const char** argv) {
       }
     }
 
+#if defined(__IOS__)
+  // Most iOS GPUs lack Metal mesh shaders; use the raster fallback by default.
+  isMeshSh = false;
+#endif
+
   if(gpath.empty()) {
     InstallDetect inst;
     gpath = inst.detectG2();

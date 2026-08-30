@@ -6,6 +6,10 @@
 	<string>English</string>
 	<key>CFBundleExecutable</key>
 	<string>${MACOSX_BUNDLE_EXECUTABLE_NAME}</string>
+	<key>CFBundleDisplayName</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
+	<key>CFBundleName</key>
+	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
 	<key>CFBundleGetInfoString</key>
 	<string>${MACOSX_BUNDLE_INFO_STRING}</string>
 	<key>CFBundleIconFile</key>
@@ -16,8 +20,6 @@
 	<string>6.0</string>
 	<key>CFBundleLongVersionString</key>
 	<string>${MACOSX_BUNDLE_LONG_VERSION_STRING}</string>
-	<key>CFBundleName</key>
-	<string>${MACOSX_BUNDLE_BUNDLE_NAME}</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -34,12 +36,51 @@
   <true/>
   <key>LSSupportsOpeningDocumentsInPlace</key>
   <true/>
-  <key>com.apple.developer.kernel.increased-memory-limit</key>
-  <true/>
+  <key>UIApplicationSceneManifest</key>
+  <dict>
+    <key>UIApplicationSupportsMultipleScenes</key>
+    <false/>
+    <key>UISceneConfigurations</key>
+    <dict>
+      <key>UIWindowSceneSessionRoleApplication</key>
+      <array>
+        <dict>
+          <key>UISceneConfigurationName</key>
+          <string>Default Configuration</string>
+          <key>UISceneDelegateClassName</key>
+          <string>SceneDelegate</string>
+        </dict>
+      </array>
+    </dict>
+  </dict>
   <key>UILaunchScreen</key>
   <dict>
     <key>UIColorName</key>
     <string>black</string>
   </dict>
+  <key>UIRequiresFullScreen</key>
+  <true/>
+  <key>ITSAppUsesNonExemptEncryption</key>
+  <false/>
+  <key>GCSupportsControllerUserInteraction</key>
+  <true/>
+  <key>UIApplicationSupportsIndirectInputEvents</key>
+  <true/>
+  <key>UISupportedInterfaceOrientations</key>
+  <array>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+  </array>
+  <key>GCSupportsGameMode</key>
+  <true/>
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.games</string>
 </dict>
 </plist>

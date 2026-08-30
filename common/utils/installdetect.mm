@@ -15,25 +15,32 @@
 std::u16string InstallDetect::applicationSupportDirectory() {
   std::string ret;
 
+  // NOTE (MRC): both `paths` (from NSSearchPathForDirectoriesInDomains) and
+  // `app` (from stringByAppendingPathComponent:) are AUTORELEASED — we do not
+  // own them, so we must NOT release them. The previous code sent them an extra
+  // -release, which over-released the objects; the eventual autorelease-pool
+  // drain (inside iOSApi::implProcessEvents) then messaged freed memory and
+  // aborted with SIGABRT. Wrap in a pool so the temporaries are reclaimed
+  // promptly without any manual release.
+  @autoreleasepool {
 #if defined(__OSX__)
-  NSArray* paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSArray* paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
 #else
-  NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+    NSArray* paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
 #endif
-  if(paths!=nil && [paths count]>0) {
+    if(paths!=nil && [paths count]>0) {
 #if defined(__OSX__)
-    NSString* app = [[paths firstObject] stringByAppendingPathComponent:@"OpenGothic"];
+      NSString* app = [[paths firstObject] stringByAppendingPathComponent:@"OpenGothic"];
 #else
-    NSString* app = [[paths firstObject] stringByAppendingPathComponent:@""];
+      NSString* app = [paths firstObject];
 #endif
-    if(app!=nil) {
-      ret = [app cStringUsingEncoding:NSUTF8StringEncoding];
-      [app release];
+      if(app!=nil) {
+        const char* c = [app cStringUsingEncoding:NSUTF8StringEncoding];
+        if(c!=nullptr)
+          ret = c;
+        }
       }
     }
-
-  if(paths!=nil)
-    [paths release];
 
   return Tempest::TextCodec::toUtf16(ret);
   }

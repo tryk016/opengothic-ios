@@ -351,6 +351,14 @@ bool Pose::update(uint64_t tickCount, bool force) {
   return false;
   }
 
+void Pose::advanceTimeWithoutPose(uint64_t tickCount) {
+  // SFX/PFX use lastUpdate as their event barrier. Advance it even when an
+  // offscreen model does not need new bone matrices, then force a complete
+  // rebuild when the pose becomes visible again.
+  lastUpdate   = tickCount;
+  needToUpdate = true;
+  }
+
 bool Pose::updateFrame(const Animation::Sequence &s, BodyState bs, uint64_t sBlend,
                        uint64_t barrier, uint64_t sTime, uint64_t now) {
   auto&        d         = *s.data;
@@ -647,6 +655,16 @@ bool Pose::isJumpAnim() const {
     if(i.bs!=BS_JUMP || i.seq->animCls!=Animation::Transition)
       continue;
     return true;
+    }
+  return false;
+  }
+
+bool Pose::isJumpLandingAnim() const {
+  for(auto& i:lay) {
+    if(i.bs!=BS_JUMP || i.seq->animCls!=Animation::Transition)
+      continue;
+    if(i.seq->name.starts_with("T_JUMP_2_"))
+      return true;
     }
   return false;
   }

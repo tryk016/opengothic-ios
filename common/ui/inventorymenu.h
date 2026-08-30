@@ -3,6 +3,7 @@
 #include <Tempest/Widget>
 #include <Tempest/Texture2d>
 #include <Tempest/Timer>
+#include <optional>
 
 #include "graphics/inventoryrenderer.h"
 #include "game/inventory.h"
@@ -52,6 +53,18 @@ class InventoryMenu : public Tempest::Widget {
     void  tick(uint64_t dt);
     void  draw(Tempest::Encoder<Tempest::CommandBuffer>& cmd);
     void  paintNumOverlay(Tempest::PaintEvent& e);
+
+    // the QuickRing borrows this renderer to draw live 3D item icons; the
+    // engine flushes whatever was collected into it each frame
+    InventoryRenderer& itemRenderer() { return renderer; }
+
+    // Jump to the first item in the previous/next sorted category.
+    void   moveCategory(int direction);
+
+    // Stable identity of the highlighted item in the player's normal
+    // inventory. Containers/trade/ransack and gold cannot enter quick-ring
+    // assignment mode.
+    std::optional<size_t> selectedPlayerItemClass();
 
     void  keyDownEvent  (Tempest::KeyEvent&   e) override;
     void  keyRepeatEvent(Tempest::KeyEvent&   e) override;

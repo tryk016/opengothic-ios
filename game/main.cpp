@@ -18,13 +18,35 @@
 #include "utils/installdetect.h"
 #endif
 
+#include <cstdio>
+#include <chrono>
+
 #include "utils/crashlog.h"
+#include "utils/systemmsg.h"
+#include "utils/audiosession.h"
 #include "mainwindow.h"
 #include "gothic.h"
 #include "build.h"
 #include "commandline.h"
 
 #include <dmusic.h>
+
+#if defined(__IOS__)
+#include <Tempest/IOSRuntime>
+extern bool iosStartupLoadInProgress;
+
+static void yieldToUIKitDuringStartupLoad() {
+  if(!iosStartupLoadInProgress)
+    return;
+  using Clock = std::chrono::steady_clock;
+  static auto lastYield = Clock::now();
+  const auto now = Clock::now();
+  if(now-lastYield < std::chrono::milliseconds(50))
+    return;
+  lastYield = now;
+  Tempest::iOS::yieldToUIKit();
+  }
+#endif
 
 std::string_view selectDevice(const Tempest::AbstractGraphicsApi& api) {
   auto d = api.devices();
@@ -72,12 +94,21 @@ int main(int argc,const char** argv) {
   {
     auto appdir = InstallDetect::applicationSupportDirectory();
     std::filesystem::current_path(appdir);
+    // Capture the runtime's last words: libobjc/libc++abi/libmalloc print their
+    // fatal reason to stderr before abort(). CWD is the user-visible Documents
+    // folder, so the file can be pulled via the Files app. Unbuffered, so the
+    // message survives the crash.
+    if(std::freopen("stderr.log","w",stderr)!=nullptr)
+      std::setvbuf(stderr,nullptr,_IONBF,0);
   }
 #endif
 
   try {
     static Tempest::WFile logFile("log.txt");
     Tempest::Log::setOutputCallback([](Tempest::Log::Mode mode, const char* text) {
+#if defined(__IOS__)
+      yieldToUIKitDuringStartupLoad();
+#endif
       logFile.write(text,std::strlen(text));
       logFile.write("\n",1);
       if(mode==Tempest::Log::Error)
@@ -127,20 +158,48 @@ int main(int argc,const char** argv) {
   Tempest::Log::i(appBuild);
   Workers::setThreadName("Main thread");
 
-  CommandLine          cmd{argc,argv};
-  auto                 api     = mkApi(cmd);
-  const auto           gpuName = selectDevice(*api);
-  CrashLog::setGpu(gpuName);
+  try {
+    AudioSession::activate();   // configure the iOS audio session before any SoundDevice
 
-  Tempest::Device      device{*api,gpuName};
-  CrashLog::setGpu(device.properties().name);
+    CommandLine          cmd{argc,argv};
+    auto                 api     = mkApi(cmd);
+    const auto           gpuName = selectDevice(*api);
+    CrashLog::setGpu(gpuName);
 
-  Resources            resources{device};
-  Gothic               gothic;
-  GameMusic            music;
-  gothic.setupGlobalScripts();
+    Tempest::Device      device{*api,gpuName};
+    CrashLog::setGpu(device.properties().name);
 
-  MainWindow           wx(device);
-  Tempest::Application app;
-  return app.exec();
+    Resources            resources{device};
+    Gothic               gothic;
+    GameMusic            music;
+    gothic.setupGlobalScripts();
+
+    MainWindow           wx(device);
+    Tempest::Application app;
+    return app.exec();
+    }
+  catch(const GothicNotFoundException& e) {
+    // Missing game data: this is thrown from CommandLine, before the window
+    // exists, so it is safe to keep a run-loop alive for the alert on iOS.
+    Tempest::Log::e("fatal: ", e.what());
+    SystemMsg::fatal("Gothic II data not found",
+                     "Copy your Gothic II: NotR files (Data/, _work/, system/) "
+                     "into this app's Documents folder, then relaunch.");
+#if defined(__IOS__)
+    // Keep the process alive so the alert stays visible on screen.
+    Tempest::Application app;
+    return app.exec();
+#else
+    return 1;
+#endif
+    }
+  catch(const std::exception& e) {
+    // Any other failure may have happened after the window was created and is
+    // being torn down by stack-unwinding. Do NOT spin up a second Application
+    // over a half-destroyed window (would drive render on a dangling pointer —
+    // see review B7); just report and exit.
+    Tempest::Log::e("fatal: ", e.what());
+    SystemMsg::fatal("Fatal error", e.what());
+    return 1;
+    }
   }

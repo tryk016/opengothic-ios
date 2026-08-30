@@ -17,6 +17,7 @@ class InventoryRenderer {
 
     void reset(bool full=false);
     void drawItem(int x, int y, int w, int h, const Item &item);
+    bool hasItems() const { return !items.empty(); }
 
   private:
     struct PerFrame {

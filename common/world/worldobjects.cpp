@@ -15,6 +15,8 @@
 #include "utils/workers.h"
 #include "utils/dbgpainter.h"
 #include "gothic.h"
+#include "camera.h"
+#include "graphics/dynamic/frustrum.h"
 
 #include <Tempest/Painter>
 #include <Tempest/Application>
@@ -431,12 +433,92 @@ void WorldObjects::updateAnimation(uint64_t dt) {
     return;
   if(dt==0)
     return;
+#if defined(OPENGOTHIC_NPC_ANIMATION_CULLING)
+  const bool inDialog = owner.isInDialog();
+  bool       forceAll = inDialog || owner.currentCs()!=nullptr;
+  Npc*       dialogNpcA = nullptr;
+  Npc*       dialogNpcB = nullptr;
+#if defined(OPENGOTHIC_NPC_DIALOG_CULLING)
+  // A dialog or cutscene changes the camera, not the relevance of every NPC in
+  // the world. Keep the two dialog actors explicit; visible cutscene actors are
+  // refreshed from the active camera frustum immediately before drawing.
+  forceAll = false;
+  if(inDialog) {
+    for(const auto& i:npcArr) {
+      if(!Gothic::inst().isNpcInDialog(*i))
+        continue;
+      if(dialogNpcA==nullptr)
+        dialogNpcA = i.get();
+      else {
+        dialogNpcB = i.get();
+        break;
+        }
+      }
+    }
+#endif
+  Npc* const player = owner.player();
+  Workers::parallelTasks(npcArr,[dt,forceAll,player,dialogNpcA,dialogNpcB](std::unique_ptr<Npc>& i){
+    const bool dialogRelevant = i.get()==dialogNpcA || i.get()==dialogNpcB;
+    const bool playerRelevant = player!=nullptr && (i->target()==player || player->target()==i.get());
+    const bool full = forceAll || i->isPlayer() ||
+                      i->processPolicy()==NpcProcessPolicy::AiNormal ||
+                      dialogRelevant || playerRelevant;
+    if(full)
+      i->updateAnimation(dt);
+    else
+      i->updateAnimation(dt,false,Npc::PoseUpdate::EventsOnly);
+    });
+  animationWork = {};
+  for(const auto& i:npcArr) {
+    if(i->animationPoseDeferred())
+      animationWork.eventsOnly++; else
+      animationWork.fullPose++;
+    }
+  animationRefreshPending  = !forceAll && animationWork.eventsOnly>0;
+  if(!animationRefreshPending)
+    animationLast = animationWork;
+#else
   Workers::parallelTasks(npcArr,[dt](std::unique_ptr<Npc>& i){
     i->updateAnimation(dt);
     });
+  animationWork.fullPose   = npcArr.size();
+  animationWork.eventsOnly = 0;
+  animationLast            = animationWork;
+  animationRefreshPending  = false;
+#endif
   interactiveObj.parallelFor([dt](Interactive& i){
     i.updateAnimation(dt);
     });
+  }
+
+void WorldObjects::refreshAnimationPose() {
+#if defined(OPENGOTHIC_NPC_ANIMATION_CULLING)
+  if(!animationRefreshPending)
+    return;
+
+  Camera* const camera = Gothic::inst().camera();
+  if(camera==nullptr) {
+    animationLast = animationWork;
+    animationRefreshPending = false;
+    return;
+    }
+
+  Frustrum frustrum;
+  frustrum.make(camera->viewProj(),1,1);
+  Workers::parallelTasks(npcArr,[&frustrum](std::unique_ptr<Npc>& i){
+    if(!i->animationPoseDeferred() || !i->isInAnimationFrustrum(frustrum))
+      return;
+    i->refreshAnimationPose();
+    });
+
+  animationLast = {};
+  for(const auto& i:npcArr) {
+    if(i->animationPoseDeferred())
+      animationLast.eventsOnly++; else
+      animationLast.fullPose++;
+    }
+  animationRefreshPending  = false;
+#endif
   }
 
 bool WorldObjects::isTargeted(Npc& dst) {

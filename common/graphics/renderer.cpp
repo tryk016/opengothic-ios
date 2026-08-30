@@ -4,6 +4,10 @@
 #include <Tempest/Fence>
 #include <Tempest/Log>
 #include <Tempest/StorageImage>
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+#include <Tempest/Application>
+#endif
+#include <algorithm>
 #include <cassert>
 
 #include "ui/inventorymenu.h"
@@ -26,6 +30,19 @@ static uint32_t nextPot(uint32_t x) {
   x++;
   return x;
   }
+
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+static float halton(uint32_t index, uint32_t base) {
+  float result = 0.f;
+  float factor = 1.f;
+  while(index>0) {
+    factor /= float(base);
+    result += factor*float(index%base);
+    index /= base;
+    }
+  return result;
+  }
+#endif
 
 static float smoothstep(float edge0, float edge1, float x) {
   float t = std::min(std::max((x - edge0) / (edge1 - edge0), 0.f), 1.f);
@@ -110,9 +127,25 @@ Renderer::~Renderer() {
   Gothic::inst().onSettingsChanged.ubind(this,&Renderer::setupSettings);
   }
 
+bool Renderer::ssaoBuffersAllocated() const {
+  return !ssao.ssaoBuf.isEmpty() && !ssao.ssaoBlur.isEmpty();
+  }
+
 void Renderer::setupSettings() {
   settings.zEnvMappingEnabled = Gothic::settingsGetI("ENGINE","zEnvMappingEnabled")!=0;
   settings.zCloudShadowScale  = Gothic::settingsGetI("ENGINE","zCloudShadowScale") !=0;
+
+#if defined(__IOS__)
+  {
+  // shadow-map size: overridable via Gothic.ini [ENGINE] shadowResolution.
+  // On phones default to 512 - a fraction of the 2048 fill cost, softer
+  // shadow edges. resetShadowmap() below picks the change up.
+  int32_t sr = Gothic::settingsGetI("ENGINE","shadowResolution");
+  if(sr<=0)
+    sr = 512;
+  settings.shadowResolution = uint32_t(std::clamp(sr, 256, 4096));
+  }
+#endif
   settings.zFogRadial         = Gothic::settingsGetI("RENDERER_D3D","zFogRadial")!=0;
   {
     // wind
@@ -183,9 +216,17 @@ void Renderer::setupSettings() {
   }
 
 void Renderer::toggleGi() {
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
   auto& device = Resources::device();
   if(!Gothic::options().doRayQuery)
     return;
+#if defined(__IOS__)
+  if(Gothic::options().doGi==GiMethod::None)
+    return; // the limited profile deliberately did not compile a GI group
+#endif
 
   if(settings.giMethod==GiMethod::None && Gothic::options().doGi!=GiMethod::None)
     settings.giMethod = Gothic::options().doGi;
@@ -199,7 +240,11 @@ void Renderer::toggleGi() {
   }
 
 void Renderer::toggleVsm() {
-  if(!Shaders::isVsmSupported())
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(!Shaders::isVsmSupported() || shaders.vsmDirectLight.isEmpty())
     return;
 
   settings.vsmEnabled = !settings.vsmEnabled;
@@ -211,7 +256,11 @@ void Renderer::toggleVsm() {
   }
 
 void Renderer::toggleRtsm() {
-  if(!Shaders::isRtsmSupported())
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(!Shaders::isRtsmSupported() || shaders.rtsmDirectLight.isEmpty())
     return;
 
   settings.rtsmEnabled = !settings.rtsmEnabled;
@@ -219,20 +268,74 @@ void Renderer::toggleRtsm() {
   }
 
 void Renderer::togglePathtrace() {
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(shaders.rtPathtrace.isEmpty())
+    return;
   settings.pathTraceEnabled = !settings.pathTraceEnabled;
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  resetTemporalHistory();
+#endif
   pt.numFrames = 0;
   setupSettings();
   }
 
 void Renderer::onWorldChanged() {
   sky.lutIsInitialized = false;
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  resetTemporalHistory();
+#endif
   resetSkyFog();
   }
 
 void Renderer::updateCamera(const WorldView& wview, const Camera& camera) {
-  proj        = camera.projective();
-  viewProj    = camera.viewProj();
-  viewProjLwc = camera.viewProjLwc();
+  const auto cameraView    = camera.view();
+  const auto cameraViewLwc = camera.viewLwc();
+
+  proj = camera.projective();
+
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  metalFxCurrentViewProj = proj;
+  metalFxCurrentViewProj.mul(cameraView);
+  metalFxCurrentCameraPos = camera.originLwc();
+  metalFxCurrentCameraDir = Vec3::normalize(camera.listenerPosition().front);
+
+  if(temporalUpscalingActive() && metalFxHistoryValid) {
+    const auto now          = Application::tickCount();
+    const bool positionCut  = (metalFxCurrentCameraPos-metalFxPreviousCameraPos).quadLength() > 5000.f*5000.f;
+    const bool directionCut = Vec3::dotProduct(metalFxCurrentCameraDir,metalFxPreviousCameraDir) < 0.5f;
+    const bool timeGap      = metalFxLastFrameTime!=0 && now>metalFxLastFrameTime+250;
+    if(positionCut || directionCut || timeGap)
+      resetTemporalHistory();
+    }
+
+  if(temporalUpscalingActive()) {
+    const uint32_t sample = metalFxJitterIndex%32u + 1u;
+    metalFxJitterX = 0.5f-halton(sample,2);
+    metalFxJitterY = 0.5f-halton(sample,3);
+    const auto res = zbuffer.size();
+    if(res.w>0 && res.h>0) {
+      proj.set(2,0,proj.at(2,0)+2.f*metalFxJitterX/float(res.w));
+      proj.set(2,1,proj.at(2,1)+2.f*metalFxJitterY/float(res.h));
+      }
+    metalFxResetThisFrame = !metalFxHistoryValid;
+    if(!metalFxHistoryValid) {
+      metalFxPreviousViewProj  = metalFxCurrentViewProj;
+      metalFxPreviousCameraPos = metalFxCurrentCameraPos;
+      metalFxPreviousCameraDir = metalFxCurrentCameraDir;
+      }
+    } else {
+    metalFxJitterX = 0.f;
+    metalFxJitterY = 0.f;
+    }
+#endif
+
+  viewProj = proj;
+  viewProj.mul(cameraView);
+  viewProjLwc = proj;
+  viewProjLwc.mul(cameraViewLwc);
 
   for(size_t i=0; i<Resources::ShadowLayers; ++i)
     shadowMatrix[i] = camera.viewShadow(wview.mainLight().dir(),i);
@@ -244,6 +347,42 @@ void Renderer::updateCamera(const WorldView& wview, const Camera& camera) {
   clipInfo.y = zNear-zFar;
   clipInfo.z = zFar;
   }
+
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+bool Renderer::temporalUpscalingActive() const {
+  return settings.vidResIndex!=0 && !settings.pathTraceEnabled &&
+         !metalFxTemporalScaler.isEmpty() && !metalFxMotion.isEmpty() && !metalFxOutput.isEmpty();
+  }
+
+void Renderer::resetTemporalHistory() {
+  metalFxHistoryValid = false;
+  metalFxResetThisFrame = true;
+  metalFxLastFrameTime = 0;
+  metalFxJitterIndex = 0;
+  metalFxJitterX = 0.f;
+  metalFxJitterY = 0.f;
+  }
+
+void Renderer::prepareTemporalMotion(Encoder<CommandBuffer>& cmd) {
+  struct Push {
+    Matrix4x4 currentJitteredViewProjectInv;
+    Matrix4x4 currentViewProject;
+    Matrix4x4 previousViewProject;
+    } push;
+
+  push.currentJitteredViewProjectInv = viewProj;
+  push.currentJitteredViewProjectInv.inverse();
+  push.currentViewProject  = metalFxCurrentViewProj;
+  push.previousViewProject = metalFxHistoryValid ? metalFxPreviousViewProj : metalFxCurrentViewProj;
+
+  cmd.setFramebuffer({{metalFxMotion,Discard,Preserve}});
+  cmd.setDebugMarker("MetalFX Temporal motion vectors");
+  cmd.setBinding(0,zbuffer,Sampler::nearest(ClampMode::ClampToEdge));
+  cmd.setPushData(push);
+  cmd.setPipeline(shaders.metalFxMotion);
+  cmd.draw(nullptr,0,3);
+  }
+#endif
 
 bool Renderer::requiresTlas() const {
   if(!Gothic::options().doRayQuery)
@@ -358,7 +497,41 @@ void Renderer::resetViewport(Tempest::Size res, Tempest::Size fullRes) {
   const uint32_t w = uint32_t(res.w);
   const uint32_t h = uint32_t(res.h);
 
-  sceneLinear = device.attachment(TextureFormat::R11G11B10UF,w,h);
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  const auto sceneLinearFormat = TextureFormat::RGBA16F;
+#else
+  const auto sceneLinearFormat = TextureFormat::R11G11B10UF;
+#endif
+  sceneLinear = device.attachment(sceneLinearFormat,w,h);
+
+#if defined(OPENGOTHIC_METALFX_SPATIAL)
+  metalFxScaler       = SpatialScaler();
+  metalFxOutput       = StorageImage();
+  metalFxEncodeFailed = false;
+  if(res!=fullRes) {
+    SpatialScalerDesc desc;
+    desc.inputFormat  = sceneLinearFormat;
+    desc.outputFormat = sceneLinearFormat;
+    desc.inputWidth   = w;
+    desc.inputHeight  = h;
+    desc.outputWidth  = uint32_t(fullRes.w);
+    desc.outputHeight = uint32_t(fullRes.h);
+    desc.colorMode    = SpatialScalerColorMode::HDR;
+
+    metalFxOutput = device.image2d(desc.outputFormat,desc.outputWidth,desc.outputHeight);
+    metalFxScaler = device.spatialScaler(desc);
+    if(metalFxScaler.isEmpty()) {
+#if !defined(OPENGOTHIC_METALFX_TEMPORAL)
+      metalFxOutput = StorageImage();
+      Log::i("MetalFX Spatial unavailable; using Lanczos fallback");
+#else
+      Log::i("MetalFX Spatial fallback unavailable; Lanczos remains available");
+#endif
+      } else {
+      Log::i("MetalFX Spatial ready: ",w,"x",h," -> ",fullRes.w,"x",fullRes.h," HDR");
+      }
+    }
+#endif
 
   if(settings.aaEnabled) {
     cmaa2.workingEdges               = device.image2d(TextureFormat::R8, (w + 1) / 2, h);
@@ -374,6 +547,39 @@ void Renderer::resetViewport(Tempest::Size res, Tempest::Size fullRes) {
   if(res!=fullRes)
     zbufferUi = device.zbuffer(zBufferFormat, fullRes); else
     zbufferUi = ZBuffer();
+
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  metalFxTemporalScaler         = TemporalScaler();
+  metalFxMotion                 = Attachment();
+  metalFxTemporalEncodeFailed   = false;
+  metalFxTemporalEncodeConfirmed = false;
+  resetTemporalHistory();
+
+  if(res!=fullRes) {
+    TemporalScalerDesc desc;
+    desc.inputFormat   = sceneLinearFormat;
+    desc.depthFormat   = zBufferFormat;
+    desc.motionFormat  = TextureFormat::RG16F;
+    desc.outputFormat  = sceneLinearFormat;
+    desc.inputWidth    = w;
+    desc.inputHeight   = h;
+    desc.outputWidth   = uint32_t(fullRes.w);
+    desc.outputHeight  = uint32_t(fullRes.h);
+    desc.autoExposure  = true;
+
+    metalFxMotion = device.attachment(desc.motionFormat,w,h);
+    metalFxTemporalScaler = device.temporalScaler(desc);
+    if(metalFxTemporalScaler.isEmpty()) {
+      metalFxMotion = Attachment();
+      if(metalFxScaler.isEmpty())
+        metalFxOutput = StorageImage();
+      Log::i("MetalFX Temporal unavailable; using Spatial/Lanczos fallback");
+      } else {
+      Log::i("MetalFX Temporal ready: ",w,"x",h," -> ",fullRes.w,"x",fullRes.h,
+             " RGBA16F depth=",formatName(zBufferFormat)," motion=RG16F auto_exposure=1");
+      }
+    }
+#endif
 
   uint32_t pw = nextPot(w);
   uint32_t ph = nextPot(h);
@@ -548,7 +754,10 @@ void Renderer::draw(Attachment& result, Encoder<CommandBuffer>& cmd, uint8_t fId
   cmd.setDebugMarker("UI");
   uiLayer.draw(cmd);
 
-  if(inventory.isOpen()!=InventoryMenu::State::Closed) {
+  // the QuickRing collects icons into the same renderer while the menu itself
+  // stays closed, so flush also when it left items for this frame
+  const bool ringIcons = !video.isActive() && inventory.itemRenderer().hasItems();
+  if(inventory.isOpen()!=InventoryMenu::State::Closed || ringIcons) {
     auto& zb = (zbufferUi.isEmpty() ? zbuffer : zbufferUi);
     cmd.setFramebuffer({{result, Tempest::Preserve, Tempest::Preserve}},{zb, 1.f, Tempest::Preserve});
     cmd.setDebugMarker("Inventory");
@@ -558,6 +767,21 @@ void Renderer::draw(Attachment& result, Encoder<CommandBuffer>& cmd, uint8_t fId
     cmd.setDebugMarker("Inventory-counters");
     numOverlay.draw(cmd);
     }
+  }
+
+void Renderer::drawSavePreview(Encoder<CommandBuffer>& cmd, Attachment& result) {
+  auto* wview = Gothic::inst().worldView();
+  if(wview==nullptr) {
+    cmd.setFramebuffer({{result, Vec4(), Tempest::Preserve}});
+    return;
+    }
+
+  // Reuse the already rendered HDR scene and only run the inexpensive
+  // tonemapping pass into the small save thumbnail. In particular, do not
+  // sample the CAMetalDrawable (framebufferOnly on the direct-drawable path)
+  // and do not start a second command buffer while this encoder is active.
+  cmd.setDebugMarker("Save preview");
+  drawTonemapping(result,cmd,*wview);
   }
 
 void Renderer::dbgDraw(Tempest::Painter& p) {
@@ -606,7 +830,8 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   shaders.waitCompiler();
 
   const auto res = internalResolution(result.size());
-  if(res!=zbuffer.size()) {
+  const bool outputResChanged = res!=result.size() && zbufferUi.size()!=result.size();
+  if(res!=zbuffer.size() || outputResChanged) {
     resetViewport(res, result.size());
     }
 
@@ -635,13 +860,18 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
     }
 
   prepareUniforms(wview);
-  wview.preFrameUpdate(camera, tickCount, fId);
+  const Matrix4x4* projectionOverride = nullptr;
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  if(temporalUpscalingActive())
+    projectionOverride = &proj;
+#endif
+  wview.preFrameUpdate(camera,tickCount,fId,projectionOverride);
   wview.prepareGlobals(cmd,fId);
 
   if(settings.pathTraceEnabled) {
     drawPathtrace(cmd, wview, fId);
     cmd.setDebugMarker("Tonemapping");
-    drawTonemapping(result, cmd, wview);
+    drawFinalTonemapping(result,cmd,wview);
     wview.postFrameupdate();
     return;
     }
@@ -713,7 +943,7 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
     drawCMAA2(result, cmd, wview);
     } else {
     cmd.setDebugMarker("Tonemapping");
-    drawTonemapping(result, cmd, wview);
+    drawFinalTonemapping(result,cmd,wview);
     }
 
   //drawRayQueryDbg(cmd, wview);
@@ -723,6 +953,68 @@ void Renderer::draw(Tempest::Attachment& result, Encoder<CommandBuffer>& cmd, ui
   }
 
 void Renderer::drawTonemapping(Attachment& result, Encoder<CommandBuffer>& cmd, const WorldView& wview) {
+  drawTonemappingPass(result,cmd,wview,textureCast<const Texture2d&>(sceneLinear),settings.vidResIndex!=0);
+  }
+
+void Renderer::drawFinalTonemapping(Attachment& result, Encoder<CommandBuffer>& cmd, const WorldView& wview) {
+#if defined(OPENGOTHIC_METALFX_TEMPORAL)
+  if(temporalUpscalingActive()) {
+    prepareTemporalMotion(cmd);
+
+    TemporalScalerArgs args;
+    args.jitterOffsetX     = metalFxJitterX;
+    args.jitterOffsetY     = metalFxJitterY;
+    args.motionVectorScaleX = float(sceneLinear.w());
+    args.motionVectorScaleY = float(sceneLinear.h());
+    args.resetHistory       = metalFxResetThisFrame;
+    args.depthReversed      = false;
+
+    cmd.setDebugMarker("MetalFX Temporal HDR");
+    if(cmd.temporalUpscale(metalFxTemporalScaler,sceneLinear,zbuffer,metalFxMotion,metalFxOutput,args)) {
+      if(!metalFxTemporalEncodeConfirmed) {
+        metalFxTemporalEncodeConfirmed = true;
+        Log::i("MetalFX Temporal first frame encoded: ",sceneLinear.w(),"x",sceneLinear.h(),
+               " -> ",metalFxOutput.w(),"x",metalFxOutput.h());
+        }
+      metalFxPreviousViewProj  = metalFxCurrentViewProj;
+      metalFxPreviousCameraPos = metalFxCurrentCameraPos;
+      metalFxPreviousCameraDir = metalFxCurrentCameraDir;
+      metalFxHistoryValid      = true;
+      metalFxResetThisFrame    = false;
+      metalFxLastFrameTime     = Application::tickCount();
+      metalFxJitterIndex       = (metalFxJitterIndex+1u)%32u;
+
+      drawTonemappingPass(result,cmd,wview,textureCast<const Texture2d&>(metalFxOutput),false);
+      return;
+      }
+
+    if(!metalFxTemporalEncodeFailed) {
+      metalFxTemporalEncodeFailed = true;
+      Log::i("MetalFX Temporal encode rejected texture configuration; disabling Temporal and using Spatial/Lanczos fallback");
+      }
+    metalFxTemporalScaler = TemporalScaler();
+    metalFxMotion = Attachment();
+    resetTemporalHistory();
+    }
+#endif
+#if defined(OPENGOTHIC_METALFX_SPATIAL)
+  if(settings.vidResIndex!=0 && !metalFxScaler.isEmpty() && !metalFxOutput.isEmpty()) {
+    cmd.setDebugMarker("MetalFX Spatial HDR");
+    if(cmd.spatialUpscale(metalFxScaler,sceneLinear,metalFxOutput)) {
+      drawTonemappingPass(result,cmd,wview,textureCast<const Texture2d&>(metalFxOutput),false);
+      return;
+      }
+    if(!metalFxEncodeFailed) {
+      metalFxEncodeFailed = true;
+      Log::i("MetalFX Spatial encode rejected texture configuration; using Lanczos fallback");
+      }
+    }
+#endif
+  drawTonemapping(result,cmd,wview);
+  }
+
+void Renderer::drawTonemappingPass(Attachment& result, Encoder<CommandBuffer>& cmd,
+                                   const WorldView& wview, const Texture2d& input, bool upscale) {
   struct Push {
     float brightness = 0;
     float contrast   = 1;
@@ -739,10 +1031,10 @@ void Renderer::drawTonemapping(Attachment& result, Encoder<CommandBuffer>& cmd, 
   if(mul>0)
     p.mul = mul;
 
-  auto& pso = (settings.vidResIndex==0) ? shaders.tonemapping : shaders.tonemappingUpscale;
+  auto& pso = upscale ? shaders.tonemappingUpscale : shaders.tonemapping;
   cmd.setFramebuffer({ {result, Tempest::Discard, Tempest::Preserve} });
   cmd.setBinding(0, wview.sceneGlobals().uboGlobal[SceneGlobals::V_Main]);
-  cmd.setBinding(1, sceneLinear, Sampler::nearest(ClampMode::ClampToEdge)); // Lanczos upscale requires nearest sampling
+  cmd.setBinding(1, input, Sampler::nearest(ClampMode::ClampToEdge)); // Lanczos upscale requires nearest sampling
   cmd.setPushData(p);
   cmd.setPipeline(pso);
   cmd.draw(nullptr, 0, 3);
@@ -2703,4 +2995,3 @@ Size Renderer::internalResolution(Tempest::Size src) const {
     return Size(3*src.w/4, 3*src.h/4);
   return Size(src.w/2, src.h/2);
   }
-

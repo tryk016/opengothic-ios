@@ -81,6 +81,7 @@ World::World(GameSession& game, std::string_view file, bool startup, std::functi
     loadProgress(20);
     auto& worldMesh = world.world_mesh;
 
+#if !defined(__IOS__)
     auto wdynamicFut = std::async(std::launch::async, [&]() {
       Workers::setThreadName("Loading: BVH thread");
       return std::unique_ptr<DynamicWorld>(new DynamicWorld(this,worldMesh));
@@ -90,6 +91,7 @@ World::World(GameSession& game, std::string_view file, bool startup, std::functi
       PackedMesh vmesh(worldMesh,PackedMesh::PK_VisualLnd);
       return std::unique_ptr<WorldView>(new WorldView(vmesh, wname));
       });
+#endif
 
     loadProgress(30);
 
@@ -102,10 +104,29 @@ World::World(GameSession& game, std::string_view file, bool startup, std::functi
     }
     loadProgress(50);
 
+#if defined(__IOS__)
+    // Building the packed render mesh and the collision BVH concurrently has
+    // a large transient memory peak: both builders retain the parsed Zen mesh
+    // while allocating their own temporary buffers. Modern iOS may jetsam the
+    // process at that point without producing an application crash report.
+    // The loader already runs off the UI thread, so serialize these two iOS
+    // jobs to trade a little loading time for a much lower peak footprint.
+    Tempest::Log::i("[ios-load] building packed world mesh");
+    {
+      PackedMesh vmesh(worldMesh,PackedMesh::PK_VisualLnd);
+      wview = std::unique_ptr<WorldView>(new WorldView(vmesh,wname));
+    }
+#else
     wview = wviewFut.get();
+#endif
     loadProgress(60);
 
+#if defined(__IOS__)
+    Tempest::Log::i("[ios-load] building collision world");
+    wdynamic = std::unique_ptr<DynamicWorld>(new DynamicWorld(this,worldMesh));
+#else
     wdynamic = wdynamicFut.get();
+#endif
     loadProgress(70);
 
     globFx.reset(new GlobalEffects(*this));
@@ -290,6 +311,14 @@ LightGroup::Light World::addLight(std::string_view preset) {
 
 void World::updateAnimation(uint64_t dt) {
   wobj.updateAnimation(dt);
+  }
+
+void World::refreshAnimationPose() {
+  wobj.refreshAnimationPose();
+  }
+
+WorldObjects::AnimationStats World::animationStats() const {
+  return wobj.animationStats();
   }
 
 void World::resetPositionToTA() {

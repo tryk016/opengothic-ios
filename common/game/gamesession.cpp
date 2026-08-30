@@ -5,6 +5,7 @@
 #include <Tempest/MemReader>
 #include <Tempest/MemWriter>
 #include <cctype>
+#include <exception>
 
 #include "utils/string_frm.h"
 #include "worldstatestorage.h"
@@ -67,6 +68,7 @@ void GameSession::HeroStorage::putToWorld(World& owner, std::string_view wayPoin
 
 
 GameSession::GameSession(std::string file) {
+  quickItems.fill(NoQuickItem);
   cam.reset(new Camera());
 
   Gothic::inst().setLoadingProgress(0);
@@ -117,6 +119,7 @@ GameSession::GameSession(std::string file) {
   }
 
 GameSession::GameSession(Serialize &fin) {
+  quickItems.fill(NoQuickItem);
   Gothic::inst().setLoadingProgress(0);
   setupSettings();
 
@@ -138,6 +141,35 @@ GameSession::GameSession(Serialize &fin) {
   std::string    wname;
   fin.setEntry("game/session");
   fin.read(ticks,wrldTime,wrldTimePart,wname);
+
+  // Controller quick-item assignments live in their own optional archive
+  // entry. Saves created before this feature simply keep the automatic ring.
+  if(fin.setEntry("game/quickitems")) {
+    try {
+      uint16_t version = 0;
+      uint16_t count   = 0;
+      bool customized  = false;
+      fin.read(version,customized,count);
+      if(version==1 && count<=64) {
+        quickItems.fill(NoQuickItem);
+        for(uint16_t i=0;i<count;++i) {
+          uint32_t cls = NoQuickItem;
+          fin.read(cls);
+          if(i<quickItems.size())
+            quickItems[i] = cls;
+          }
+        quickItemsCustomized = customized;
+        }
+      else {
+        Log::e("Ignoring unsupported quick-item save entry");
+        }
+      }
+    catch(const std::exception& e) {
+      quickItems.fill(NoQuickItem);
+      quickItemsCustomized = false;
+      Log::e("Ignoring damaged quick-item save entry: ",e.what());
+      }
+    }
 
   cam.reset(new Camera());
   vm.reset(new GameScript(*this));
@@ -201,6 +233,12 @@ void GameSession::save(Serialize &fout, std::string_view name, const Pixmap& scr
 
   fout.setEntry("game/session");
   fout.write(ticks,wrldTime,wrldTimePart,wrld->name());
+
+  fout.setEntry("game/quickitems");
+  fout.write(uint16_t(1),quickItemsCustomized,
+             uint16_t(quickItems.size()));
+  for(uint32_t cls:quickItems)
+    fout.write(cls);
 
   fout.setEntry("game/camera");
   cam->save(fout);

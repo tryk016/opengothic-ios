@@ -837,8 +837,17 @@ void Inventory::applyArmor(Item &it, Npc &owner, int32_t sgn) {
 
 bool Inventory::use(size_t cls, Npc &owner, uint8_t slotHint, bool force) {
   Item* it=findByClass(cls);
-  if(it==nullptr)
+  if(it==nullptr) {
+    // the lit hand-torch is not an inventory item - lighting consumed the ItLsTorch.
+    // Allow stowing it back even when that was the last one (count==0).
+    if(owner.isUsingTorch() && owner.weaponState()==WeaponState::NoWeapon &&
+       cls==owner.world().script().findSymbolIndex("ItLsTorch")) {
+      owner.toggleTorch();
+      addItem(cls,1,owner.world());
+      return true;
+      }
     return false;
+    }
 
   auto& itData   = it->handle();
   auto  mainflag = ItmFlags(itData.main_flag);
@@ -885,6 +894,9 @@ bool Inventory::use(size_t cls, Npc &owner, uint8_t slotHint, bool force) {
     if(owner.toggleTorch()) {
       deleteLater = true;
       } else {
+      // stowed the hand-torch: return it to the inventory - a light+stow
+      // cycle must not destroy a torch
+      addItem(cls,1,owner.world());
       return true;
       }
     }

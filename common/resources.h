@@ -45,7 +45,11 @@ class Resources final {
       };
 
     enum {
+#if defined(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT)
+      MaxFramesInFlight = 3,
+#else
       MaxFramesInFlight = 2,
+#endif
       ShadowLayers      = 2,
       };
 

@@ -782,6 +782,10 @@ void GameScript::fixNpcPosition(Npc& npc, float angle0, float distBias) {
       auto ray = dyn.ray(p+Vec3(0,100,0), p+Vec3(0,-1000,0));
       if(!ray.hasCol)
         continue;
+      if(ray.vob!=nullptr)
+        continue; // the down-ray landed on top of an interactive's collider
+                  // (barrel, cupboard, ...) - accepting it parks the npc on
+                  // the furniture, playing the use animation mid-air
       p.y = ray.v.y;
       npc.setPosition(p);
       if(!npc.hasCollision()) {

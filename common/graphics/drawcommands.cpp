@@ -50,7 +50,8 @@ bool DrawCommands::DrawCmd::isMeshShader() const {
 
 
 DrawCommands::DrawCommands(VisualObjects& owner, DrawBuckets& buckets, DrawClusters& clusters, const SceneGlobals& scene)
-    : owner(owner), buckets(buckets), clusters(clusters), scene(scene), vsmSupported(Shaders::isVsmSupported()) {
+    : owner(owner), buckets(buckets), clusters(clusters), scene(scene),
+      vsmSupported(Gothic::options().doVirtualShadow && Shaders::isVsmSupported()) {
   for(uint8_t v=0; v<SceneGlobals::V_Count; ++v) {
     views[v].viewport = SceneGlobals::VisCamera(v);
     }
@@ -147,10 +148,13 @@ uint16_t DrawCommands::commandId(const Material& m, Type type, uint32_t bucketId
   const bool bindlessSys = Gothic::inst().options().doBindless;
   const bool bindless    = bindlessSys && !m.hasFrameAnimation();
 
-  auto pMain    = Shaders::inst().materialPipeline(m, type, Shaders::T_Main,   bindless);
-  auto pShadow  = Shaders::inst().materialPipeline(m, type, Shaders::T_Shadow, bindless);
-  auto pVsm     = Shaders::inst().materialPipeline(m, type, Shaders::T_Vsm,    bindless);
-  auto pHiZ     = Shaders::inst().materialPipeline(m, type, Shaders::T_Depth,  bindless);
+  auto& shaders = Shaders::inst();
+  auto pMain    = shaders.materialPipeline(m, type, Shaders::T_Main,   bindless);
+  auto pShadow  = shaders.materialPipeline(m, type, Shaders::T_Shadow, bindless);
+  auto pVsm     = vsmSupported
+                ? shaders.materialPipeline(m, type, Shaders::T_Vsm, bindless)
+                : nullptr;
+  auto pHiZ     = shaders.materialPipeline(m, type, Shaders::T_Depth,  bindless);
   if(pMain==nullptr && pShadow==nullptr && pHiZ==nullptr)
     return uint16_t(-1);
 

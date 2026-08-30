@@ -2,6 +2,9 @@
 
 #include <Tempest/Sound>
 #include <Tempest/SoundDevice>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
 #include "game/gamescript.h"
@@ -22,6 +25,10 @@ class GthFont;
 
 class GameSession final {
   public:
+    static constexpr size_t   QuickItemSlotCount = 13;
+    static constexpr uint32_t NoQuickItem         = uint32_t(-1);
+    using QuickItemLayout = std::array<uint32_t,QuickItemSlotCount>;
+
     GameSession()=delete;
     GameSession(const GameSession&)=delete;
     GameSession(std::string file);
@@ -52,6 +59,13 @@ class GameSession final {
 
     Npc*         player();
     void         updateListenerPos(const Camera::ListenerPos& lpos);
+
+    bool                   hasCustomQuickItems() const { return quickItemsCustomized; }
+    const QuickItemLayout& quickItemLayout() const { return quickItems; }
+    void                   setQuickItemLayout(const QuickItemLayout& layout) {
+      quickItems = layout;
+      quickItemsCustomized = true;
+      }
 
     gtime        time() const { return  wrldTime; }
     void         setTime(gtime t);
@@ -105,6 +119,9 @@ class GameSession final {
 
     ChWorld                        chWorld;
     bool                           exitSessionFlg=false;
+
+    QuickItemLayout                quickItems{};
+    bool                           quickItemsCustomized=false;
 
     static const uint64_t          multTime;
     static const uint64_t          divTime;

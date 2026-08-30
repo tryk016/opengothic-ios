@@ -28,6 +28,11 @@ class WorldObjects final {
     WorldObjects(World &owner);
     ~WorldObjects();
 
+    struct AnimationStats final {
+      size_t fullPose   = 0;
+      size_t eventsOnly = 0;
+      };
+
     enum SearchFlg : uint8_t {
       NoFlg         = 0,
       NoDeath       = 1,
@@ -59,6 +64,8 @@ class WorldObjects final {
     void           removeNpc(Npc& npc);
 
     void           updateAnimation(uint64_t dt);
+    void           refreshAnimationPose();
+    AnimationStats animationStats() const { return animationLast; }
 
     bool           isTargeted(Npc& npc);
     Npc*           findHero();
@@ -176,6 +183,10 @@ class WorldObjects final {
     std::vector<std::unique_ptr<Npc>>  npcInvalid; // dead or invalid TA
     std::vector<std::unique_ptr<Npc>>  npcRemoved; // removed, but may have a dangling references in game
     std::vector<Npc*>                  npcNear;
+
+    AnimationStats                     animationWork;
+    AnimationStats                     animationLast;
+    bool                               animationRefreshPending=false;
 
     std::vector<AbstractTrigger*>      triggers;
     std::vector<AbstractTrigger*>      triggersTk;

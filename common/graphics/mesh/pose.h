@@ -48,6 +48,7 @@ class Pose final {
 
     void               setObjectMatrix(const Tempest::Matrix4x4& obj, bool sync);
     bool               update(uint64_t tickCount, bool force);
+    void               advanceTimeWithoutPose(uint64_t tickCount);
 
     void               processLayers(AnimationSolver &solver, uint64_t tickCount);
     bool               processEvents(uint64_t& barrier, uint64_t now, Animation::EvCount &ev) const;
@@ -61,6 +62,7 @@ class Pose final {
     bool               isDefence(uint64_t tickCount) const;
     bool               isJumpBack(uint64_t tickCount) const;
     bool               isJumpAnim() const;
+    bool               isJumpLandingAnim() const;
     bool               isFlyAnim() const;
     bool               isStanding() const;
     bool               isPrehit(uint64_t now) const;

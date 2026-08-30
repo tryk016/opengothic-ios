@@ -116,6 +116,7 @@ class Camera final {
 
     float              zNear() const;
     float              zFar()  const;
+    static uint32_t     configuredFarPlane();
 
   private:
     struct Pin {

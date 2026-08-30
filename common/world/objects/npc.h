@@ -21,10 +21,12 @@
 
 class Interactive;
 class WayPoint;
+class Frustrum;
 
 class Npc final {
   public:
     using JumpStatus = MoveAlgo::JumpStatus;
+    using PoseUpdate = MdlVisual::PoseUpdate;
 
     enum GoToHint : uint8_t {
       GT_No,
@@ -135,7 +137,10 @@ class Npc final {
     float      qDistTo(const Item& p) const;
     auto       fightDistanceTo(const Npc& npc) const -> Tempest::Vec3;
 
-    void       updateAnimation(uint64_t dt, bool force = false);
+    void       updateAnimation(uint64_t dt, bool force = false, PoseUpdate poseUpdate = PoseUpdate::Full);
+    bool       animationPoseDeferred() const { return poseDeferred; }
+    bool       isInAnimationFrustrum(const Frustrum& frustrum) const;
+    void       refreshAnimationPose();
     void       updateTransform();
 
     std::string_view displayName() const;
@@ -185,6 +190,7 @@ class Npc final {
     auto       animMoveSpeed(uint64_t dt) const -> Tempest::Vec3;
 
     bool       isJumpAnim() const;
+    bool       isJumpLandingAnim() const;
     bool       isFlyAnim() const;
     bool       isFalling() const;
     bool       isFallingDeep() const;
@@ -556,6 +562,7 @@ class Npc final {
     // visual props (cache)
     uint8_t                        durtyTranform=0;
     Tempest::Vec3                  lastGroundNormal;
+    bool                           poseDeferred=false;
 
     DynamicWorld::NpcItem          physic;
 

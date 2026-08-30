@@ -6,14 +6,17 @@
 #include <Tempest/Dialog>
 
 #include <algorithm>
+#include <string_view>
 
 #include "utils/string_frm.h"
 #include "world/objects/npc.h"
 #include "world/world.h"
 #include "ui/menuroot.h"
+#include "ui/padglyph.h"
 #include "utils/gthfont.h"
 #include "utils/fileutil.h"
 #include "utils/keycodec.h"
+#include "game/constants.h"
 #include "game/definitions/musicdefinitions.h"
 #include "game/serialize.h"
 #include "game/savegameheader.h"
@@ -313,6 +316,8 @@ GameMenu::~GameMenu() {
   }
 
 void GameMenu::resetVm(zenkit::DaedalusVm* inVm) {
+  questListItem    = nullptr;
+  questContentItem = nullptr;
   vm = inVm;
   for(int i=0; i<zenkit::IMenu::item_count; ++i){
     hItems[i].handle = nullptr;
@@ -389,6 +394,17 @@ void GameMenu::paintEvent(PaintEvent &e) {
 
   for(auto& hItem:hItems)
     drawItem(p,hItem);
+
+#if defined(__IOS__)
+  // This is a native overlay trigger, deliberately independent from MENU.DAT.
+  // It stays in the safe top-left corner; Y opens the same screen on a pad.
+  {
+  auto& fnt = Resources::font(scale);
+  const int side = std::max(18,int(24.f*scale));
+  PadGlyph::drawLabelled(p,fnt,PadGlyph::Y,int(16.f*scale),int(16.f*scale),side,
+                         "Device settings",0.85f);
+  }
+#endif
 
   if(menu->flags & zenkit::MenuFlag::SHOW_INFO) {
     if(auto sel=selectedItem()) {
@@ -619,6 +635,127 @@ void GameMenu::onKeyboard(KeyCodec::Action key) {
     Gothic::inst().emitGlobalSound(Gothic::inst().loadSoundFx("MENU_SELECT"));
     exec(*sel,0,key);
     }
+  }
+
+bool GameMenu::onModalKeyboard(KeyCodec::Action key) {
+  // On mobile, opening Tempest's blocking Dialog::exec() from a synthetic pad
+  // event stalls the render loop. The quest list/content therefore live as a
+  // non-blocking state inside GameMenu and exclusively own D-pad/A/B here.
+  if(questContentItem!=nullptr) {
+    if(key==KeyCodec::Forward)
+      questContentItem->scroll = std::max(questContentItem->scroll-1,0);
+    else if(key==KeyCodec::Back)
+      questContentItem->scroll++;
+    else if(key==KeyCodec::Escape)
+      closeQuestContent();
+    update();
+    return true;
+    }
+
+  if(questListItem!=nullptr) {
+    if(key==KeyCodec::Forward)
+      moveQuestList(-1);
+    else if(key==KeyCodec::Back)
+      moveQuestList(1);
+    else if(key==KeyCodec::ActionGeneric)
+      openQuestContent();
+    else if(key==KeyCodec::Escape)
+      closeQuestList();
+    return true;
+    }
+  return false;
+  }
+
+bool GameMenu::hasModalDialog() const {
+  return questListItem!=nullptr || questContentItem!=nullptr;
+  }
+
+const QuestLog::Quest* GameMenu::selectedQuest(const Item& list) const {
+  const QuestStat status = toStatus(list.handle->user_string[0]);
+  int32_t num = 0;
+  if(auto ql=Gothic::inst().questLog()) {
+    for(size_t i=0; i<ql->questCount(); ++i) {
+      const auto& quest = ql->quest(ql->questCount()-i-1);
+      if(!isCompatible(quest,status))
+        continue;
+      if(num==list.value)
+        return &quest;
+      ++num;
+      }
+    }
+  return nullptr;
+  }
+
+void GameMenu::openQuestList(Item& list, uint32_t returnItem) {
+  const auto status = toStatus(list.handle->user_string[0]);
+  const int32_t count = numQuests(Gothic::inst().questLog(),status);
+  if(count<=0) {
+    curItem = returnItem;
+    return;
+    }
+
+  list.value = std::clamp(list.value,0,count-1);
+  questListItem       = &list;
+  questListReturnItem = returnItem;
+  update();
+  }
+
+void GameMenu::closeQuestList() {
+  if(questContentItem!=nullptr)
+    closeQuestContent();
+  questListItem = nullptr;
+  curItem = questListReturnItem;
+  update();
+  }
+
+void GameMenu::moveQuestList(int direction) {
+  if(questListItem==nullptr)
+    return;
+  const auto status = toStatus(questListItem->handle->user_string[0]);
+  const int32_t count = numQuests(Gothic::inst().questLog(),status);
+  if(count<=0)
+    return;
+  questListItem->value = std::clamp(questListItem->value+direction,0,count-1);
+  update();
+  }
+
+void GameMenu::openQuestContent() {
+  if(questListItem==nullptr)
+    return;
+  Item* next = selectedContentItem(questListItem);
+  const QuestLog::Quest* quest = selectedQuest(*questListItem);
+  if(next==nullptr || quest==nullptr)
+    return;
+
+  std::string text;
+  for(size_t i=0; i<quest->entry.size(); ++i) {
+    text += quest->entry[i];
+    if(i+1<quest->entry.size())
+      text += "\n---\n";
+    }
+
+  questContentItem       = next;
+  questContentReturnItem = curItem;
+  questContentWasVisible = next->visible;
+  next->visible          = true;
+  next->scroll           = 0;
+  next->handle->text[0]  = std::move(text);
+
+  for(uint32_t i=0; i<zenkit::IMenu::item_count; ++i)
+    if(&hItems[i]==next) {
+      curItem = i;
+      break;
+      }
+  update();
+  }
+
+void GameMenu::closeQuestContent() {
+  if(questContentItem==nullptr)
+    return;
+  questContentItem->visible = questContentWasVisible;
+  questContentItem = nullptr;
+  curItem = questContentReturnItem;
+  update();
   }
 
 void GameMenu::onTick() {
@@ -903,12 +1040,15 @@ void GameMenu::execChgOption(Item &item, int slideDx) {
     updateItem(item);
     const int cnt = int(strEnumSize(item.handle->text[0]));
     if(slideDx==0 && cnt==2)
-      slideDx = 1; // QoL: on/off toggle
+      slideDx = 1;
 
     item.value += slideDx; // next value
-    if(cnt>0)
-      item.value = std::clamp(item.value,0,cnt-1);  else
+    if(cnt>0) {
+      item.value = std::clamp(item.value,0,cnt-1);
+      }
+    else {
       item.value = 0;
+      }
     Gothic::settingsSetI(sec, opt, item.value);
     }
   }
@@ -919,6 +1059,20 @@ void GameMenu::execSaveGame(const GameMenu::Item& item) {
     return;
 
   string_frm fname("save_slot_",int(id),".sav");
+#if defined(__IOS__)
+  // No system keyboard is wired up on iOS, so a slot name cannot be typed in.
+  // Auto-name the save with the world + in-game time instead of the stale
+  // slot text.
+  if(auto w = Gothic::inst().world()) {
+    const auto t = w->time();
+    char nm[128] = {};
+    std::snprintf(nm, sizeof(nm), "%.*s - day %d, %d:%02d",
+                  int(w->name().size()), w->name().data(),
+                  int(t.day()), int(t.hour()), int(t.minute()));
+    Gothic::inst().save(fname, nm);
+    return;
+    }
+#endif
   Gothic::inst().save(fname,item.handle->text[0]);
   }
 
@@ -945,6 +1099,10 @@ void GameMenu::execCommands(std::string str, bool isClick, KeyCodec::Action hint
         if(i.visible && isClick) {
           const uint32_t prev = curItem;
           curItem = id;
+#if defined(__MOBILE_PLATFORM__)
+          openQuestList(i,prev);
+          return;
+#else
           ListViewDialog dlg(*this,i);
           if(dlg.numQuests()==0) {
             curItem = prev;
@@ -953,6 +1111,7 @@ void GameMenu::execCommands(std::string str, bool isClick, KeyCodec::Action hint
           dlg.resize(owner.size());
           dlg.exec();
           curItem = prev;
+#endif
           }
         }
       }
