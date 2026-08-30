@@ -62,7 +62,13 @@ elseif(IOS)
   option(OPENGOTHIC_NPC_DIALOG_CULLING
          "Keep distant NPC pose culling active during dialogs and cutscenes" OFF)
   option(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT
-         "Use three OpenGothic frame-resource slots on iOS" OFF)
+         "Use three frame-resource and Metal swapchain slots on iOS" OFF)
+  set(OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE "16" CACHE STRING
+      "Maximum number of compiled Metal shader modules cached per iOS device; 0 disables the cache")
+  if(NOT "${OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE}" MATCHES "^(0|[1-9][0-9]*)$")
+    message(FATAL_ERROR
+      "OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE must be a non-negative decimal integer without leading zeroes")
+  endif()
   option(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO
          "Render directly into CAMetalDrawable and allocate SSAO buffers on demand" OFF)
   option(OPENGOTHIC_GPU_EXPERIMENT_WORLD_FAR_PLANE_60000
@@ -134,7 +140,11 @@ elseif(IOS)
   if(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT=1)
+    target_compile_definitions(Gothic2Notr PRIVATE
+      OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT=1)
   endif()
+  target_compile_definitions(Gothic2Notr PRIVATE
+    OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE=${OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE})
   if(OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO=1)

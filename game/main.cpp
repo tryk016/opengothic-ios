@@ -83,7 +83,16 @@ std::unique_ptr<Tempest::AbstractGraphicsApi> mkApi(const CommandLine& g) {
     }
 
 #if defined(__APPLE__)
+#if defined(__IOS__)
+  Tempest::MetalApi::Options options;
+#if defined(OPENGOTHIC_IOS_THREE_FRAMES_IN_FLIGHT)
+  options.swapchainBufferCount = 3;
+#endif
+  options.shaderModuleCacheSize = OPENGOTHIC_IOS_METAL_SHADER_CACHE_SIZE;
+  return std::make_unique<Tempest::MetalApi>(flg,options);
+#else
   return std::make_unique<Tempest::MetalApi>(flg);
+#endif
 #else
   return std::make_unique<Tempest::VulkanApi>(flg);
 #endif
