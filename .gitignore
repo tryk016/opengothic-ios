@@ -25,6 +25,7 @@ out/*
 # internal
 .vs/
 internal/
+.Codex/
 
 #os
 .DS_Store
