@@ -880,7 +880,7 @@ void GamepadInput::tickMenu(const GamepadState& s,
     if(!event.pressed)
       continue;
 #if defined(__IOS__)
-    if(event.button==GamepadButton::Y) {
+    if(event.button==GamepadButton::Y && owner.canOpenDeviceSettings()) {
       owner.openDeviceSettings();
       return;
       }

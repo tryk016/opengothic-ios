@@ -17,108 +17,13 @@
 #include <utility>
 
 #include "game/constants.h"
+#include "ui/iosuilocalization.h"
 #include "utils/gthfont.h"
 #include "ui/padglyph.h"
 
 using namespace Tempest;
 
 namespace {
-
-struct Loc {
-  const char* title;
-  const char* ltAction;
-  const char* lbAction;
-  const char* move;
-  const char* sneak;
-  const char* itemRing;
-  const char* statusPrev;
-  const char* questNext;
-  const char* weaponMagicRing;
-  const char* rtAction;
-  const char* rbAction;
-  const char* weapon;
-  const char* special;
-  const char* jump;
-  const char* action;
-  const char* camera;
-  const char* targetLock;
-  const char* inventory;
-  const char* gameMenu;
-  };
-
-// GthFont maps one byte to one glyph in the game codepage, not UTF-8. PL uses
-// CP1250, DE CP1252. Hex escapes are split ("\xB3" "a") wherever the next
-// character is a hex digit, or it would be swallowed by the escape.
-const Loc& loc(ScriptLang language) {
-  static const Loc en = {
-    "Controller layout",
-    "Draw bow / Block / Aim",
-    "Left attack / Walk / Previous page",
-    "Move / Turn",
-    "Sneak",
-    "Item quick-ring",
-    "Quest log / Previous target",
-    "Map / Next target",
-    "Weapons / Magic ring",
-    "Draw melee / Attack / Shoot / Cast",
-    "Right attack / Look back / Next page",
-    "Draw / sheathe weapon",
-    "Melee special",
-    "Jump / Climb",
-    "Interact / Use",
-    "Camera",
-    "Target lock / Edit item ring",
-    "Inventory",
-    "Game menu",
-    };
-  static const Loc de = {
-    "Controller-Belegung",
-    "Bogen ziehen / Blocken / Zielen",
-    "Linker Angriff / Gehen / Vorige Seite",
-    "Bewegen / Drehen",
-    "Schleichen",
-    "Gegenstands-Rad",
-    "Tagebuch / Vorheriges Ziel",
-    "Karte / N\xE4" "chstes Ziel",
-    "Waffen- / Magie-Rad",
-    "Nahkampf / Angriff / Schuss / Zauber",
-    "Rechter Angriff / Zur\xFC" "ckblick / N\xE4" "chste Seite",
-    "Waffe ziehen / wegstecken",
-    "Nahkampf-Spezialangriff",
-    "Springen / Klettern",
-    "Interagieren / Benutzen",
-    "Kamera",
-    "Ziel fixieren / Gegenstands-Rad belegen",
-    "Inventar",
-    "Spielermen\xFC",
-    };
-  static const Loc pl = {
-    "Uk\xB3" "ad kontrolera",
-    "Dobycie \xB3uku / Blok / Celowanie",
-    "Atak w lewo / Ch\xF3" "d / Poprzednia strona",
-    "Ruch / skr\xEAt",
-    "Skradanie",
-    "Ko\xB3o przedmiot\xF3w",
-    "Dziennik zada\xF1 / Poprzedni cel",
-    "Mapa / Nast\xEApny cel",
-    "Ko\xB3o broni / Magii",
-    "Bro\xF1 bia\xB3" "a / Atak / Strza\xB3 / Czar",
-    "Atak w prawo / Spojrzenie wstecz / Nast\xEApna strona",
-    "Dob\xB9" "d\x9F / schowaj bro\xF1",
-    "Specjalny atak wr\xEA" "cz",
-    "Skok / wspinaczka",
-    "Interakcja / U\xBFycie",
-    "Kamera",
-    "Blokada celu / Edycja ko\xB3" "a przedmiot\xF3w",
-    "Ekwipunek",
-    "Menu gry",
-    };
-  switch(language) {
-    case ScriptLang::DE: return de;
-    case ScriptLang::PL: return pl;
-    default:             return en;
-    }
-  }
 
 // One labelled callout: up to two glyphs, a text and the leader-line anchor in
 // normalized diagram coordinates. Anchors were measured on the Xelu line-art.
@@ -139,8 +44,8 @@ struct WrappedLabel {
     }
   };
 
-// Split only on ASCII spaces: the labels use the game's one-byte CP1250/
-// CP1252 encoding, so byte-wise word boundaries are safe while UTF-8 rules
+// Split only on ASCII spaces: the labels use the game's one-byte CP1250,
+// CP1251 or CP1252 encoding, so byte-wise word boundaries are safe while UTF-8 rules
 // would not be. The best balanced split is used and the result never exceeds
 // two lines.
 WrappedLabel wrapLabel(const GthFont& fnt, const char* text, int maxWidth) {
@@ -234,7 +139,7 @@ void PadDiagram::draw(Painter& p, const GthFont& fnt, int w, int h, float scale,
   if(img==nullptr)
     return;
 
-  const Loc& L = loc(language);
+  const auto& L = IosUiLocalization::padDiagram(language);
 
   // Dim the whole page: the parchment menu background is too busy behind the
   // thin white line-art.

@@ -227,10 +227,10 @@ void TouchInput::paintEvent(PaintEvent& e) {
       for(auto& b:menuLayout())
         PadGlyph::draw(p, fnt, glyphOfKey(b.key), b.x, b.y, b.s);
 #if defined(__IOS__)
-      {
-      const auto b = deviceButton();
-      PadGlyph::draw(p,fnt,PadGlyph::Y,b.x,b.y,b.s);
-      }
+      if(owner.canOpenDeviceSettings()) {
+        const auto b = deviceButton();
+        PadGlyph::draw(p,fnt,PadGlyph::Y,b.x,b.y,b.s);
+        }
 #endif
       if(owner.padCharacterPageActive())
         for(auto& b:characterPageLayout())
@@ -417,7 +417,7 @@ void TouchInput::mouseDownEvent(MouseEvent& e) {
         }
     }
 #if defined(__IOS__)
-  if(ctx==PadCtx::Menu) {
+  if(ctx==PadCtx::Menu && owner.canOpenDeviceSettings()) {
     const auto b = deviceButton();
     if(pos.x>=b.x && pos.x<b.x+b.s && pos.y>=b.y && pos.y<b.y+b.s) {
       owner.openDeviceSettings();

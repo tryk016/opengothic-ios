@@ -13,6 +13,7 @@
 #include "world/world.h"
 #include "ui/menuroot.h"
 #include "ui/padglyph.h"
+#include "ui/iosuilocalization.h"
 #include "utils/gthfont.h"
 #include "utils/fileutil.h"
 #include "utils/keycodec.h"
@@ -399,11 +400,13 @@ void GameMenu::paintEvent(PaintEvent &e) {
   // This is a native overlay trigger, deliberately independent from MENU.DAT.
   // It stays in the safe top-left corner; Y opens the same screen on a pad.
   {
-  auto& fnt = Resources::font(scale);
-  const int side = std::max(18,int(24.f*scale));
-  PadGlyph::drawLabelled(p,fnt,PadGlyph::Y,int(16.f*scale),int(16.f*scale),side,
-                         "Device settings",0.85f);
-  }
+    auto& fnt = Resources::font(scale);
+    const int side = std::max(18,int(24.f*scale));
+    const auto& text = IosUiLocalization::deviceSettings(
+                         IosUiLocalization::currentLanguage());
+    PadGlyph::drawLabelled(p,fnt,PadGlyph::Y,int(16.f*scale),int(16.f*scale),side,
+                           text.title,0.85f);
+    }
 #endif
 
   if(menu->flags & zenkit::MenuFlag::SHOW_INFO) {

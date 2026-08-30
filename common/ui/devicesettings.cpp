@@ -13,6 +13,7 @@
 #include "gothic.h"
 #include "mainwindow.h"
 #include "resources.h"
+#include "ui/iosuilocalization.h"
 #include "ui/paddiagram.h"
 #include "utils/gthfont.h"
 #include "utils/string_frm.h"
@@ -49,26 +50,6 @@ void DeviceSettings::close() {
   active = false;
   owner.setFocus(true);
   update();
-  }
-
-const DeviceSettings::Labels& DeviceSettings::labels() const {
-  static const Labels en = {
-    "Device settings", "Frame rate", "Off",
-    "Frame rate is controlled by the parent configuration", "Back",
-    };
-  static const Labels de = {
-    "Geraeteeinstellungen", "Bildrate", "Aus",
-    "Bildrate wird von der uebergeordneten Konfiguration gesteuert", "Zurueck",
-    };
-  static const Labels pl = {
-    "Ustawienia urzadzenia", "Limit FPS", "Wylaczony",
-    "Limit FPS jest ustawiony przez konfiguracje nadrzedna", "Powrot",
-    };
-  switch(ScriptLang(Gothic::settingsGetI("GAME","language"))) {
-    case ScriptLang::DE: return de;
-    case ScriptLang::PL: return pl;
-    default:             return en;
-    }
   }
 
 bool DeviceSettings::isFrameRateLocked() const {
@@ -177,11 +158,11 @@ void DeviceSettings::paintEvent(PaintEvent& event) {
   Painter p(event);
   const float scale = Gothic::interfaceScale(this);
   auto& fnt = Resources::font(scale);
-  const Labels& txt = labels();
+  const ScriptLang language = IosUiLocalization::currentLanguage();
+  const auto& txt = IosUiLocalization::deviceSettings(language);
 
   // Keep the complete mapping in its own native layer, never in Controls.
-  PadDiagram::draw(p,fnt,w(),h(),scale,
-                   ScriptLang(Gothic::settingsGetI("GAME","language")),false);
+  PadDiagram::draw(p,fnt,w(),h(),scale,language,false);
 
   const int panelW = std::min(w()-24,std::max(280,int(float(w())*0.58f)));
   const int panelH = std::max(128,int(float(h())*0.22f));

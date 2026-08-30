@@ -22,15 +22,6 @@ class DeviceSettings final : public Tempest::Widget {
     void paintEvent(Tempest::PaintEvent& event) override;
 
   private:
-    struct Labels {
-      const char* title;
-      const char* frameRate;
-      const char* off;
-      const char* controlled;
-      const char* back;
-      };
-
-    const Labels& labels() const;
     bool          isFrameRateLocked() const;
     int           frameRate() const;
     void          setFrameRate(int value);

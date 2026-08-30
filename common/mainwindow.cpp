@@ -101,6 +101,9 @@ MainWindow::MainWindow(Device& device)
 
   Gothic::inst().onSettingsChanged.bind(this,&MainWindow::onSettings);
   onSettings();
+#if defined(__IOS__)
+  Tempest::iOS::setIdleTimerDisabled(true);
+#endif
   safeArea = SafeArea::insets();
 
   if(Gothic::inst().version().game==2)
@@ -196,6 +199,9 @@ void MainWindow::finishStartup() {
   }
 
 MainWindow::~MainWindow() {
+#if defined(__IOS__)
+  Tempest::iOS::setIdleTimerDisabled(false);
+#endif
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
   flushPerfWindow(perfNowUs(),true);
   logMemorySnapshot("shutdown");
@@ -771,8 +777,12 @@ void MainWindow::padSkipVideo()               { video.skip(); }
 #endif
 
 #if defined(__IOS__)
+bool MainWindow::canOpenDeviceSettings() const {
+  return rootMenu.isActive() && !deviceSettings.isOpen();
+  }
+
 void MainWindow::openDeviceSettings() {
-  if(!rootMenu.isActive())
+  if(!canOpenDeviceSettings())
     return;
   gamepad.ringCancel();
   clearInput();
@@ -1982,7 +1992,10 @@ void MainWindow::render(){
     if(displayFps==0 && !Gothic::inst().isInGame() && !video.isActive())
       displayFps = 60u;
     if(iosFrameRateTarget!=displayFps) {
-      Tempest::iOS::setPreferredFrameRate(displayFps);
+      if(displayFps==0)
+        Tempest::iOS::setPreferredFrameRateRange(30u,120u,120u);
+      else
+        Tempest::iOS::setPreferredFrameRate(displayFps);
       iosFrameRateTarget = displayFps;
       }
 

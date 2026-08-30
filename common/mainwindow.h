@@ -81,6 +81,7 @@ class MainWindow : public Tempest::Window {
 #endif
 #if defined(__IOS__)
     // The only entry point for the native device-settings layer.
+    bool canOpenDeviceSettings() const;
     void openDeviceSettings();
     bool deviceSettingsOpen() const;
 #endif
