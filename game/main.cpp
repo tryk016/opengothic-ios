@@ -19,6 +19,7 @@
 #endif
 
 #include <cstdio>
+#include <chrono>
 
 #include "utils/crashlog.h"
 #include "utils/systemmsg.h"
@@ -29,6 +30,24 @@
 #include "commandline.h"
 
 #include <dmusic.h>
+
+#if defined(__IOS__)
+extern "C" void tempestIosSetEngineReady();
+extern "C" void tempestIosYieldToUIKit();
+extern bool iosStartupLoadInProgress;
+
+static void yieldToUIKitDuringStartupLoad() {
+  if(!iosStartupLoadInProgress)
+    return;
+  using Clock = std::chrono::steady_clock;
+  static auto lastYield = Clock::now();
+  const auto now = Clock::now();
+  if(now-lastYield < std::chrono::milliseconds(50))
+    return;
+  lastYield = now;
+  tempestIosYieldToUIKit();
+  }
+#endif
 
 std::string_view selectDevice(const Tempest::AbstractGraphicsApi& api) {
   auto d = api.devices();
@@ -88,6 +107,9 @@ int main(int argc,const char** argv) {
   try {
     static Tempest::WFile logFile("log.txt");
     Tempest::Log::setOutputCallback([](Tempest::Log::Mode mode, const char* text) {
+#if defined(__IOS__)
+      yieldToUIKitDuringStartupLoad();
+#endif
       logFile.write(text,std::strlen(text));
       logFile.write("\n",1);
       if(mode==Tempest::Log::Error)
@@ -154,6 +176,9 @@ int main(int argc,const char** argv) {
     gothic.setupGlobalScripts();
 
     MainWindow           wx(device);
+#if defined(__IOS__)
+    tempestIosSetEngineReady();
+#endif
     Tempest::Application app;
     return app.exec();
     }

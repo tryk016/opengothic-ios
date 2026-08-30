@@ -57,7 +57,7 @@ jobs:
           submodules: recursive
 
       - name: Install build tools
-        run: brew install cmake glslang
+        run: brew install cmake glslang spirv-cross
 
       - name: Apply submodule patches
         run: bash ios/patches/apply-patches.sh

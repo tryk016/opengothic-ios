@@ -192,7 +192,9 @@ struct VideoWidget::Context {
       cmd.setBinding(0, stage, 0);
       cmd.setBinding(1, stage, sizeY);
       cmd.setBinding(2, stage, sizeY + sizeU);
-      cmd.setPipeline(Shaders::inst().bink);
+      // bink belongs to the synchronous startup set; do not wait for the
+      // unrelated world shader catalogue before the intro can play.
+      cmd.setPipeline(Shaders::binkPipeline());
       cmd.draw(nullptr, 0, 3);
     }
     sync[fId] = device.submit(this->cmd[fId]);

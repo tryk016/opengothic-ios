@@ -15,6 +15,7 @@
 #include <string>
 
 #include "game/playercontrol.h"
+#include "ui/gamepadstick.h"
 #include "game/inventory.h"
 #include "world/world.h"
 #include "world/waypoint.h"
@@ -58,12 +59,15 @@ void GamepadInput::loadConfig() {
     return v>0.f ? v : d;
     };
   deadZone   = std::clamp(f("deadZone", 0.25f), 0.05f, 0.95f);
+  analogDeadZone = std::clamp(f("analogDeadZone", 0.10f),0.01f,0.50f);
+  analogEngageZone = std::clamp(f("analogEngageZone",0.18f),
+                                analogDeadZone+0.01f,0.75f);
   releaseZone= std::clamp(f("releaseZone", 0.15f), 0.01f,
                           std::max(0.01f, deadZone-0.01f));
   crossAxisGuard = std::clamp(Gothic::settingsGetF("GAMEPAD","crossAxisGuard"),
                               0.f,0.50f);
   trigThresh = f("triggerThreshold", 0.50f);
-  lookSens   = f("lookSensitivity",  0.20f);
+  lookSens   = std::clamp(f("lookSensitivity",0.20f),0.01f,1.f);
   invertY    = Gothic::settingsGetI("GAMEPAD","invertY")!=0;
   stuckProtect = (Gothic::settingsGetI("GAMEPAD","noStuckProtect")==0); // opt-out
   }
@@ -368,8 +372,9 @@ void GamepadInput::tickWorldSystemButtons(
   }
 
 void GamepadInput::suppressCarriedWorldInput() {
-  suppressMoveUntilNeutral = true;
-  suppressTurnUntilNeutral = true;
+  suppressLeftUntilNeutral = true;
+  suppressLookUntilNeutral = true;
+  leftStickActive          = false;
   suppressAUntilRelease    = true;
   suppressBUntilRelease    = true;
   suppressXUntilRelease    = true;
@@ -393,7 +398,8 @@ void GamepadInput::releaseAllWorld() {
     ctrl.setGamepadWalk(false);
     gamepadWalkHeld = false;
     }
-  ctrl.setGamepadTurn(0.f);
+  ctrl.setPadAxes({});
+  discreteStickMode = false;
   suppressCarriedWorldInput();
   }
 
@@ -428,7 +434,8 @@ void GamepadInput::tick(uint64_t dt) {
     moveAxis.reset();
     turnAxis.reset();
     gamepadWalkHeld = false;
-    ctrl.setGamepadTurn(0.f);
+    discreteStickMode = false;
+    ctrl.setPadAxes({});
     suppressCarriedWorldInput();
     observedInputGen = inputGen;
     }
@@ -477,13 +484,13 @@ void GamepadInput::tick(uint64_t dt) {
     const bool carriedMenu = prev.connected && prev.menu;
     moveAxis.reset();
     turnAxis.reset();
-    ctrl.setGamepadTurn(0.f);
+    ctrl.setPadAxes({});
     if(prev.connected) {
       // Gate only controls which were already held in the previous context.
       // A new press/deflection that arrived between UI and this World tick is
       // fresh input and must not be discarded as if it had leaked from UI.
-      suppressMoveUntilNeutral = std::abs(prev.ly)>deadZone;
-      suppressTurnUntilNeutral = std::abs(prev.lx)>deadZone;
+      suppressLeftUntilNeutral = std::hypot(prev.lx,prev.ly)>analogDeadZone;
+      suppressLookUntilNeutral = std::hypot(prev.rx,prev.ry)>analogDeadZone;
       suppressAUntilRelease    = prev.a;
       suppressBUntilRelease    = prev.b;
       suppressXUntilRelease    = prev.x;
@@ -535,10 +542,8 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
 
   // Each carried control rearms independently. A slightly noisy stick must
   // never block A/B/RT, and one axis must not disable the other.
-  if(suppressMoveUntilNeutral && std::abs(s.ly)<=releaseZone)
-    suppressMoveUntilNeutral = false;
-  if(suppressTurnUntilNeutral && std::abs(s.lx)<=releaseZone)
-    suppressTurnUntilNeutral = false;
+  if(suppressLookUntilNeutral && std::hypot(s.rx,s.ry)<=analogDeadZone)
+    suppressLookUntilNeutral = false;
   const bool aReleased = std::any_of(events.begin(),events.end(),[](const auto& event) {
     return event.button==GamepadButton::A && !event.pressed;
     });
@@ -575,36 +580,78 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
   if(suppressRtUntilRelease && (s.rt<=trigThresh || rtReleased))
     suppressRtUntilRelease = false;
 
-  const float moveThreshold = slopedAxisThreshold(deadZone, s.lx,
-                                                  crossAxisGuard);
-  const float turnThreshold = slopedAxisThreshold(deadZone, s.ly,
-                                                  crossAxisGuard);
+  const GamepadStick leftStick  = gamepadRadialDeadZone(s.lx,s.ly,analogDeadZone);
+  const GamepadStick rightStick = gamepadRadialDeadZone(s.rx,s.ry,analogDeadZone);
+  auto* pl = worldPlayer();
+  const bool discreteStick = pl!=nullptr && pl->interactive()!=nullptr;
 
-  if(!suppressMoveUntilNeutral) {
-    // Y keeps Gothic's animation-driven start/stop movement. The guarded
-    // threshold starts a direction; the fixed deadZone releases it, while
-    // releaseZone only rearms after threshold chatter.
-    moveAxis.update(s.ly, moveThreshold, deadZone, releaseZone);
+  if(discreteStick!=discreteStickMode) {
+    // Changing between locomotion and MOBSI/lockpick semantics must not carry
+    // a held direction into the other model. Both modes re-arm at radial zero.
+    setWorldAxis(A::Back,    false,A::Forward,false);
+    setWorldAxis(A::RotateL, false,A::RotateR,false);
+    ctrl.setPadAxes({});
+    moveAxis.reset();
+    turnAxis.reset();
+    suppressLeftUntilNeutral = true;
+    leftStickActive = false;
+    discreteStickMode = discreteStick;
+    }
+  if(suppressLeftUntilNeutral &&
+     std::hypot(s.lx,s.ly)<=analogDeadZone)
+    suppressLeftUntilNeutral = false;
+
+  PadAxes axes;
+  if(discreteStick) {
+    // MOBSI, ladders and lockpicks still expose discrete semantic commands in
+    // the original engine. Keep that adapter isolated from normal locomotion.
+    const float moveThreshold = slopedAxisThreshold(deadZone,s.lx,crossAxisGuard);
+    const float turnThreshold = slopedAxisThreshold(deadZone,s.ly,crossAxisGuard);
+    if(!suppressLeftUntilNeutral)
+      moveAxis.update(s.ly,moveThreshold,deadZone,releaseZone);
+    else
+      moveAxis.reset();
+    if(!suppressLeftUntilNeutral)
+      turnAxis.update(s.lx,turnThreshold,deadZone,releaseZone);
+    else
+      turnAxis.reset();
     setWorldAxis(A::Back,    moveAxis.negative(),
                  A::Forward, moveAxis.positive());
-    }
-
-  if(!suppressTurnUntilNeutral) {
-    // X is genuinely analog: guard only activation, then remove the fixed
-    // inner dead-zone and scale the classic turn rate by the remaining -1..1.
-    turnAxis.update(s.lx, turnThreshold, deadZone, releaseZone);
-    const float turn = turnAxis.scaled(s.lx, deadZone);
-    ctrl.setGamepadTurn(turn);
-    // Keep RotateL/RotateR edge semantics for lockpicking, classic combat and
-    // rotate+jump side-steps. PlayerControl prefers gamepadTurn for speed.
     setWorldAxis(A::RotateL, turnAxis.negative(),
                  A::RotateR, turnAxis.positive());
     }
   else {
-    ctrl.setGamepadTurn(0.f);
+    // Normal gameplay consumes a fresh continuous snapshot every tick. There
+    // is no pressed/released state which could remain latched after a missed
+    // edge or an internal PlayerControl reset.
+    setWorldAxis(A::Back,    false,A::Forward,false);
+    setWorldAxis(A::RotateL, false,A::RotateR,false);
+    moveAxis.reset();
+    turnAxis.reset();
+    const float magnitude = std::hypot(s.lx,s.ly);
+    if(suppressLeftUntilNeutral) {
+      leftStickActive = false;
+      }
+    else if(leftStickActive) {
+      if(magnitude<=analogDeadZone)
+        leftStickActive = false;
+      }
+    else if(magnitude>=analogEngageZone) {
+      leftStickActive = true;
+      }
+    if(leftStickActive) {
+      axes.move = leftStick.y;
+      axes.turn = leftStick.x;
+      }
     }
 
-  auto* pl = worldPlayer();
+  if(!suppressLookUntilNeutral) {
+    const float yDir = invertY ? -1.f : 1.f;
+    axes.lookYawRate   = -rightStick.x*lookSens;
+    axes.lookPitchRate =  rightStick.y*lookSens*yDir;
+    }
+  ctrl.setPadAxes(axes);
+
   const WeaponState ws = pl!=nullptr ? pl->weaponState() : WeaponState::NoWeapon;
   const bool melee  = ws==WeaponState::Fist || ws==WeaponState::W1H || ws==WeaponState::W2H;
   const bool ranged = ws==WeaponState::Bow || ws==WeaponState::CBow;
@@ -752,28 +799,6 @@ void GamepadInput::tickWorld(uint64_t dt, const GamepadState& s,
   else {
     setWorldHeld(A::PadAttackRight,false);
     setWorldHeld(A::LookBack,false);
-    }
-
-  // Right stick -> analog camera look. PlayerControl consumes yaw, but normal
-  // gameplay deliberately ignores Npc::setDirectionY; feed Camera as well so
-  // pitch works outside swimming/climbing. Apply the dead-zone per axis to
-  // avoid turning an X-only look into vertical drift.
-  const float rx = std::abs(s.rx)>deadZone ? s.rx : 0.f;
-  const float ry = std::abs(s.ry)>deadZone ? s.ry : 0.f;
-  if(rx!=0.f || ry!=0.f) {
-    const float scale = float(std::min<uint64_t>(dt,50)) * lookSens;
-    const float yDir  = invertY ? -1.f : 1.f;
-    const float yaw   = -rx * scale;
-    const float pitch =  ry * scale * yDir;
-
-    // Match MainWindow::tickMouse: camera receives {-pitch,yaw}, while the
-    // player receives {yaw,pitch}. gamepad.tick runs before the global dt
-    // clamp, hence the local 50 ms cap above.
-    if(auto* camera = Gothic::inst().camera();
-       camera!=nullptr && !camera->isCutscene() && !Gothic::inst().isPause()) {
-      camera->onRotateMouse(Tempest::PointF(-pitch,yaw));
-      ctrl.onRotateMouse(yaw,pitch);
-      }
     }
 
   // L3 toggles sneak; R3 toggles target lock.

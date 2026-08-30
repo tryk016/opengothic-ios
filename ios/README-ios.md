@@ -43,7 +43,7 @@ or Sideloadly must sign and install it first.
 > Maintainers only: `.github/workflows/ios-metalfx-temporal.yml` publishes the
 > recommended MetalFX build, while `.github/workflows/ios.yml` publishes the
 > Lanczos compatibility build to the `latest` release. Both use a macOS runner,
-> `cmake` + `glslang`, `iphoneos` arm64 and disabled code signing.
+> `cmake` + `glslang` + `spirv-cross`, `iphoneos` arm64 and disabled code signing.
 
 ### 2. Sign & install with your own free Apple ID
 - **SideStore (recommended, refreshes on-device over Wi‑Fi):** after adding the
@@ -92,13 +92,16 @@ on-screen alert instead of a crash.
 
 ## Route B — With a Mac (Xcode, free Apple ID)
 
-1. `brew install cmake glslang`; install Xcode + `xcode-select --install`.
+1. `brew install cmake glslang spirv-cross`; install Xcode + `xcode-select --install`.
 2. `./ios/build-ios.sh` then `open build-ios/Gothic2Notr.xcodeproj`.
 3. Xcode → Settings → Accounts → add your **free** Apple ID (a "Personal Team"
    appears). Target → Signing & Capabilities → **Automatically manage signing**,
    pick the personal team, set a unique bundle id if needed.
 4. Run on the device; trust the certificate as in Route A. Copy game data via
    Finder → device → Files. Same 7-day expiry (rebuild weekly, or use AltStore).
+
+Maintainers: the limited cold-start shader profile, bundled Metal library and
+fallback rules are documented in [`SHADER-STARTUP.md`](SHADER-STARTUP.md).
 
 ---
 
@@ -226,6 +229,8 @@ shadowResolution=1024
 zMaxFpsMode=1
 
 [GAMEPAD]
+analogDeadZone=0.10
+analogEngageZone=0.18
 deadZone=0.25
 releaseZone=0.15
 crossAxisGuard=0.12

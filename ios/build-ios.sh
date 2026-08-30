@@ -11,6 +11,7 @@ BUILD="$ROOT/build-ios"
 echo "==> Checking tools"
 command -v cmake            >/dev/null || { echo "Installing cmake";   brew install cmake; }
 command -v glslangValidator >/dev/null || { echo "Installing glslang"; brew install glslang; }
+command -v spirv-cross      >/dev/null || { echo "Installing spirv-cross"; brew install spirv-cross; }
 xcode-select -p             >/dev/null || { echo "Install Xcode + run 'xcode-select --install' first"; exit 1; }
 
 echo "==> Applying submodule patches"

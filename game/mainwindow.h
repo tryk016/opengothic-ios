@@ -119,6 +119,7 @@ class MainWindow : public Tempest::Window {
     void onWorldLoaded();
     void onSessionExit();
     void onBenchmarkFinished();
+    void finishStartup();
     void setGameImpl(std::unique_ptr<GameSession>&& w);
     void clearInput();
     void setFullscreen(bool fs);
@@ -222,6 +223,7 @@ class MainWindow : public Tempest::Window {
     int                       lastPlayerHp = -1;  // for damage haptics
 #endif
     RuntimeMode               runtimeMode = R_Normal;
+    Tempest::Timer            startupTimer;
     SafeArea::Insets          safeArea;           // display cutouts, px; zero off-iOS
 
     Tempest::Widget*          uiKeyUp=nullptr;

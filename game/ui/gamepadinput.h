@@ -58,8 +58,10 @@ class GamepadInput {
     GamepadAxisState turnAxis;
     uint64_t         observedInputGen = 0;
     uint64_t         observedControllerGen = 0;
-    bool             suppressMoveUntilNeutral = true;
-    bool             suppressTurnUntilNeutral = true;
+    bool             suppressLeftUntilNeutral = true;
+    bool             suppressLookUntilNeutral = true;
+    bool             discreteStickMode = false;
+    bool             leftStickActive = false;
     bool             suppressAUntilRelease = true;
     bool             suppressBUntilRelease = true;
     bool             suppressXUntilRelease = true;
@@ -112,6 +114,8 @@ class GamepadInput {
 
     // Tunables, overridable via Gothic.ini [GAMEPAD] (see loadConfig).
     float deadZone      = 0.25f; // stick press dead-zone
+    float analogDeadZone= 0.10f; // radial dead-zone for continuous stick axes
+    float analogEngageZone=0.18f;// activation threshold; release uses analogDeadZone
     float releaseZone   = 0.15f; // inner neutral threshold for re-arming an axis
     float crossAxisGuard= 0.12f; // suppress perpendicular stick-axis drift
     float trigThresh    = 0.50f; // trigger press threshold

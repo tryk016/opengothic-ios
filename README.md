@@ -123,8 +123,9 @@ Two input modes; the on-screen overlay hides automatically when a controller is 
   stick is held mostly sideways (and accidental turning while held mostly forward/back). Returning to
   neutral, opening a ring/UI, disconnecting or resuming the app releases controller-owned actions before
   input can re-arm.
-- Config lives in `Documents/Gothic.ini` under `[GAMEPAD]` — `deadZone`, `releaseZone`,
-  `crossAxisGuard`, `lookSensitivity`, `invertY`, `triggerThreshold` and `noStuckProtect`.
+- Config lives in `Documents/Gothic.ini` under `[GAMEPAD]` — `analogDeadZone`,
+  `analogEngageZone`, `deadZone`, `releaseZone`, `crossAxisGuard`,
+  `lookSensitivity`, `invertY`, `triggerThreshold` and `noStuckProtect`.
 
 **On-screen virtual gamepad (no controller):** a full pad is drawn during play — move pad + camera area,
 A/B/X/Y, shoulders/triggers, sticks, D-pad, View/Menu — using the Xelu glyphs. It mirrors the physical

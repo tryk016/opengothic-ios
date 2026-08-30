@@ -78,6 +78,10 @@ double memoryMiB(uint64_t bytes, bool valid) {
 }
 #endif
 
+#if defined(__IOS__)
+bool iosStartupLoadInProgress = false;
+#endif
+
 MainWindow::MainWindow(Device& device)
   : Window(Maximized),device(device),swapchain(device,hwnd()),
     atlas(device),renderer(swapchain),
@@ -131,17 +135,12 @@ MainWindow::MainWindow(Device& device)
 
   Gothic::inst().onBenchmarkFinished.bind(this,&MainWindow::onBenchmarkFinished);
 
-  if(!Gothic::inst().defaultSave().empty()){
-    Gothic::inst().load(Gothic::inst().defaultSave());
-    rootMenu.popMenu();
-    }
-  else if(!CommandLine::inst().doStartMenu()) {
-    startGame(Gothic::inst().defaultWorld());
-    rootMenu.popMenu();
-    }
-  else {
-    rootMenu.processMusicTheme();
-    }
+#if defined(__IOS__)
+  startupTimer.timeout.bind(this,&MainWindow::finishStartup);
+  startupTimer.start(1);
+#else
+  finishStartup();
+#endif
 
   funcKey[2] = Shortcut(*this,Event::M_NoModifier,Event::K_F2);
   funcKey[2].onActivated.bind(this, &MainWindow::onMarvinKey<Event::K_F2>);
@@ -171,6 +170,27 @@ MainWindow::MainWindow(Device& device)
   displayPos.onActivated.bind(this, &MainWindow::onMarvinKey<Event::K_P>);
 #if defined(OPENGOTHIC_PERF_DIAGNOSTICS)
   logMemorySnapshot("main_window_ready");
+#endif
+  }
+
+void MainWindow::finishStartup() {
+  startupTimer.stop();
+#if defined(__IOS__)
+  iosStartupLoadInProgress = true;
+#endif
+  if(!Gothic::inst().defaultSave().empty()){
+    Gothic::inst().load(Gothic::inst().defaultSave());
+    rootMenu.popMenu();
+    }
+  else if(!CommandLine::inst().doStartMenu()) {
+    startGame(Gothic::inst().defaultWorld());
+    rootMenu.popMenu();
+    }
+  else {
+    rootMenu.processMusicTheme();
+    }
+#if defined(__IOS__)
+  iosStartupLoadInProgress = false;
 #endif
   }
 
@@ -1587,7 +1607,7 @@ void MainWindow::saveGame(std::string_view slot, std::string_view name) {
     enc.setFramebuffer({{lres, Vec4(), Tempest::Preserve}});
     enc.setPushData(IVec2(lres.w(), lres.h()));
     enc.setBinding(0, tex, Sampler::nearest());
-    enc.setPipeline(Shaders::inst().downscale);
+    enc.setPipeline(Shaders::downscalePipeline());
     enc.draw(nullptr, 0, 3);
     }
     auto sync = device.submit(cmd);
@@ -1757,6 +1777,10 @@ void MainWindow::onBenchmarkFinished() {
   }
 
 void MainWindow::setGameImpl(std::unique_ptr<GameSession> &&w) {
+  // Drop references into the old world before replacing the session. This is
+  // especially important for quick-load while a dialog or inventory is open.
+  inventory.onWorldChanged();
+  dialogs  .onWorldChanged();
   Gothic::inst().setGame(std::move(w));
   }
 

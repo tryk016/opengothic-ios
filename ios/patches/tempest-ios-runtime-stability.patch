@@ -1,0 +1,609 @@
+diff --git a/Engine/CMakeLists.txt b/Engine/CMakeLists.txt
+index c4fc5001..96728cd5 100644
+--- a/Engine/CMakeLists.txt
++++ b/Engine/CMakeLists.txt
+@@ -327,6 +327,10 @@ set_target_properties(
+     )
+ 
+ if(WIN32)
++  target_link_libraries(${PROJECT_NAME} PRIVATE shlwapi Kernel32)
++elseif(IOS)
++  #NOTE: use -DCMAKE_SYSTEM_NAME=iOS on first configure
++  target_link_libraries(${PROJECT_NAME} PRIVATE "-framework UiKit" "-framework Foundation" "-framework QuartzCore" "-framework Metal")
+   if(OPENGOTHIC_METALFX_SPATIAL)
+     target_compile_definitions(${PROJECT_NAME} PRIVATE TEMPEST_METALFX_SPATIAL=1)
+     target_link_libraries(${PROJECT_NAME} PRIVATE "-weak_framework MetalFX")
+@@ -334,10 +338,6 @@ if(WIN32)
+   if(OPENGOTHIC_METALFX_TEMPORAL)
+     target_compile_definitions(${PROJECT_NAME} PRIVATE TEMPEST_METALFX_TEMPORAL=1)
+   endif()
+-  target_link_libraries(${PROJECT_NAME} PRIVATE shlwapi Kernel32)
+-elseif(IOS)
+-  #NOTE: use -DCMAKE_SYSTEM_NAME=iOS on first configure
+-  target_link_libraries(${PROJECT_NAME} PRIVATE "-framework UiKit" "-framework Foundation" "-framework QuartzCore" "-framework Metal")
+ elseif(APPLE)
+   target_link_libraries(${PROJECT_NAME} PRIVATE "-framework AppKit" "-framework QuartzCore" "-framework Metal")
+ elseif(UNIX)
+diff --git a/Engine/gapi/metal/mtdevice.h b/Engine/gapi/metal/mtdevice.h
+index ac0c52ba..2ee2edf2 100644
+--- a/Engine/gapi/metal/mtdevice.h
++++ b/Engine/gapi/metal/mtdevice.h
+@@ -8,6 +8,9 @@
+ #include <Metal/Metal.hpp>
+ #include <Foundation/Foundation.hpp>
+ 
++#include <unordered_map>
++#include <vector>
++
+ #include "../utility/compiller_hints.h"
+ #include "gapi/shaderreflection.h"
+ #include "gapi/metal/mtsync.h"
+@@ -264,6 +267,11 @@ class MtDevice : public AbstractGraphicsApi::Device {
+     bool     useNativeImageAtomic() const;
+     uint32_t linearImageAlignment() const;
+ 
++#if defined(__IOS__)
++    AbstractGraphicsApi::PShader createShader(const void* source, size_t size);
++    void releaseCachedShader(const AbstractGraphicsApi::Shader* shader);
++#endif
++
+     void     onSubmit();
+     void     onFinish();
+     void     waitIdle() override;
+@@ -278,6 +286,9 @@ class MtDevice : public AbstractGraphicsApi::Device {
+ 
+     NsPtr<MTL::Device>         impl;
+     NsPtr<MTL::CommandQueue>   queue;
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++    NsPtr<MTL::Library>        startupLibrary;
++#endif
+ 
+     std::condition_variable    devIdleCv;
+     std::mutex                 devIdleSync;
+@@ -289,6 +300,20 @@ class MtDevice : public AbstractGraphicsApi::Device {
+     MtSamplerCache             samplers;
+     bool                       validation = false;
+ 
++#if defined(__IOS__)
++    struct ShaderCacheEntry {
++      std::vector<uint8_t>         bytecode;
++      AbstractGraphicsApi::PShader shader;
++      uint64_t                     lastUse = 0;
++      };
++    static constexpr size_t MaxShaderCacheEntries = 16;
++    std::mutex shaderCacheSync;
++    std::unordered_multimap<uint64_t,ShaderCacheEntry> shaderCache;
++    uint64_t shaderCacheClock  = 0;
++    uint32_t shaderCacheHits   = 0;
++    uint32_t shaderCacheMisses = 0;
++#endif
++
+     static void deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev);
+   };
+ 
+diff --git a/Engine/gapi/metal/mtdevice.mm b/Engine/gapi/metal/mtdevice.mm
+index feffe809..82d98fbd 100644
+--- a/Engine/gapi/metal/mtdevice.mm
++++ b/Engine/gapi/metal/mtdevice.mm
+@@ -1,10 +1,12 @@
+ #if defined(TEMPEST_BUILD_METAL)
+ 
+ #include "mtdevice.h"
++#include "mtshader.h"
+ #include "thirdparty/spirv_cross/spirv_msl.hpp"
+ 
+ #include <Tempest/Log>
+ #include <Foundation/NSProcessInfo.h>
++#include <cstring>
+ // #include <Metal/MTLPixelFormat.h>
+ 
+ using namespace Tempest;
+@@ -35,6 +37,39 @@ static MTL::LanguageVersion languageVersion() {
+   return std::min<MTL::LanguageVersion>(MTL::LanguageVersion3_1, opt->languageVersion());
+   }
+ 
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++static NsPtr<MTL::Library> loadStartupLibrary(MTL::Device& device) {
++  auto pool = NsPtr<NS::AutoreleasePool>::init();
++  auto root = NS::Bundle::mainBundle()->resourcePath();
++  if(root==nullptr)
++    return NsPtr<MTL::Library>();
++
++  std::string path = root->utf8String();
++  if(!path.empty() && path.back()!='/')
++    path.push_back('/');
++  path += TEMPEST_METAL_STARTUP_LIBRARY;
++
++  auto str = NsPtr<NS::String>(NS::String::string(path.c_str(),NS::UTF8StringEncoding));
++  str->retain();
++  auto url = NsPtr<NS::URL>(NS::URL::fileURLWithPath(str.get()));
++  url->retain();
++
++  NS::Error* error = nullptr;
++  auto library = NsPtr<MTL::Library>(device.newLibrary(url.get(),&error));
++  if(library.get()==nullptr) {
++    if(error!=nullptr)
++      Log::i("Metal startup library unavailable: ",error->localizedDescription()->utf8String(),
++             "; using runtime shader compilation");
++    else
++      Log::i("Metal startup library unavailable; using runtime shader compilation");
++    return NsPtr<MTL::Library>();
++    }
++
++  Log::i("Metal startup library loaded: ",TEMPEST_METAL_STARTUP_LIBRARY);
++  return library;
++  }
++#endif
++
+ MtDevice::MtDevice(std::string_view name, bool validation)
+   : impl(mkDevice(name)), samplers(*impl), validation(validation) {
+   if(impl.get()==nullptr)
+@@ -47,6 +82,10 @@ MtDevice::MtDevice(std::string_view name, bool validation)
+   if(queue.get()==nullptr)
+     throw std::system_error(Tempest::GraphicsErrc::NoDevice);
+ 
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++  startupLibrary = loadStartupLibrary(*impl);
++#endif
++
+   int32_t majorVersion = 0, minorVersion = 0;
+   if([[NSProcessInfo processInfo] respondsToSelector:@selector(operatingSystemVersion)]) {
+     NSOperatingSystemVersion ver = [[NSProcessInfo processInfo] operatingSystemVersion];
+@@ -55,7 +94,7 @@ MtDevice::MtDevice(std::string_view name, bool validation)
+     }
+   prop.mslVersion = languageVersion();
+   // prop.mslVersion = MTL::LanguageVersion2_2; //testing
+-  prop.ui32align  = impl->minimumLinearTextureAlignmentForPixelFormat(MTL::PixelFormatR32Uint);
++  prop.ui32align = uint32_t(impl->minimumLinearTextureAlignmentForPixelFormat(MTL::PixelFormatR32Uint));
+   if(majorVersion>=18) {
+     // https://developer.apple.com/documentation/metal/mtlinstanceaccelerationstructuredescriptor/instancetransformationmatrixlayout?language=objc
+     prop.transposedRtMatrix = true;
+@@ -64,8 +103,70 @@ MtDevice::MtDevice(std::string_view name, bool validation)
+   }
+ 
+ MtDevice::~MtDevice() {
++#if defined(__IOS__)
++  Log::i("Metal shader module cache: unique=",shaderCacheMisses,
++         " reused=",shaderCacheHits,
++         " resident=",shaderCache.size(),
++         " limit=",MaxShaderCacheEntries);
++#endif
++  }
++
++#if defined(__IOS__)
++static uint64_t shaderHash(const void* source, size_t size) {
++  constexpr uint64_t Offset = 1469598103934665603ull;
++  constexpr uint64_t Prime  = 1099511628211ull;
++  auto bytes = reinterpret_cast<const uint8_t*>(source);
++  uint64_t hash = Offset;
++  for(size_t i=0; i<size; ++i) {
++    hash ^= bytes[i];
++    hash *= Prime;
++    }
++  return hash;
+   }
+ 
++AbstractGraphicsApi::PShader MtDevice::createShader(const void* source, size_t size) {
++  const uint64_t hash = shaderHash(source,size);
++  std::lock_guard<std::mutex> guard(shaderCacheSync);
++  const auto range = shaderCache.equal_range(hash);
++  for(auto i=range.first; i!=range.second; ++i) {
++    const auto& bytecode = i->second.bytecode;
++    if(bytecode.size()==size && std::memcmp(bytecode.data(),source,size)==0) {
++      i->second.lastUse = ++shaderCacheClock;
++      ++shaderCacheHits;
++      return i->second.shader;
++      }
++    }
++
++  auto shader = AbstractGraphicsApi::PShader(new MtShader(*this,source,size));
++  if(shaderCache.size()>=MaxShaderCacheEntries) {
++    auto oldest = shaderCache.begin();
++    for(auto i=shaderCache.begin(); i!=shaderCache.end(); ++i) {
++      if(i->second.lastUse<oldest->second.lastUse)
++        oldest = i;
++      }
++    shaderCache.erase(oldest);
++    }
++  ShaderCacheEntry entry;
++  auto begin = reinterpret_cast<const uint8_t*>(source);
++  entry.bytecode.assign(begin,begin+size);
++  entry.shader = shader;
++  entry.lastUse = ++shaderCacheClock;
++  shaderCache.emplace(hash,std::move(entry));
++  ++shaderCacheMisses;
++  return shader;
++  }
++
++void MtDevice::releaseCachedShader(const AbstractGraphicsApi::Shader* shader) {
++  std::lock_guard<std::mutex> guard(shaderCacheSync);
++  for(auto i=shaderCache.begin(); i!=shaderCache.end(); ++i) {
++    if(i->second.shader.handler==shader) {
++      shaderCache.erase(i);
++      return;
++      }
++    }
++  }
++#endif
++
+ void MtDevice::onSubmit() {
+   std::lock_guard<std::mutex> guard(devIdleSync);
+   devCmdBuf.fetch_add(1u);
+@@ -357,9 +458,9 @@ void MtDevice::deductProps(AbstractGraphicsApi::Props& prop, MTL::Device& dev) {
+   prop.push.maxRange = 256;
+ 
+   const auto maxGroupSize = dev.maxThreadsPerThreadgroup();
+-  prop.compute.maxGroupSize.x = maxGroupSize.width;
+-  prop.compute.maxGroupSize.y = maxGroupSize.height;
+-  prop.compute.maxGroupSize.z = maxGroupSize.depth;
++  prop.compute.maxGroupSize.x = int(maxGroupSize.width);
++  prop.compute.maxGroupSize.y = int(maxGroupSize.height);
++  prop.compute.maxGroupSize.z = int(maxGroupSize.depth);
+   prop.compute.maxInvocations = std::max(std::max(
+                                            prop.compute.maxGroupSize.x,
+                                            prop.compute.maxGroupSize.y),
+diff --git a/Engine/gapi/metal/mtshader.cpp b/Engine/gapi/metal/mtshader.cpp
+index 87b06f6a..aa792d4a 100644
+--- a/Engine/gapi/metal/mtshader.cpp
++++ b/Engine/gapi/metal/mtshader.cpp
+@@ -11,6 +11,11 @@
+ 
+ #include "libspirv/libspirv.h"
+ 
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++#include <CommonCrypto/CommonDigest.h>
++#include <cstdio>
++#endif
++
+ using namespace Tempest;
+ using namespace Tempest::Detail;
+ 
+@@ -20,6 +25,18 @@ static uint32_t spvVersion(MTL::LanguageVersion v) {
+   return spirv_cross::CompilerMSL::Options::make_msl_version(major,minor,0);
+   }
+ 
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++static std::string startupFunctionName(const void* source, size_t size) {
++  unsigned char digest[CC_SHA256_DIGEST_LENGTH] = {};
++  CC_SHA256(source,CC_LONG(size),digest);
++
++  char name[3+16+1] = "og_";
++  for(size_t i=0; i<8; ++i)
++    std::snprintf(name+3+i*2,3,"%02x",unsigned(digest[i]));
++  return name;
++  }
++#endif
++
+ MtShader::MtShader(MtDevice& dev, const void* source, size_t srcSize)
+   : Shader(source, srcSize) {
+   auto pool = NsPtr<NS::AutoreleasePool>::init();
+@@ -123,13 +140,32 @@ MtShader::MtShader(MtDevice& dev, const void* source, size_t srcSize)
+     throw std::system_error(Tempest::GraphicsErrc::InvalidShaderModule);
+     }
+ 
++  NS::Error* err = nullptr;
++
++#if defined(TEMPEST_METAL_STARTUP_LIBRARY)
++  if(dev.startupLibrary.get()!=nullptr) {
++    const auto function = startupFunctionName(source,srcSize);
++    auto name = NsPtr<NS::String>(NS::String::string(function.c_str(),NS::UTF8StringEncoding));
++    name->retain();
++    // The startup functions have no function constants. Avoid the specialization
++    // overload, which may perform extra work on the cold-start path.
++    impl = NsPtr<MTL::Function>(dev.startupLibrary->newFunction(name.get()));
++    if(impl.get()!=nullptr) {
++      Log::i("Using precompiled Metal shader: ",function);
++      return;
++      }
++    // A miss is expected for every shader outside the deliberately tiny
++    // startup profile. The regular source compilation below is authoritative.
++    err = nullptr;
++    }
++#endif
++
+   //Log::d(msl);
+ 
+-  auto       opt = NsPtr<MTL::CompileOptions>::init();
+-  NS::Error* err = nullptr;
+-  auto       str = NsPtr<NS::String>(NS::String::string(msl.c_str(),NS::UTF8StringEncoding));
++  auto opt = NsPtr<MTL::CompileOptions>::init();
++  auto str = NsPtr<NS::String>(NS::String::string(msl.c_str(),NS::UTF8StringEncoding));
+   str->retain();
+-  library = NsPtr<MTL::Library>(dev.impl->newLibrary(str.get(), opt.get(), &err));
++  library = NsPtr<MTL::Library>(dev.impl->newLibrary(str.get(),opt.get(),&err));
+ 
+   if(err!=nullptr) {
+     const char* e = err->localizedDescription()->utf8String();
+@@ -146,7 +182,6 @@ MtShader::MtShader(MtDevice& dev, const void* source, size_t srcSize)
+ 
+   auto main = NsPtr<NS::String>(NS::String::string("main0",NS::UTF8StringEncoding));
+   main->retain();
+-
+   auto cvar = NsPtr<MTL::FunctionConstantValues>::init();
+   //cvar->setConstantValues();
+   impl = NsPtr<MTL::Function>(library->newFunction(main.get(), cvar.get(), &err));
+diff --git a/Engine/gapi/metalapi.cpp b/Engine/gapi/metalapi.cpp
+index e498d252..0ea38761 100644
+--- a/Engine/gapi/metalapi.cpp
++++ b/Engine/gapi/metalapi.cpp
+@@ -88,12 +88,22 @@ AbstractGraphicsApi::PCompPipeline MetalApi::createComputePipeline(AbstractGraph
+                                                                    AbstractGraphicsApi::Shader *cs) {
+   auto& dx = *reinterpret_cast<MtDevice*>(d);
+   auto& cx = *reinterpret_cast<const MtShader*>(cs);
+-  return PCompPipeline(new MtCompPipeline(dx,cx));
++  auto  ret = PCompPipeline(new MtCompPipeline(dx,cx));
++#if defined(__IOS__)
++  // A compute PSO owns everything it needs; keeping the source MTL::Library in
++  // the module cache until device destruction only increases world-load memory.
++  dx.releaseCachedShader(cs);
++#endif
++  return ret;
+   }
+ 
+ AbstractGraphicsApi::PShader MetalApi::createShader(AbstractGraphicsApi::Device *d, const void *source, size_t src_size) {
+   auto& dx = *reinterpret_cast<MtDevice*>(d);
++#if defined(__IOS__)
++  return dx.createShader(source,src_size);
++#else
+   return PShader(new MtShader(dx,source,src_size));
++#endif
+   }
+ 
+ AbstractGraphicsApi::PBuffer MetalApi::createBuffer(AbstractGraphicsApi::Device *d, const void *mem, size_t size,
+diff --git a/Engine/system/api/iosapi.mm b/Engine/system/api/iosapi.mm
+index d309afed..8d67fa7b 100644
+--- a/Engine/system/api/iosapi.mm
++++ b/Engine/system/api/iosapi.mm
+@@ -37,6 +37,9 @@ static void swapContext();
+ 
+ static void drawFrame();
+ 
++static std::atomic_bool isEngineReady{false};
++static std::atomic_bool resumeEngineOnNextFrame{false};
++
+ @interface TempestWindow : UIWindow {
+   @public Tempest::Window* owner;
+   @public CADisplayLink*   displayLink;
+@@ -123,7 +126,7 @@ static void drawFrame();
+   frame.origin.y      = 0;
+   [self.rootViewController.view setFrame: frame];
+ 
+-  if(owner==nullptr)
++  if(owner==nullptr || !isEngineReady.load())
+     return;
+   
+   new (&event.size) SizeEvent(int32_t(frame.size.width*scale), int32_t(frame.size.height*scale));
+@@ -133,6 +136,12 @@ static void drawFrame();
+ 
+ - (void)drawFrame {
+   hasPendingFrame.store(true);
++  if(resumeEngineOnNextFrame.exchange(false)) {
++    swapContext();
++    return;
++    }
++  if(!isEngineReady.load())
++    return;
+   swapContext();
+   // drawFrame();
+   }
+@@ -272,19 +281,12 @@ extern "C" void tempestIosSetPreferredFrameRate(int fps) {
+   }
+ @end
+ 
+-@interface AppDelegate : NSObject <UIApplicationDelegate> {
+-  }
+-@end
+-
+ static bool isApplicationActive = false;
+ 
+-@implementation AppDelegate
+-- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+-  (void)application;
+-  (void)launchOptions;
+-
+-  CGRect frame = [ [ UIScreen mainScreen ] bounds ];
+-  TempestWindow  * window = [ [ TempestWindow alloc ] initWithFrame: frame];
++static TempestWindow* createTempestWindow(UIWindowScene* windowScene) {
++  CGRect frame = windowScene.coordinateSpace.bounds;
++  TempestWindow* window = [[TempestWindow alloc] initWithWindowScene:windowScene];
++  window.frame = frame;
+   window.contentScaleFactor = [UIScreen mainScreen].scale;
+   window.rootViewController = [ViewController new];
+   window.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+@@ -294,36 +296,91 @@ static bool isApplicationActive = false;
+   window->displayLink = nullptr;
+   window->hasPendingFrame.store(false);
+   window->curentEvent = Event::Type::NoEvent;
+-  
++
+   mainWindow = window;
+-  [ window makeKeyAndVisible ]; // possible switch here
+-  return YES;
++  return window;
+   }
+ 
+-- (UIInterfaceOrientationMask)application:(UIApplication *)application
+-  supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+-  return UIInterfaceOrientationMaskLandscape;
++@interface SceneDelegate : UIResponder <UIWindowSceneDelegate> {
++  TempestWindow* window;
++  }
++@property(nonatomic, retain) TempestWindow* window;
++@end
++
++@implementation SceneDelegate
++@synthesize window;
++
++- (void)scene:(UIScene *)scene
++    willConnectToSession:(UISceneSession *)session
++    options:(UISceneConnectionOptions *)connectionOptions {
++  (void)session;
++  (void)connectionOptions;
++  if(![scene isKindOfClass:[UIWindowScene class]])
++    return;
++
++  TempestWindow* tempestWindow = createTempestWindow((UIWindowScene*)scene);
++  self.window = tempestWindow;
++  [tempestWindow makeKeyAndVisible];
++  [tempestWindow release];
+   }
+ 
+-- (void)applicationWillResignActive:(UIApplication *)application {
+-  (void)application;
++- (void)sceneWillResignActive:(UIScene *)scene {
++  (void)scene;
+   isApplicationActive = false;
++  if(isEngineReady.load())
++    swapContext();
++  }
++
++- (void)sceneDidBecomeActive:(UIScene *)scene {
++  (void)scene;
++  [UIApplication sharedApplication].idleTimerDisabled = YES;
++  isApplicationActive = true;
++  // Let UIKit finish the scene-activation callback before resuming the engine.
++  // Initial game/shader setup can take several seconds; doing it inline makes
++  // modern iOS terminate the scene for an activation-timeout.
++  [self performSelector:@selector(resumeEngine) withObject:nil afterDelay:0.5];
++  }
++
++- (void)resumeEngine {
+   swapContext();
+   }
+ 
+-- (void)applicationDidEnterBackground:(UIApplication *)application {
++- (void)sceneDidDisconnect:(UIScene *)scene {
++  (void)scene;
++  if(mainWindow==window)
++    mainWindow = nil;
++  self.window = nil;
++  }
++@end
++
++@interface AppDelegate : NSObject <UIApplicationDelegate> {
++  }
++@end
++
++@implementation AppDelegate
++- (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+   (void)application;
++  (void)launchOptions;
++  return YES;
+   }
+ 
+-- (void)applicationWillEnterForeground:(UIApplication *)application {
++- (UISceneConfiguration *)application:(UIApplication *)application
++    configurationForConnectingSceneSession:(UISceneSession *)connectingSceneSession
++    options:(UISceneConnectionOptions *)options {
+   (void)application;
++  (void)options;
++  UISceneConfiguration* configuration =
++      [UISceneConfiguration configurationWithName:@"Default Configuration"
++                                      sessionRole:connectingSceneSession.role];
++  configuration.delegateClass = [SceneDelegate class];
++  return configuration;
+   }
+ 
+-- (void)applicationDidBecomeActive:(UIApplication *)application  {
++- (UIInterfaceOrientationMask)application:(UIApplication *)application
++  supportedInterfaceOrientationsForWindow:(UIWindow *)window {
+   (void)application;
+-  application.idleTimerDisabled = YES;
+-  isApplicationActive = true;
+-  swapContext();
++  (void)window;
++  return UIInterfaceOrientationMaskLandscape;
+   }
+ 
+ - (void)applicationWillTerminate:(UIApplication *)application {
+@@ -343,6 +400,22 @@ static Fiber*           currentContext = nullptr;
+ alignas(16) static char appleStack[8*1024*1024]={};
+ static             void appleMain(void*);
+ 
++extern "C" void tempestIosYieldToUIKit() {
++  // The setjmp/longjmp fibers share the iOS main thread. Loading and shader
++  // worker threads may reach this bridge through logging/wait helpers, but a
++  // context jump from any of those threads would restore another thread's
++  // stack and corrupt the process. Yield only from the engine fiber itself.
++  if(![NSThread isMainThread] || currentContext!=&mainContext ||
++     mainWindow==nil || mainWindow->displayLink==nil)
++    return;
++  resumeEngineOnNextFrame.store(true);
++  swapContext();
++  }
++
++extern "C" void tempestIosSetEngineReady() {
++  isEngineReady.store(true);
++  }
++
+ inline static void createAppleSubContext()  {
+   if(_setjmp(mainContext.jmp) == 0) {
+     // replace stack
+@@ -404,7 +477,7 @@ static SystemApi::Window* createWindow(Tempest::Window *owner, uint32_t w, uint3
+     window->displayLink.preferredFrameRateRange = CAFrameRateRangeMake(30, 120, 120);
+     }
+   //by adding the display link to the run loop our draw method will be called 60 times per second
+-  [window->displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
++  [window->displayLink addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSRunLoopCommonModes];
+   window->hasPendingFrame.store(true);
+   
+   return reinterpret_cast<SystemApi::Window*>(window);
+diff --git a/Engine/system/application.cpp b/Engine/system/application.cpp
+index c3b1ea50..00d89cc1 100644
+--- a/Engine/system/application.cpp
++++ b/Engine/system/application.cpp
+@@ -86,7 +86,7 @@ Application::~Application(){
+   }
+ 
+ void Application::sleep(uint32_t msecIn) {
+-  const auto     start         = std::chrono::high_resolution_clock::now();
++  const auto     start         = std::chrono::steady_clock::now();
+   const auto     wtime         = std::chrono::milliseconds(msecIn);
+   const uint32_t wtGranularity = 5;
+ 
+@@ -95,7 +95,7 @@ void Application::sleep(uint32_t msecIn) {
+     }
+   // spin lock
+   while(true) {
+-    auto ms = (std::chrono::high_resolution_clock::now() - start);
++    auto ms = (std::chrono::steady_clock::now() - start);
+     if(ms>=wtime)
+       break;
+     }
+diff --git a/Engine/system/signalstorage.h b/Engine/system/signalstorage.h
+index c966c6a2..babc723c 100644
+--- a/Engine/system/signalstorage.h
++++ b/Engine/system/signalstorage.h
+@@ -3,7 +3,7 @@
+ #include <cstdint>
+ #include <cstdlib>
+ #include <cstring>
+-#include <stdexcept>
++#include <new>
+ #include <cstddef>
+ 
+ namespace Tempest {
+diff --git a/Engine/thirdparty/openal-soft/common/alnumeric.h b/Engine/thirdparty/openal-soft/common/alnumeric.h
+index 0d091166..2eeee4f7 100644
+--- a/Engine/thirdparty/openal-soft/common/alnumeric.h
++++ b/Engine/thirdparty/openal-soft/common/alnumeric.h
+@@ -20,13 +20,13 @@
+ #include "opthelpers.h"
+ 
+ 
+-constexpr auto operator "" _i64(unsigned long long n) noexcept { return static_cast<std::int64_t>(n); }
+-constexpr auto operator "" _u64(unsigned long long n) noexcept { return static_cast<std::uint64_t>(n); }
++constexpr auto operator""_i64(unsigned long long n) noexcept { return static_cast<std::int64_t>(n); }
++constexpr auto operator""_u64(unsigned long long n) noexcept { return static_cast<std::uint64_t>(n); }
+ 
+-constexpr auto operator "" _z(unsigned long long n) noexcept
++constexpr auto operator""_z(unsigned long long n) noexcept
+ { return static_cast<std::make_signed_t<std::size_t>>(n); }
+-constexpr auto operator "" _uz(unsigned long long n) noexcept { return static_cast<std::size_t>(n); }
+-constexpr auto operator "" _zu(unsigned long long n) noexcept { return static_cast<std::size_t>(n); }
++constexpr auto operator""_uz(unsigned long long n) noexcept { return static_cast<std::size_t>(n); }
++constexpr auto operator""_zu(unsigned long long n) noexcept { return static_cast<std::size_t>(n); }
+ 
+ 
+ constexpr auto GetCounterSuffix(size_t count) noexcept -> const char*
+

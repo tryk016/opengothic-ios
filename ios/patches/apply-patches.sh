@@ -353,3 +353,36 @@ else
     exit 1
   fi
 fi
+
+# iOS runtime stability and startup-shader support. This patch is intentionally
+# applied after the older surgical patches above; it is generated against that
+# exact reconstructed Tempest tree and therefore keeps a clean CI checkout in
+# lockstep with the device-tested local submodule.
+RUNTIME_PATCH="$ROOT/ios/patches/tempest-ios-runtime-stability.patch"
+RUNTIME_MARKER="$ROOT/lib/Tempest/Engine/gapi/metal/mtdevice.h"
+if grep -q 'MaxShaderCacheEntries = 16' "$RUNTIME_MARKER"; then
+  echo "skip: Tempest iOS runtime stability and startup shaders (already patched)"
+else
+  if [ ! -f "$RUNTIME_PATCH" ]; then
+    echo "ERROR: not found: $RUNTIME_PATCH" >&2
+    exit 1
+  fi
+  EXPECTED_TEMPEST_COMMIT="61b58f710b00f64d190fed2661f5762909397d1a"
+  ACTUAL_TEMPEST_COMMIT="$(git -C "$ROOT/lib/Tempest" rev-parse HEAD)"
+  if [ "$ACTUAL_TEMPEST_COMMIT" != "$EXPECTED_TEMPEST_COMMIT" ]; then
+    echo "ERROR: Tempest changed ($ACTUAL_TEMPEST_COMMIT); refresh iOS runtime patch" >&2
+    exit 1
+  fi
+  if git -C "$ROOT/lib/Tempest" apply --check "$RUNTIME_PATCH"; then
+    git -C "$ROOT/lib/Tempest" apply "$RUNTIME_PATCH"
+  else
+    echo "ERROR: failed to apply Tempest iOS runtime stability patch" >&2
+    exit 1
+  fi
+  if grep -q 'MaxShaderCacheEntries = 16' "$RUNTIME_MARKER"; then
+    echo "patched: Tempest iOS runtime stability and startup shaders"
+  else
+    echo "ERROR: Tempest iOS runtime marker missing after patch" >&2
+    exit 1
+  fi
+fi

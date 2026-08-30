@@ -132,7 +132,9 @@ bool Renderer::ssaoBuffersAllocated() const {
 void Renderer::resetSwapchain() {
   auto& device = Resources::device();
   device.waitIdle();
+#if !defined(__IOS__)
   shaders.waitCompiler();
+#endif
 
   const auto     res    = internalResolution();
   const uint32_t w      = uint32_t(res.w);
@@ -363,9 +365,17 @@ void Renderer::setupSettings() {
   }
 
 void Renderer::toggleGi() {
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
   auto& device = Resources::device();
   if(!Gothic::options().doRayQuery)
     return;
+#if defined(__IOS__)
+  if(Gothic::options().doGi==GiMethod::None)
+    return; // the limited profile deliberately did not compile a GI group
+#endif
 
   if(settings.giMethod==GiMethod::None && Gothic::options().doGi!=GiMethod::None)
     settings.giMethod = Gothic::options().doGi;
@@ -379,7 +389,11 @@ void Renderer::toggleGi() {
   }
 
 void Renderer::toggleVsm() {
-  if(!Shaders::isVsmSupported())
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(!Shaders::isVsmSupported() || shaders.vsmDirectLight.isEmpty())
     return;
 
   settings.vsmEnabled = !settings.vsmEnabled;
@@ -395,7 +409,11 @@ void Renderer::toggleVsm() {
   }
 
 void Renderer::toggleRtsm() {
-  if(!Shaders::isRtsmSupported())
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(!Shaders::isRtsmSupported() || shaders.rtsmDirectLight.isEmpty())
     return;
 
   settings.rtsmEnabled = !settings.rtsmEnabled;
@@ -411,6 +429,12 @@ void Renderer::toggleRtsm() {
   }
 
 void Renderer::togglePathtrace() {
+#if defined(__IOS__)
+  if(!Shaders::isCompilerReady())
+    return;
+#endif
+  if(shaders.rtPathtrace.isEmpty())
+    return;
   settings.pathTraceEnabled = !settings.pathTraceEnabled;
 
   pt.numFrames = 0;
@@ -2867,4 +2891,3 @@ Size Renderer::internalResolution() const {
     return Size(int(3*swapchain.w()/4), int(3*swapchain.h()/4));
   return Size(int(swapchain.w()/2), int(swapchain.h()/2));
   }
-

@@ -126,6 +126,8 @@ Gothic::Gothic() {
     iniFile->set("ENGINE",   "shadowResolution", 1024);
     iniFile->set("ENGINE",   "zMaxFpsMode",       1);
     iniFile->set("GAMEPAD",  "deadZone",          0.25f);
+    iniFile->set("GAMEPAD",  "analogDeadZone",    0.10f);
+    iniFile->set("GAMEPAD",  "analogEngageZone",  0.18f);
     iniFile->set("GAMEPAD",  "releaseZone",       0.15f);
     iniFile->set("GAMEPAD",  "crossAxisGuard",    0.12f);
     iniFile->set("GAMEPAD",  "triggerThreshold",  0.50f);
@@ -171,6 +173,8 @@ Gothic::Gothic() {
   defaults->set("GAME", "voice",    -1);
   defaults->set("GAME", "scaleVideos", 1);
 
+  defaults->set("GAMEPAD", "analogDeadZone", 0.10f);
+  defaults->set("GAMEPAD", "analogEngageZone", 0.18f);
   defaults->set("GAMEPAD", "crossAxisGuard", 0.12f);
 
   defaults->set("SKY_OUTDOOR", "zSunName",   "unsun5.tga");

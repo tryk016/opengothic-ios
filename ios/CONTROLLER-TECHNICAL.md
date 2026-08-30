@@ -14,7 +14,8 @@ packaged and published successfully by GitHub Actions run `29211433774`.
 2. `Gamepad::consume()` returns one `GamepadInputFrame`: the newest state, ordered
    digital transitions, controller generation and overflow count.
 3. `game/ui/gamepadinput.cpp` selects exactly one `PadCtx` (`World`, `Dialog`,
-   `Menu`, `Inventory` or `Loading`) and routes the frame only to that context.
+   `Menu`, `Inventory` or `Loading`), applies radial filtering and routes the
+   frame only to that context.
    A normal ring captures `World`; an assignment ring captures the still-open
    `Inventory` until RT assigns or B closes the editor.
 4. World actions enter `PlayerControl`; UI contexts receive complete synthetic key
@@ -27,7 +28,9 @@ is that an exceptionally fast complete trigger press/release between two simulat
 ticks can be missed. Normal digital buttons retain FIFO edges, including A/B in menus
 and dialogue.
 
-Controller generation changes, `PlayerControl::inputGeneration()`, UI transitions,
+World movement axes are continuous `PadAxes` snapshots and never call
+`onKeyPressed`/`onKeyReleased`. Only UI navigation and discrete MOBSI mechanics
+retain key-style adapters. Controller generation changes, `PlayerControl::inputGeneration()`, UI transitions,
 ring opening and disconnects release controller-owned state. Continuous inputs must
 return to neutral before they can re-arm. This prevents an input held in a menu or
 before app resume from leaking into gameplay.
@@ -182,6 +185,8 @@ The stable `[GAMEPAD]` settings are:
 
 ```ini
 [GAMEPAD]
+analogDeadZone=0.10
+analogEngageZone=0.18
 deadZone=0.25
 releaseZone=0.15
 crossAxisGuard=0.12
@@ -200,9 +205,11 @@ noStuckProtect=1
 The temporary `debugInput` transition trace was retired after device validation;
 controller faults now use normal error reporting instead of per-input logging.
 
-Keep `releaseZone < deadZone`. `crossAxisGuard` raises the activation threshold of
-the perpendicular left-stick axis and prevents imperfect cardinal motion from
-starting an unintended turn or step.
+`analogDeadZone` is the radial release dead-zone for continuous movement and
+camera axes. `analogEngageZone` is the higher left-stick activation threshold;
+the gap prevents idle/run chatter without turning movement back into key events.
+Keep `releaseZone < deadZone`; those two values and `crossAxisGuard` now apply to
+discrete UI/MOBSI direction latches rather than normal locomotion.
 
 ## Main implementation files
 

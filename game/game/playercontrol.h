@@ -16,6 +16,13 @@ class Item;
 class Camera;
 class Gothic;
 
+struct PadAxes final {
+  float move          = 0.f; // -1..1, back/forward
+  float turn          = 0.f; // -1..1, left/right
+  float lookYawRate   = 0.f; // rotation delta per millisecond
+  float lookPitchRate = 0.f;
+  };
+
 class PlayerControl final {
   public:
     PlayerControl(DialogMenu& dlg, InventoryMenu& inv);
@@ -25,7 +32,7 @@ class PlayerControl final {
     void  onKeyReleased(KeyCodec::Action a, KeyCodec::Mapping mapping);
     bool  isPressed(KeyCodec::Action a) const;
     void  onRotateMouse(float dAngleX, float dAngleY);
-    void  setGamepadTurn(float value);
+    void  setPadAxes(const PadAxes& axes);
     void  setGamepadWalk(bool enabled);
     uint64_t inputGeneration() const { return inputGen; }
 
@@ -87,10 +94,10 @@ class PlayerControl final {
 
     struct AxisStatus { 
         /// Main direction (e.g. W or Up arrow)
-        std::array<bool, KeyCodec::NumMappings> main;
+        std::array<bool, KeyCodec::NumMappings> main{};
         
         /// Reverse direction (e.g. S or Down arrow)
-        std::array<bool, KeyCodec::NumMappings> reverse;
+        std::array<bool, KeyCodec::NumMappings> reverse{};
 
         /// Current axis value (scale from -1 to 1)
         auto value() const -> float {
@@ -154,7 +161,7 @@ class PlayerControl final {
     bool           targetLock=false;
     float          rotMouse=0;
     float          rotMouseY=0;
-    float          gamepadTurn=0;
+    PadAxes        padAxes;
     Npc*           gamepadWalkNpc=nullptr;
     bool           gamepadWalkHeld=false;
     bool           gamepadWalkOwned=false;
@@ -183,6 +190,7 @@ class PlayerControl final {
     Focus          findFocus(const Focus* prev) const;
 
     void           clrDraw();
+    void           applyPadLook(uint64_t dt);
     void           implMove(uint64_t dt);
     void           implMoveMobsi(Npc& pl, uint64_t dt);
     void           processPickLock(Npc& pl, Interactive& inter, KeyCodec::Action key);
@@ -198,11 +206,21 @@ class PlayerControl final {
     // Helper functions for movement
     //////////////////////////////////
 
+    float forwardBackwardInput() const {
+      const float keyboard = movement.forwardBackward.value();
+      return keyboard!=0.f ? keyboard : padAxes.move;
+      }
+
+    float turnInput() const {
+      return padAxes.turn!=0.f ? padAxes.turn
+                               : movement.turnRightLeft.value();
+      }
+
     auto wantsToMoveForward() const -> bool {
-      return movement.forwardBackward.value() > 0.f;
+      return forwardBackwardInput() > 0.f;
       }
     auto wantsToMoveBackward() const -> bool {
-      return movement.forwardBackward.value() < 0.f;
+      return forwardBackwardInput() < 0.f;
       }
 
     auto wantsToStrafeRight() const -> bool {

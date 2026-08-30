@@ -71,23 +71,37 @@ elseif(IOS)
          "Use MetalFX Spatial for reduced-resolution HDR scene upscaling on supported iOS devices" OFF)
   option(OPENGOTHIC_METALFX_TEMPORAL
          "Use MetalFX Temporal AA upscaling with Spatial/Lanczos fallback on supported iOS devices" OFF)
+  option(OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS
+         "Bundle a small precompiled Metal library for the first iOS menu/video shaders" ON)
   # App version. CI passes -DOPENGOTHIC_IOS_VERSION=1.0.<run> so the bundle's
   # CFBundleShortVersionString matches the "version" field in apps.json —
   # otherwise SideStore/AltStore rejects the download as a version mismatch.
   if(NOT DEFINED OPENGOTHIC_IOS_VERSION)
     set(OPENGOTHIC_IOS_VERSION "1.0")
   endif()
+  set(OPENGOTHIC_IOS_BUNDLE_IDENTIFIER "opengothic.gothic2" CACHE STRING
+      "Bundle identifier used for the iOS application")
+  set(OPENGOTHIC_IOS_DISPLAY_NAME "OpenGothic" CACHE STRING
+      "Display name used for the iOS application")
+  set(OPENGOTHIC_IOS_DEVELOPMENT_TEAM "" CACHE STRING
+      "Apple development team used for local iOS device builds")
   set_directory_properties("${CMAKE_SOURCE_DIR}" PROPERTIES
     PROPERTY XCODE_STARTUP_PROJECT "${PROJECT_NAME}")
   set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "Info.plist.in"
-    MACOSX_BUNDLE_GUI_IDENTIFIER "opengothic.gothic2"
-    MACOSX_BUNDLE_BUNDLE_NAME "OpenGothic"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "${OPENGOTHIC_IOS_BUNDLE_IDENTIFIER}"
+    MACOSX_BUNDLE_BUNDLE_NAME "${OPENGOTHIC_IOS_DISPLAY_NAME}"
     MACOSX_BUNDLE_BUNDLE_VERSION "${OPENGOTHIC_IOS_VERSION}"
     MACOSX_BUNDLE_SHORT_VERSION_STRING "${OPENGOTHIC_IOS_VERSION}"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${OPENGOTHIC_IOS_BUNDLE_IDENTIFIER}"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
     XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY "iPhone Developer")
+  if(OPENGOTHIC_IOS_DEVELOPMENT_TEAM)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+      XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${OPENGOTHIC_IOS_DEVELOPMENT_TEAM}"
+      XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic")
+  endif()
   if(OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED)
     target_compile_definitions(${PROJECT_NAME} PRIVATE
       OPENGOTHIC_IOS_INCREASED_MEMORY_REQUESTED=1)
@@ -176,6 +190,14 @@ endif()
 add_subdirectory(shader)
 target_link_libraries(${PROJECT_NAME} GothicShaders)
 
+if(IOS AND OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS AND
+   OPENGOTHIC_IOS_STARTUP_METALLIB)
+  set_source_files_properties("${OPENGOTHIC_IOS_STARTUP_METALLIB}" PROPERTIES
+    GENERATED TRUE
+    MACOSX_PACKAGE_LOCATION Resources)
+  target_sources(${PROJECT_NAME} PRIVATE "${OPENGOTHIC_IOS_STARTUP_METALLIB}")
+endif()
+
 include_directories("game")
 
 ## submodule dependencies
@@ -219,6 +241,11 @@ else()
   set(TEMPEST_BUILD_SHARED OFF CACHE INTERNAL "")
 endif()
 add_subdirectory(lib/Tempest/Engine)
+if(IOS AND OPENGOTHIC_IOS_PRECOMPILED_STARTUP_SHADERS AND
+   OPENGOTHIC_IOS_STARTUP_METALLIB)
+  target_compile_definitions(Tempest PRIVATE
+    TEMPEST_METAL_STARTUP_LIBRARY="OpenGothicStartup.metallib")
+endif()
 if(IOS AND OPENGOTHIC_GPU_EXPERIMENT_DIRECT_DRAWABLE_LAZY_SSAO)
   target_compile_definitions(Tempest PRIVATE TEMPEST_METAL_DIRECT_DRAWABLE=1)
 endif()

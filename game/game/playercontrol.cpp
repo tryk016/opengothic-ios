@@ -215,6 +215,8 @@ void PlayerControl::onKeyReleased(KeyCodec::Action a, KeyCodec::Mapping mapping)
   ctrl[a] = false;
 
   handleMovementAction(KeyCodec::ActionMapping{a, mapping}, false);
+  if(a==KeyCodec::ActionGeneric && !ctrl[Action::PadSpecial])
+    ctrl[Action::Forward] = movement.forwardBackward.value()>0.f;
 
   auto w  = Gothic::inst().world();
   auto pl = w ? w->player() : nullptr;
@@ -249,9 +251,10 @@ void PlayerControl::rebuildPadCombatAction(WeaponState ws) {
   std::memset(actrl,0,sizeof(actrl));
 
   // ActMove writes ctrl[Forward] while it is consumed. Once PadSpecial is no
-  // longer held, restore that compatibility bit from the real movement axis.
+  // longer held, restore only the keyboard compatibility bit. Native pad axes
+  // are an independent per-frame source and must never leak into ctrl[].
   if(!ctrl[Action::PadSpecial])
-    ctrl[Action::Forward] = wantsToMoveForward();
+    ctrl[Action::Forward] = movement.forwardBackward.value()>0.f;
 
   const bool melee = ws==WeaponState::Fist ||
                      ws==WeaponState::W1H  || ws==WeaponState::W2H;
@@ -306,8 +309,14 @@ void PlayerControl::onRotateMouse(float dAngleX, float dAngleY) {
   rotMouseY += dAngleY;
   }
 
-void PlayerControl::setGamepadTurn(float value) {
-  gamepadTurn = std::clamp(value, -1.f, 1.f);
+void PlayerControl::setPadAxes(const PadAxes& axes) {
+  auto axis = [](float value) {
+    return std::isfinite(value) ? std::clamp(value,-1.f,1.f) : 0.f;
+    };
+  padAxes.move          = axis(axes.move);
+  padAxes.turn          = axis(axes.turn);
+  padAxes.lookYawRate   = axis(axes.lookYawRate);
+  padAxes.lookPitchRate = axis(axes.lookPitchRate);
   }
 
 void PlayerControl::setGamepadWalk(bool enabled) {
@@ -560,7 +569,7 @@ void PlayerControl::clearInput() {
   std::memset(ctrl, 0,sizeof(ctrl));
   std::memset(actrl,0,sizeof(actrl));
   std::memset(wctrl,0,sizeof(wctrl));
-  gamepadTurn = 0.f;
+  padAxes = {};
   ++inputGen;
   }
 
@@ -637,6 +646,22 @@ Focus PlayerControl::findFocus(const Focus* prev) const {
   return w->findFocus(Focus());
   }
 
+void PlayerControl::applyPadLook(uint64_t dt) {
+  if(padAxes.lookYawRate==0.f && padAxes.lookPitchRate==0.f)
+    return;
+
+  auto camera = Gothic::inst().camera();
+  if(camera==nullptr || camera->isCutscene() || Gothic::inst().isPause())
+    return;
+
+  const float frameMs = float(std::min<uint64_t>(dt,50));
+  const float yaw     = padAxes.lookYawRate*frameMs;
+  const float pitch   = padAxes.lookPitchRate*frameMs;
+  camera->onRotateMouse(Tempest::PointF(-pitch,yaw));
+  if(!camera->isFree())
+    onRotateMouse(yaw,pitch);
+  }
+
 bool PlayerControl::tickCameraMove(uint64_t dt) {
   auto w = Gothic::inst().world();
   if(w==nullptr)
@@ -647,7 +672,8 @@ bool PlayerControl::tickCameraMove(uint64_t dt) {
   if(camera==nullptr || (pl!=nullptr && !camera->isFree()))
     return false;
 
-  rotMouse = 0;
+  rotMouse  = 0;
+  rotMouseY = 0;
   if(ctrl[KeyCodec::Left] || (ctrl[KeyCodec::RotateL] && ctrl[KeyCodec::Jump])) {
     camera->moveLeft(dt);
     return true;
@@ -657,19 +683,18 @@ bool PlayerControl::tickCameraMove(uint64_t dt) {
     return true;
     }
 
-  auto turningVal = gamepadTurn;
-  if(turningVal==0.f)
-    turningVal = movement.turnRightLeft.value();
+  const float turningVal = turnInput();
   if(turningVal > 0.f)
     camera->rotateRight(uint64_t(float(dt)*turningVal));
   else if(turningVal < 0.f)
     camera->rotateLeft(uint64_t(float(dt)*-turningVal));
 
-  auto forwardVal = movement.forwardBackward.value();
-  if(forwardVal > 0.f)
-    camera->moveForward(dt);
-  else if(forwardVal < 0.f)
-    camera->moveBack(dt);
+  const float forwardVal = forwardBackwardInput();
+  const uint64_t moveDt = uint64_t(float(dt)*std::abs(forwardVal));
+  if(forwardVal > 0.f && moveDt>0)
+    camera->moveForward(moveDt);
+  else if(forwardVal < 0.f && moveDt>0)
+    camera->moveBack(moveDt);
   return true;
   }
 
@@ -685,6 +710,8 @@ bool PlayerControl::tickMove(uint64_t dt) {
   if(w->isCutsceneLock())
     clearInput();
 
+  applyPadLook(dt);
+
   if(tickCameraMove(dt))
     return true;
 
@@ -696,10 +723,17 @@ bool PlayerControl::tickMove(uint64_t dt) {
   if(camera!=nullptr)
     camera->setLookBack(ctrl[Action::LookBack]);
 
-  if(pl==nullptr)
+  if(pl==nullptr) {
+    rotMouse  = 0;
+    rotMouseY = 0;
     return true;
+    }
 
   implMove(dt);
+  // Mouse/pad deltas belong to exactly one simulation tick. Some animation,
+  // interaction and AI paths return from implMove before consuming them.
+  rotMouse  = 0;
+  rotMouseY = 0;
 
   float runAngle = pl->runAngle();
   if(runAngle!=0.f || std::fabs(runAngleDest)>0.01f) {
@@ -718,7 +752,6 @@ bool PlayerControl::tickMove(uint64_t dt) {
       }
     }
 
-  rotMouseY = 0;
   return true;
   }
 
@@ -802,9 +835,7 @@ void PlayerControl::implMove(uint64_t dt) {
 
   int rotation = 0;
   if(allowRot) {
-    float turn = gamepadTurn;
-    if(turn==0.f)
-      turn = movement.turnRightLeft.value();
+    const float turn = turnInput();
     if(turn<0.f) {
       rot += rspeed*-turn;
       rotation = -1;
@@ -1067,7 +1098,7 @@ void PlayerControl::implMove(uint64_t dt) {
       pl.setAnim(ani);
     }
 
-  const bool forceTurn = movement.turnRightLeft.any() || gamepadTurn!=0.f;
+  const bool forceTurn = movement.turnRightLeft.any() || padAxes.turn!=0.f;
   setAnimRotate(pl, rot, ani==Npc::Anim::Idle ? rotation : 0, forceTurn, dt);
   if(actrl[ActGeneric] || ani==Npc::Anim::MoveL || ani==Npc::Anim::MoveR || pl.isFinishingMove()) {
     processAutoRotate(pl,rot,dt);
