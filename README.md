@@ -4,12 +4,17 @@ An **unofficial iOS port** of [OpenGothic](https://github.com/Try/OpenGothic) �
 re-implementation of *Gothic II: Night of the Raven*. This fork adds the plumbing to build, sideload,
 and play OpenGothic on iPhone/iPad with a Bluetooth controller **or** a full on-screen virtual gamepad.
 
-> ### ⚠️ Work in progress
-> This fork is under **active development**. The core loop — gameplay, the on-screen virtual gamepad,
-> save/load with slot previews, haptics and the stable iOS performance profile — has been **tested and
-> confirmed on a device**. The hard 30 fps cap is lifted (ProMotion), with optional Off/30/60 FPS
-> pacing. The physical-controller movement response and jump landing are also device-confirmed. It is
-> still rough in places and being tuned, so expect bugs.
+> [!IMPORTANT]
+> ### Older iOS build
+> This repository contains an **older, less up-to-date iOS build** and is retained for historical
+> reference. For the current version, updates and releases, use
+> **[tryk016/OpenGothic](https://github.com/tryk016/OpenGothic)**.
+>
+> The information below describes this legacy build. Its core loop — gameplay, the on-screen virtual
+> gamepad, save/load with slot previews, haptics and the iOS performance profile — was tested and
+> confirmed on a device. The hard 30 fps cap was lifted (ProMotion), with optional Off/30/60 FPS
+> pacing. Physical-controller movement response and jump landing were also device-confirmed, but this
+> build may contain bugs and no longer reflects the latest development.
 
 > ### Credit
 > **The entire engine is the work of [Try](https://github.com/Try) and the OpenGothic contributors.**
@@ -155,8 +160,8 @@ approximately 1 km world far plane, while 80%/60%/40% correspond to roughly
 
 ### Known limitations
 
-- **Still a work in progress** — the core game loop is device-tested, but expect rough edges and
-  ongoing tuning.
+- **Legacy build** — the core game loop is device-tested, but this repository is older and less
+  up-to-date. Use [tryk016/OpenGothic](https://github.com/tryk016/OpenGothic) for current development.
 - Mesh shaders are disabled on iOS for GPU compatibility.
 - On-screen virtual-pad button layout is a first pass and still needs on-device tuning.
 
